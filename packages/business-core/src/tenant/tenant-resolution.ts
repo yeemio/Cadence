@@ -22,11 +22,30 @@ import { TenantId } from '../ids.js';
 /** 单机形态固定默认租户标识。镜像 application 的 DEFAULT_TENANT_ID（= 'default'）。 */
 export const SINGLE_NODE_TENANT = 'default';
 
+/**
+ * 租户解析失败原因（结构化，供 HTTP 层映射状态码，不靠 message 文本匹配）：
+ * - 'missing-host'：请求不携带 Host（HTTP/1.1 必有，HTTP/2 :authority 丢失等）
+ * - 'off-domain'：Host 在 SaaS 基础域之外（连错了服务——421 语义）
+ * - 'invalid-subdomain'：裸基础域 / 多级子域 / 无子域标签
+ * - 'unknown-tenant'：域内但租户不在已知清单（404 语义）
+ * - 'invalid-entry' / 'invalid-config'：清单或配置自身非法（构造期 fail-fast 路径）
+ */
+export type TenantResolutionReason =
+  | 'missing-host'
+  | 'off-domain'
+  | 'invalid-subdomain'
+  | 'unknown-tenant'
+  | 'invalid-entry'
+  | 'invalid-config';
+
 /** 租户解析失败（未知租户 / 缺 Host）——SaaS 形态 fail-closed，不回落默认租户。 */
 export class TenantResolutionError extends Error {
-  constructor(message: string) {
+  /** 结构化失败原因（HTTP 状态码映射依据，见类型注释）。 */
+  readonly reason: TenantResolutionReason;
+  constructor(message: string, reason: TenantResolutionReason) {
     super(message);
     this.name = 'TenantResolutionError';
+    this.reason = reason;
   }
 }
 
@@ -59,7 +78,7 @@ function toLowerSet(tenants: readonly string[] | ReadonlySet<string>): Set<strin
   return new Set(
     [...tenants].map((tenant) => {
       if (typeof tenant !== 'string' || tenant.length === 0) {
-        throw new TenantResolutionError(`invalid known tenant entry: ${String(tenant)}`);
+        throw new TenantResolutionError(`invalid known tenant entry: ${String(tenant)}`, 'invalid-entry');
       }
       return tenant.toLowerCase();
     }),
@@ -73,11 +92,11 @@ function toLowerSet(tenants: readonly string[] | ReadonlySet<string>): Set<strin
  */
 export function resolveTenantFromHost(host: string, knownTenants: readonly string[] | ReadonlySet<string>): TenantId {
   const normalized = normalizeHost(host);
-  if (normalized.length === 0) throw new TenantResolutionError(`empty host: ${JSON.stringify(host)}`);
+  if (normalized.length === 0) throw new TenantResolutionError(`empty host: ${JSON.stringify(host)}`, 'missing-host');
   const firstLabel = normalized.split('.')[0]!;
-  if (!firstLabel) throw new TenantResolutionError(`host has no subdomain label: ${JSON.stringify(host)}`);
+  if (!firstLabel) throw new TenantResolutionError(`host has no subdomain label: ${JSON.stringify(host)}`, 'invalid-subdomain');
   if (!toLowerSet(knownTenants).has(firstLabel)) {
-    throw new TenantResolutionError(`unknown tenant "${firstLabel}" (host=${JSON.stringify(host)})`);
+    throw new TenantResolutionError(`unknown tenant "${firstLabel}" (host=${JSON.stringify(host)})`, 'unknown-tenant');
   }
   return TenantId.create(firstLabel);
 }
@@ -105,21 +124,21 @@ export interface HostBasedTenantResolverOptions {
  */
 export function hostBasedTenantResolver(options: HostBasedTenantResolverOptions): (request: unknown) => TenantId {
   const domain = normalizeHost(options.domain);
-  if (domain.length === 0) throw new TenantResolutionError('empty domain');
+  if (domain.length === 0) throw new TenantResolutionError('empty domain', 'invalid-config');
   return (request: unknown): TenantId => {
     const rawHost = extractHostFromRequest(request);
-    if (rawHost === null) throw new TenantResolutionError('request carries no host (string or headers.host)');
+    if (rawHost === null) throw new TenantResolutionError('request carries no host (string or headers.host)', 'missing-host');
     const host = normalizeHost(rawHost);
-    if (host.length === 0) throw new TenantResolutionError(`empty host: ${JSON.stringify(rawHost)}`);
+    if (host.length === 0) throw new TenantResolutionError(`empty host: ${JSON.stringify(rawHost)}`, 'missing-host');
     if (!host.endsWith(`.${domain}`)) {
-      throw new TenantResolutionError(`host ${JSON.stringify(host)} outside domain ${JSON.stringify(domain)}`);
+      throw new TenantResolutionError(`host ${JSON.stringify(host)} outside domain ${JSON.stringify(domain)}`, 'off-domain');
     }
     const label = host.slice(0, -domain.length - 1);
     if (label.length === 0 || label.includes('.')) {
-      throw new TenantResolutionError(`host ${JSON.stringify(host)} is not a single subdomain of ${JSON.stringify(domain)}`);
+      throw new TenantResolutionError(`host ${JSON.stringify(host)} is not a single subdomain of ${JSON.stringify(domain)}`, 'invalid-subdomain');
     }
     if (!toLowerSet(options.lookup()).has(label)) {
-      throw new TenantResolutionError(`unknown tenant "${label}" (host=${JSON.stringify(host)})`);
+      throw new TenantResolutionError(`unknown tenant "${label}" (host=${JSON.stringify(host)})`, 'unknown-tenant');
     }
     return TenantId.create(label);
   };

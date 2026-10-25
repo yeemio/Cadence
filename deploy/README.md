@@ -21,7 +21,7 @@ M4 正式线已接通：RLS session 变量接线（org / masterdata / workbench 
 | --- | --- | --- |
 | 启动 | `docker compose -f deploy/compose.yaml up` | `SMES_TENANT_MODE=saas SMES_DOMAIN=smes.example.com docker compose -f deploy/compose.yaml --profile saas up` |
 | 定价对应（ADR-0005） | 买断 246k，私有化部署 | 订阅 54k/年，托管 |
-| 租户解析 | `singleTenantResolver()` 恒 `'default'`（缺省不触碰解析器，零行为变化） | `hostBasedTenantResolver({domain, lookup})` 子域名 → 租户（**已接线**：`SMES_TENANT_MODE=saas` + `SMES_DOMAIN` + `SMES_TENANTS` 静态清单，未知/域外 Host fail-closed 500） |
+| 租户解析 | `singleTenantResolver()` 恒 `'default'`（缺省不触碰解析器，零行为变化） | `hostBasedTenantResolver({domain, lookup})` 子域名 → 租户（**已接线**：`SMES_TENANT_MODE=saas` + `SMES_DOMAIN` + `SMES_TENANTS` 静态清单，未知租户 fail-closed 404 / 域外或缺 Host 421——M5 收尾波 4xx 化） |
 | 入口 | web:8080 / server:3000 直连 | 叠加 proxy:80（nginx 透传 Host，子域 = 租户） |
 | DB 连接 | app_user（受限 DML，无 BYPASSRLS）+ `SMES_RLS_SESSION=on` | 同左 |
 | 行级隔离 | RLS 由 DB 强制（纵深防御；单机无第二租户） | RLS 是安全边界：未设变量 → 0 行/拒写；设变量 → 仅本租户 |
@@ -92,8 +92,8 @@ docker compose -f deploy/compose.yaml down -v --remove-orphans
   不起）；web healthcheck = 静态入口自证（不探 `/health`：反代路径会把 server
   故障混入 web 自身判定）；`restart: unless-stopped`（pg/server/web/proxy；
   migrate 一次性恒 `no`）；pg-data 具名卷（`down -v` 才删）。
-  healthcheck Host 取舍（写明）：saas 形态 fail-closed 对域外 Host 一律 500，
-  liveness 探针不得依赖租户路由——saas（SMES_TENANTS 非空）时探针 Host =
+  healthcheck Host 取舍（写明）：saas 形态 fail-closed 对域外 Host 拒 421、
+  未知租户拒 404（M5 收尾波起非 200），liveness 探针不得依赖租户路由——saas（SMES_TENANTS 非空）时探针 Host =
   首个已知租户 + SMES_DOMAIN，单机回落 127.0.0.1；用 node http 而非 fetch
   （fetch 规范禁改 Host 头，静默忽略会误报）。
 - **migrate 一次性服务**：superuser 侧 `prisma migrate deploy` + 迁移完成后
@@ -124,13 +124,13 @@ SMES_TENANT_MODE=saas SMES_DOMAIN=smes.example.com SMES_TENANTS=tenant-a \
 $ curl -H "Host: tenant-a.smes.example.com" .../health
 {"status":"ok","tenant":"tenant-a"} HTTP:200      # 子域 → 租户，请求级读回
 $ curl -H "Host: rogue.smes.example.com" .../health   # 域内未知租户
-HTTP:500                                          # fail-closed（不回落 default）
+HTTP:404                                          # fail-closed（不回落 default；M5 前为 500）
 $ curl -H "Host: evil.example.com" .../health     # 域外 Host
-HTTP:500
+HTTP:421
 $ curl .../health                                 # 缺省 Host（127.0.0.1）
-HTTP:500
+HTTP:421
 $ curl -H "Host: a.b.smes.example.com" .../health # 多级子域
-HTTP:500
+HTTP:421
 ```
 
 - **接线机制（main.ts 形态开关段）**：`SMES_TENANT_MODE` 缺省 `single-node`
@@ -147,14 +147,16 @@ HTTP:500
   渲染配置 `server_name ~^.+\.smes.example.com;` + Host / X-Forwarded-Host
   透传头；server 侧解析行为以上面直连探针为准。真实 DNS 解析与 TLS 证书属
   部署期事项，不在本栈验证面。
-- **已知行为（写明）**：server 侧 fail-closed 已激活——域外/未知/多级子域
-  Host 在 server 侧 500（上表实测）；单 server 块 nginx 配置对未匹配
+- **已知行为（写明）**：server 侧 fail-closed 已激活——域内未知租户 Host
+  在 server 侧 404、域外/缺 Host/多级子域 421（M5 收尾波 4xx 化后行为，语义
+  见 main.ts 租户中间件注释）；单 server 块 nginx 配置对未匹配
   `server_name` 的 Host 落默认 server 透传，proxy 层有意保持哑透传（compose
   注释口径），域收口点在 server 侧。
 - **接缝（M4 后续）**：非默认租户的开通/种子流程（SMES_TENANTS 是静态清单；
   tenant-a 无种子用户 → 该租户下登录 401 属预期——数据面端到端待租户开通
-  流程）；`TenantResolutionError → 500` 的状态码映射（宜 404/400，Express
-  中间件层异常不进 Nest 异常过滤器，现由 ExceptionsHandler 转 500）。
+  流程）。~~`TenantResolutionError → 500` 的状态码映射~~（已关闭：M5 收尾波
+  组合根中间件窄捕 TenantResolutionError，按结构化 reason 映射 404/421，
+  不再经 Express 默认异常路径落 500）。
 - **单机复验**：无 profile、无 env 直接 `up -d` 不回归——缺省插值
   `SMES_TENANT_MODE=single-node`、`SMES_DOMAIN` 空、proxy 服务不起，
   /health 与 web 均 200，`down -v` 零残留。
