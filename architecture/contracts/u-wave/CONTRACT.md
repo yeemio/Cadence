@@ -59,6 +59,20 @@ A11 发料任务+发料记录（新 issue 模块，后端全量）与 A1/A2/A6/A
 - 验证：application+business-store 局部全量+tsc+server 测试绿即停；全仓 verify 总控收口
 - 口径对照：材料四类的"两段拆分"（利用库存段/采购入库段）以 U1 发料记录的 reservedConsumed/availableConsumed 回执快照为据；口径差异如实登记对账
 
+## U8 逾期采购件报表口径（A3，code-writer-pro；2026-10-26 凌晨④追加）
+
+- **需求文档**：`报表/逾期交货采购件报表-开发文档.md`（订单**明细行级**逾期快照、未入库数量/逾期零件数量固化、外购加工净收货口径、手工清单 apply_source=4 纳入、每日全量删写、导出 11 列）
+- 范围：engine-reporting 新 metric `purchase-overdue-daily@v1`（明细行粒度，与既有订单头粒度 overdue 事实面并存）+ listing overdue 事实端点扩明细行查询（或新只读端点，读实态定）；快照口径冻结进 description（跑批归部署期，U2 先例）
+- 写入面：engine-reporting 新定义+tests；application/src/listing 只读面最小追加（超面停手）；禁改其它
+- 验证：engine-reporting+application 局部全量+tsc 绿
+
+## U9 物料价格台账（S9，code-writer-pro）
+
+- **需求文档**：`物料管理/物料管理模块-开发文档.md`（220-363 行：采购含税单价历史+初始价格+批量当前单价取价 mapCurrentUnitPrices；六源引用删除校验）
+- 范围：masterdata 价格台账域——价格历史记录 CRUD（挂 ItemMaster，含税单价分）、初始价格、当前单价查询面、批量取价端点；与 U7 cost_price_entries 的边界：本台账=物料主数据维（采购价历史），U7 表=发料计价维（发料明细），合同头注明互不合并
+- 写入面：application/src/masterdata 追加新文件族+方法级最小追加；business-store schema+迁移+RLS+tests
+- 验证：application+business-store 局部全量+tsc 绿
+
 ## 待办池（本波不做，已排序）
 
 A13 文件管理（横切面，需对象存储 port 化设计）→ A5 项目成本大扩（依赖 S10 原材料关联表+A12 售后报销）→ A8+A10 大屏+日跑批（定制，含 WebSocket）→ S1-S14 子功能增强批次 → B3 货架 → B1/B2 payroll 口径对照 → A12/A4/A14 可选项。呈现层（报表页面/发料页面）统一等合流静止后开波。

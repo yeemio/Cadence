@@ -10,8 +10,9 @@ const OCTOBER = { from: '2026-10-01T00:00:00Z', to: '2026-10-31T23:59:59Z' };
 const SEPTEMBER = { from: '2026-09-01T00:00:00Z', to: '2026-09-30T23:59:59Z' };
 
 describe('报表中心口径包 · 包形状', () => {
-  it('六条口径（四报表：日/月、主表/子表粒度分立）冻结且 metricId 唯一', () => {
+  it('七条口径（五报表：日/月、主表/子表、明细行快照粒度分立）冻结且 metricId 唯一', () => {
     expect(REPORT_CENTER_PACK.packId).toBe(REPORT_CENTER_PACK_ID);
+    expect(REPORT_CENTER_PACK.version).toBe(2); // v2 纯追加 r8，v1 六条不变
     expect(REPORT_CENTER_PACK.metrics.map((metric) => `${metric.metricId}@v${metric.version}`)).toEqual([
       'work-order-delivery@v1',
       'outsource-delivery-monthly@v1',
@@ -19,6 +20,7 @@ describe('报表中心口径包 · 包形状', () => {
       'quality-summary-monthly@v1',
       'hours-summary-daily@v1',
       'hours-summary-process@v1',
+      'purchase-overdue-daily@v1',
     ]);
     expect(Object.isFrozen(REPORT_CENTER_PACK)).toBe(true);
     expect(Object.isFrozen(REPORT_CENTER_PACK.metrics)).toBe(true);
@@ -216,5 +218,81 @@ describe('r13 工时汇总 · 主表/工序子表（hours-summary-daily / proces
       byPosition.set(row.key.position as number, (byPosition.get(row.key.position as number) ?? 0) + (row.values['total-hours'] as number));
     }
     expect([...byPosition.entries()].sort()).toEqual([[1, 2], [2, 2], [3, 3]]);
+  });
+});
+
+describe('r8 逾期交货采购件（purchase-overdue-daily）', () => {
+  /**
+   * 明细行日快照夹具（源适配器物化自跑批结果表，statDate=2026-10-24 一批）：
+   * L1 逾期未收齐（部分收货）；L2 手工清单行（无工作令/图号 → null 组）；
+   * L3 已收齐但晚于计划到货日完成（固化留存，unInboundQty=0）；
+   * L4 违反快照面不变量的行（overdueQty=0）→ 根过滤剔除。
+   */
+  const rows: MetricSourceRow[] = [
+    {
+      occurredAt: '2026-10-24T00:10:00Z', businessTime: '2026-09-10T00:00:00Z', availableTime: '2026-10-24T00:10:00Z',
+      orderLineId: 'po-1#1', purchaseOrderId: 'po-1', workOrderId: 'wo-1', partType: 1,
+      drawingNo: 'DWG-A', itemId: 'item-a', purchaseDate: '2026-08-01', planArrivalDate: '2026-09-10',
+      purchaseQty: 10, unInboundQty: 4, overdueQty: 6, supplierName: '供应商甲', statDate: '2026-10-24',
+    },
+    {
+      occurredAt: '2026-10-24T00:10:00Z', businessTime: '2026-10-05T00:00:00Z', availableTime: '2026-10-24T00:10:00Z',
+      orderLineId: 'po-2#1', purchaseOrderId: 'po-2', workOrderId: null, partType: 4,
+      drawingNo: null, itemId: 'item-m', purchaseDate: '2026-09-25', planArrivalDate: '2026-10-05',
+      purchaseQty: 5, unInboundQty: 5, overdueQty: 5, supplierName: '供应商乙', statDate: '2026-10-24',
+    },
+    {
+      occurredAt: '2026-10-24T00:10:00Z', businessTime: '2026-09-20T00:00:00Z', availableTime: '2026-10-24T00:10:00Z',
+      orderLineId: 'po-3#2', purchaseOrderId: 'po-3', workOrderId: 'wo-2', partType: 3,
+      drawingNo: 'DWG-C', itemId: 'item-c', purchaseDate: '2026-08-10', planArrivalDate: '2026-09-20',
+      purchaseQty: 8, unInboundQty: 0, overdueQty: 8, supplierName: '供应商甲', statDate: '2026-10-24',
+    },
+    {
+      occurredAt: '2026-10-24T00:10:00Z', businessTime: '2026-09-15T00:00:00Z', availableTime: '2026-10-24T00:10:00Z',
+      orderLineId: 'po-4#1', purchaseOrderId: 'po-4', workOrderId: 'wo-1', partType: 2,
+      drawingNo: null, itemId: 'item-d', purchaseDate: '2026-08-20', planArrivalDate: '2026-09-15',
+      purchaseQty: 3, unInboundQty: 0, overdueQty: 0, supplierName: '供应商丙', statDate: '2026-10-24',
+    },
+  ];
+
+  it('一行一明细行：固化留存行（unInbound=0, overdueQty>0）保留；overdueQty=0 违反快照面不变量被根过滤剔除；手工行 null 组', () => {
+    const definition = findMetric(REPORT_CENTER_PACK, 'purchase-overdue-daily', 1)!;
+    const result = evaluateMetric(definition, { metricId: 'purchase-overdue-daily', version: 1 }, rows);
+    expect(result.rows.map((row) => row.key.orderLineId)).toEqual(['po-1#1', 'po-2#1', 'po-3#2']); // L4 剔除
+    expect(result.rows.map((row) => row.values)).toEqual([
+      { 'purchase-qty': 10, 'un-inbound-qty': 4, 'overdue-qty': 6 },
+      { 'purchase-qty': 5, 'un-inbound-qty': 5, 'overdue-qty': 5 },
+      { 'purchase-qty': 8, 'un-inbound-qty': 0, 'overdue-qty': 8 },
+    ]);
+    const manual = result.rows[1]?.key;
+    expect(manual?.workOrderId).toBeNull(); // 手工清单无工作令 → null 组（Web 显示「—」）
+    expect(manual?.drawingNo).toBeNull();
+    expect(manual?.partType).toBe(4);
+  });
+
+  it('Web 清单来源筛选 = partType 维度切片：单选 4 只剩手工清单行', () => {
+    const definition = findMetric(REPORT_CENTER_PACK, 'purchase-overdue-daily', 1)!;
+    const result = evaluateMetric(
+      definition,
+      { metricId: 'purchase-overdue-daily', version: 1, dimensionSlice: { partType: [4] } },
+      rows,
+    );
+    expect(result.rows.map((row) => row.key.orderLineId)).toEqual(['po-2#1']);
+  });
+
+  it('工作令筛选（查询过滤 workOrderId 非空）不含手工行；business 窗口锚计划到货月（9 月窗只剩 9 月到货行）', () => {
+    const definition = findMetric(REPORT_CENTER_PACK, 'purchase-overdue-daily', 1)!;
+    const byWorkOrder = evaluateMetric(
+      definition,
+      { metricId: 'purchase-overdue-daily', version: 1, filter: { kind: 'compare', op: 'ne', field: 'workOrderId', value: null } },
+      rows,
+    );
+    expect(byWorkOrder.rows.map((row) => row.key.orderLineId)).toEqual(['po-1#1', 'po-3#2']);
+    const september = evaluateMetric(
+      definition,
+      { metricId: 'purchase-overdue-daily', version: 1, ...SEPTEMBER },
+      rows,
+    );
+    expect(september.rows.map((row) => row.key.orderLineId)).toEqual(['po-1#1', 'po-3#2']); // L2 计划到货 10-05 出窗
   });
 });

@@ -27,7 +27,8 @@
  *   POST /purchase/returns                           purchase:return
  *   POST /purchase/returns/:id/revoke                purchase:return
  *   POST /purchase/overdue-scan                      purchase:order  （逾期事实扫描）
- *   GET  /purchase/overdue                           purchase:read   （逾期未交明细）
+ *   GET  /purchase/overdue                           purchase:read   （逾期未交明细·订单头）
+ *   GET  /purchase/overdue-lines                     purchase:read   （逾期未交明细行·U8，?workOrderId=）
  *   GET  /purchase/details/export                    purchase:read   （采购明细导出）
  *
  * gap.check 为写命令（产出不可变快照）但权限面只有 gap:read——合同最小集口径，
@@ -336,6 +337,24 @@ export class PurchaseQueriesController {
   @RequirePermission('purchase:read')
   async overdue(): Promise<{ overdue: Awaited<ReturnType<ListingService['overdueList']>> }> {
     return { overdue: await this.listing.overdueList(this.tenantContext.current()) };
+  }
+
+  /**
+   * U8 逾期未交**明细行**（逾期交货采购件报表-开发文档：订单明细行级事实面，
+   * 与订单头粒度 GET /purchase/overdue 并存）。workOrderId 空串按未传处理
+   * （parseWorkOrderFilter，与 /purchase/details 同口径）。
+   */
+  @Get('overdue-lines')
+  @RequirePermission('purchase:read')
+  async overdueLines(
+    @Query('workOrderId') workOrderId?: string,
+  ): Promise<{ overdueLines: Awaited<ReturnType<ListingService['overdueLines']>> }> {
+    return {
+      overdueLines: await this.listing.overdueLines(
+        this.tenantContext.current(),
+        parseWorkOrderFilter(workOrderId),
+      ),
+    };
   }
 
   @Get('details/export')

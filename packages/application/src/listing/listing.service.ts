@@ -1619,6 +1619,54 @@ export class ListingService {
       .sort((a, b) => b.daysOverdue - a.daysOverdue);
   }
 
+  /**
+   * 逾期未交**明细行**（U8 事实查询，逾期交货采购件报表-开发文档：订单明细行级）：
+   * 一行一采购订单明细行（orderLineId=订单#行号，与订单头粒度 overdueList 并存）。
+   * 纳入：订单已进入采购链路（draft 不纳入——未下单不进逾期口径）且交期已过
+   * （promisedAt < now，计划到货日当天即逾期），行未收齐（unInboundQty>0）——
+   * receivedQty 为收货回填净完成量（纯外购净入库/外购加工净收货两分支统一到
+   * 本域单口径）。无工作令订单行（手工采购，源 apply_source=4）同等纳入，
+   * workOrderId/drawingNo 为 null（呈现层显示「—」）。固化留存（已收齐但曾
+   * 晚于计划日完成、历史固化逾期数）依赖跑批历史，实时事实面不出，归快照
+   * 波。默认序：交期升序（计划到货日 ASC）、orderLineId 稳定序。
+   */
+  async overdueLines(tenant: TenantId, workOrderId?: string): Promise<readonly PurchaseOverdueLineRow[]> {
+    const now = this.now();
+    // 状态纳入集口径登记（U8 验收发现 1）：文档字面"已下发及之后"映射为
+    // state!=='draft'——与既有订单头粒度面 OVERDUE_OPEN_STATES 自洽（审批中单
+    // 已进入采购链路、其行同样构成逾期敞口）；差异属映射取舍非隐藏行为，测试
+    // 显式断言。快照面（跑批）落地时如需收窄到字面集，在此处与文档对账改判。
+    const orders = (await this.orders.list(tenant, workOrderId === undefined ? undefined : { workOrderId })).filter(
+      (order) => order.state !== 'draft' && Date.parse(order.promisedAt) < Date.parse(now),
+    );
+    const rows: PurchaseOverdueLineRow[] = [];
+    for (const order of orders) {
+      for (const line of order.lines) {
+        const unInboundQty = Math.max(0, line.quantity - line.receivedQty);
+        if (unInboundQty <= 0) continue; // 已收齐行退出（留存条件归快照波）
+        rows.push({
+          orderLineId: `${order.id}#${String(line.lineNo)}`,
+          purchaseOrderId: order.id,
+          lineNo: line.lineNo,
+          workOrderId: order.workOrderId,
+          itemId: line.itemId,
+          drawingNo: line.drawingNo,
+          quantity: line.quantity,
+          receivedQty: line.receivedQty,
+          unInboundQty,
+          supplierName: order.supplierName,
+          promisedAt: order.promisedAt,
+          state: order.state,
+          stateLabel: purchaseOrderStateLabel(order.state),
+          daysOverdue: Math.trunc((Date.parse(now) - Date.parse(order.promisedAt)) / 86_400_000),
+        });
+      }
+    }
+    return rows.sort(
+      (a, b) => a.promisedAt.localeCompare(b.promisedAt) || a.orderLineId.localeCompare(b.orderLineId),
+    );
+  }
+
   /** 采购明细行集 + 金额汇总（对账要点：Σ 已收数量 × 单价，未定价行计 0）。 */
   async purchaseDetails(tenant: TenantId, workOrderId?: string): Promise<PurchaseDetailRows> {
     const orders = await this.orders.list(
@@ -1905,6 +1953,27 @@ export interface PurchaseOverdueRow {
   readonly supplierName: string | null;
   readonly promisedAt: string;
   readonly state: string;
+  readonly daysOverdue: number;
+}
+
+/** 逾期未交明细行（U8 明细行事实面；orderLineId=订单#行号，订单头粒度面并存）。 */
+export interface PurchaseOverdueLineRow {
+  readonly orderLineId: string;
+  readonly purchaseOrderId: string;
+  readonly lineNo: number;
+  /** null = 无工作令订单（手工采购行，源 apply_source=4）。 */
+  readonly workOrderId: string | null;
+  readonly itemId: string;
+  readonly drawingNo: string | null;
+  readonly quantity: number;
+  /** 已完成数量（净完成量：收货回填，退货回退后重收覆盖）。 */
+  readonly receivedQty: number;
+  /** 未入库数量 = max(0, quantity − receivedQty)。 */
+  readonly unInboundQty: number;
+  readonly supplierName: string | null;
+  readonly promisedAt: string;
+  readonly state: string;
+  readonly stateLabel: string;
   readonly daysOverdue: number;
 }
 

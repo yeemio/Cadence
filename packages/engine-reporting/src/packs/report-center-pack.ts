@@ -1,5 +1,5 @@
 /**
- * 报表中心预置口径包（U 波：r2/r7/r12/r13 四张报表）。
+ * 报表中心预置口径包（U 波：r2/r7/r12/r13 四张报表；v2 追加 r8）。
  *
  * 定位声明（ADR-0010 自证边界）：本文件是**预置口径集（纯数据）**，不是引擎
  * 机制——引擎（filter/definition/evaluate/pack）零改动、不含任何硬编码口径；
@@ -8,24 +8,27 @@
  * 归后续波，届时由总控决定出口方式，本波只冻结口径本身。
  *
  * 清洁室纪律：口径自需求开发文档**重述**（报表/工作令交付报表 r2、外协零件
- * 交货情况汇总 r7、质检汇总报表 r12、工时汇总报表 r13——Owner 解禁的正式
- * 需求输入），不抄现系统 SQL。原系统表名（mes_*）仅在 description 中作溯源
- * 对照，行字段一律用本引擎 camelCase 词汇。
+ * 交货情况汇总 r7、逾期交货采购件报表 r8、质检汇总报表 r12、工时汇总报表
+ * r13——Owner 解禁的正式需求输入），不抄现系统 SQL。原系统表名（mes_*）仅在
+ * description 中作溯源对照，行字段一律用本引擎 camelCase 词汇。
  *
- * 快照口径冻结范围（U 波合同）：跑批类（r7/r12/r13）本版**只冻结口径定义**
+ * 快照口径冻结范围（U 波合同）：跑批类（r7/r8/r12/r13）本版**只冻结口径定义**
  * ——跑批策略（JobHandler/Cron/入参/删除重入）逐条写进 metric description；
  * 调度实现与快照表落库归后续波。粒度取舍：引擎不支持分组粒度粗化（月去重 ≠
  * 日图号数相加、工序分列 ≠ 岗位合计），故 r12 拆日/月两条、r13 拆主表/工序
- * 子表两条口径——一条报表口径 = 其全部粒度定义的集合。
+ * 子表两条口径——一条报表口径 = 其全部粒度定义的集合。包版本演进（体例）：
+ * v1 = r2/r7/r12/r13 六条；v2 纯追加 r8 明细行日快照一条，既有六条不变。
  */
 import { defineMetricPack, type MetricPack } from '../pack.js';
 
 export const REPORT_CENTER_PACK_ID = 'report-center';
 
 /**
- * 四张报表 × 六条粒度口径（v1）。快照/降级口径如实写进各 metric description：
+ * 五张报表 × 七条粒度口径（v2）。快照/降级口径如实写进各 metric description：
  *  - r2  工作令交付：实时无跑批；business=实际交付（未交付行回落行创建）。
  *  - r7  外协交货汇总：月×供应商；按期率为派生指标（呈现层由两度量计算）。
+ *  - r8  逾期交货采购件：**明细行粒度日快照**（与既有订单头粒度催货事实面
+ *     并存）；未入库数量每批重算、逾期零件数量一次性固化跨批沿用。
  *  - r12 质检汇总：日/月两粒度分立（当月图号去重 ≠ 各日图号数相加）。
  *  - r13 工时汇总：主表（岗位×日）+ 工序子表（机加工分列）两粒度分立；
  *     无法解析工序的机加工工时只进主表口径。
@@ -33,10 +36,10 @@ export const REPORT_CENTER_PACK_ID = 'report-center';
 export const REPORT_CENTER_PACK: MetricPack = defineMetricPack({
   schemaVersion: 1,
   packId: REPORT_CENTER_PACK_ID,
-  version: 1,
-  title: '报表中心口径包（r2/r7/r12/r13）',
+  version: 2,
+  title: '报表中心口径包（r2/r7/r8/r12/r13）',
   description:
-    '报表中心四张报表的版本化口径包（清洁室重述自开发文档）。跑批类（r7/r12/r13）本版只冻结快照口径（见各 metric description），调度实现与 HTTP 呈现归后续波。',
+    '报表中心五张报表的版本化口径包（清洁室重述自开发文档）。跑批类（r7/r8/r12/r13）只冻结快照口径（见各 metric description），调度实现与 HTTP 呈现归后续波。v2 纯追加 r8 一条，v1 六条口径不变。',
   metrics: [
     {
       schemaVersion: 1,
@@ -160,6 +163,34 @@ export const REPORT_CENTER_PACK: MetricPack = defineMetricPack({
           { kind: 'compare', op: 'ne', field: 'processId', value: null },
         ],
       },
+    },
+    {
+      schemaVersion: 1,
+      metricId: 'purchase-overdue-daily',
+      version: 1,
+      display: '逾期交货采购件报表·明细行日快照（r8）',
+      description:
+        '口径重述（r8 逾期交货采购件）：采购订单**明细行级**逾期快照——一行一明细行（业务键 orderLineId=订单#行号），按统计截止日 statDate（默认昨日）保存当前逾期全量快照（非按日追加归档）；与既有订单头粒度催货事实面（listing overdueList，天数为纲）并存，互不替代。纳入范围：订单头/明细行未删（源适配器剔除）、订单已进入采购链路（未下单不纳入；已完成行按留存条件保留）、行订购数量>0、计划到货日 planArrivalDate 非空（空跳过）；逾期判定 statDate>=planArrivalDate（**计划到货日当天即逾期**）。清单来源 partType=订单申请来源字典（1 零件清单/2 标准件清单/3 电气件清单/4 手工清单）；**手工清单行（partType=4）无工作令，同等纳入**，workOrderId/drawingNo 落 null 组（Web/导出显示「—」），源适配器禁止因工作令 INNER JOIN 漏手工行。完成量（inboundQty 语义）按加工类型分支：纯外购等=入库累计−入库退货（净入库）；**外购加工（加工类型 6/7）无采购入库、不来料质检——完成量=确认收货−收货退货（净收货）、完成时间=确认收货时间**（禁止用来料质检合格数/质检时间；本域收货回填 receivedQty 即两分支统一的净完成量单口径）。未入库数量 unInboundQty=max(0, purchaseQty−完成量)，每批重算、部分完成后减少；全部完成且无晚完成、无固化则整行退出。逾期零件数量 overdueQty（仅 Web 列表展示，导出不含）**一次性固化**：行首次纳入写 purchaseQty−当时完成量；跨批沿用历史值不随完成量减少；整行退出后再纳入视为新周期重新固化。留存：已收齐但曾在计划到货日之后才完成的行保留（晚完成量>0），仅历史固化 overdueQty>0 亦保留——三种纳入路径均蕴含固化值>0，故根过滤 overdueQty>0 即快照面不变量（引擎重复施加）。快照口径冻结（本版不实现调度）：xxl-job **每日全量删写**（JobHandler overduePurchaseReportJobHandler，Cron 建议 0 10 0 * * ?；入参空=statDate 取昨日，yyyy-MM-dd 指定统计截止日），事务内先读 purchase_order_line_id→overdue_qty 固化映射，再逻辑删除结果表全部有效行、批量插入最新快照（仅保留最新一次跑批产物，不并存历史版本），禁止逐行查库（批量拉取→内存判定→批量插入）。时间列映射：businessTime=计划到货日（窗口=计划到货月）、occurredAt/availableTime=跑批写入时刻（statTime 同值）；行字段清单 orderLineId/purchaseOrderId/workOrderId/partType/drawingNo/itemId/purchaseDate（订单创建日）/planArrivalDate/purchaseQty/unInboundQty/overdueQty/supplierName/statDate。Web 筛选（清单来源多选=partType 维度切片、工作令=workOrderId、项目名称模糊归工作令域）与导出 11 列（无逾期零件数量列）归呈现层。',
+      timeBasis: 'business',
+      sourceKind: 'purchase-overdue-daily-facts',
+      dimensions: [
+        { field: 'orderLineId', label: '采购订单明细行' },
+        { field: 'workOrderId', label: '工作令' },
+        { field: 'partType', label: '清单来源' },
+        { field: 'purchaseOrderId', label: '采购订单' },
+        { field: 'drawingNo', label: '图号' },
+        { field: 'itemId', label: '零件/物料' },
+        { field: 'purchaseDate', label: '采购日期' },
+        { field: 'planArrivalDate', label: '计划到货日' },
+        { field: 'supplierName', label: '供应商' },
+        { field: 'statDate', label: '统计截止日' },
+      ],
+      measures: [
+        { measureId: 'purchase-qty', aggregation: 'sum', field: 'purchaseQty', format: { maximumFractionDigits: 5 } },
+        { measureId: 'un-inbound-qty', aggregation: 'sum', field: 'unInboundQty', format: { maximumFractionDigits: 5 } },
+        { measureId: 'overdue-qty', aggregation: 'sum', field: 'overdueQty', format: { maximumFractionDigits: 5 } },
+      ],
+      filter: { kind: 'compare', op: 'gt', field: 'overdueQty', value: 0 },
     },
   ],
 });
