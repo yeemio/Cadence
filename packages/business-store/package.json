@@ -98,6 +98,14 @@
     "./approval-config": {
       "types": "./dist/approval-config/index.d.ts",
       "default": "./dist/approval-config/index.js"
+    },
+    "./issue": {
+      "types": "./dist/issue/index.d.ts",
+      "default": "./dist/issue/index.js"
+    },
+    "./attachment": {
+      "types": "./dist/attachment/index.d.ts",
+      "default": "./dist/attachment/index.js"
     }
   },
   "scripts": {

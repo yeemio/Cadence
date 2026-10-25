@@ -30,7 +30,7 @@ import {
   parseBizIdQuery,
   parseDownloadReferenceQuery,
 } from './attachment-input.js';
-import type { AttachmentService } from './attachment.service.js';
+import { AttachmentService } from './attachment.service.js';
 
 @Controller('attachment')
 export class AttachmentController {

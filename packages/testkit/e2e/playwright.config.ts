@@ -14,6 +14,12 @@
  *   （localStorage 键 cadence.session.v2，product-ui token-session 形状），
  *   chromium project 依赖之——每 test 免重复登录，context 隔离不破。
  * - timeout 60s / 单测：栈在本地，建令/建物品/求值含真实 PG 往返，留足余量。
+ * - retries 策略（V1 扩展）：RUN_E2E 门禁运行 retries=2（仅失败用例级重跑，
+ *   走查断言可见性幂等；链路步骤断言钉幂等终态——列表行状态/读数——重放
+ *   命令撞唯一键 409 时终态仍成立，见 real-chain.spec.ts 文件头）；缺省
+ *   （全 skip）retries=0。真实失败（确定性红）重跑两次仍红，不稀释信号。
+ * - globalTimeout 30 分钟（V1 扩容）：走查面从 13 测扩到 50+ 测（含全模块
+ *   页 + 真实操作链 + 移动子页），叠加栈启动构建（三包 build + migrate/seed）。
  */
 import { defineConfig } from '@playwright/test';
 import { ARTEFACTS, RUN_E2E, WEB_BASE } from './scripts/env.ts';
@@ -26,10 +32,10 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  retries: RUN_E2E ? 2 : 0,
   reporter: [['list']],
   outputDir: './artifacts/test-results',
-  globalTimeout: 15 * 60_000,
+  globalTimeout: 30 * 60_000,
   // exactOptionalPropertyTypes：条件展开而非 `cond ? value : undefined`
   ...(RUN_E2E ? { globalSetup: './scripts/global-setup.ts' as const } : {}),
   use: {

@@ -45,6 +45,12 @@ A11 发料任务+发料记录（新 issue 模块，后端全量）与 A1/A2/A6/A
 - 写入面：application/src/dispatch 追加新文件（aftercare-claim-*.ts 族）+ 方法级最小追加同上约束；business-store schema+迁移+RLS+tests
 - 验证：application+business-store 局部全量+tsc 绿
 
+## U6 接线波（code-writer-pro；2026-10-26 凌晨②追加，总控收口后）
+
+- 范围：把已验收未接线的六模块接进组合根——①apps/server 注册 IssueModule/AttachmentModule/AftercareClaimModule +（若 M1 线收口时未接的）MenuConfigModule/ApprovalConfigModule/NotificationsModule（先盘点 app-registry/main.ts 实态，已接不重接）②跨模块端口适配：IssueMaterialPort←inventory 实现、AftercareApprovedReportPort←reporting（createAftercareReportPort 已备）、dispatch→IssueSyncPort 派工生成钩子、NotificationSourcePort 既有事件点注入（点名/派修，单行式）③domain-error.filter 六域错误 HTTP 映射 ④business-store package.json exports 补缺（./issue ./attachment ./menu-config ./approval-config ./notifications——先查已登记者）⑤deploy/scripts/rls-proof.mjs EXPECTED_RLS_TABLES bump 98 ⑥attachment 上传 bodyLimit（base64 32MiB≈43MB）⑦boot 冒烟场景扩展
+- 写入面：apps/server/src/**、packages/business-store/package.json、deploy/scripts/rls-proof.mjs、相关测试。禁改：application/product-ui 业务源码（发现缺口停手上报）
+- 验证：server 全量测试+boot e2e+局部 tsc 绿即停；全仓 verify 总控收口统一跑
+
 ## 待办池（本波不做，已排序）
 
 A13 文件管理（横切面，需对象存储 port 化设计）→ A5 项目成本大扩（依赖 S10 原材料关联表+A12 售后报销）→ A8+A10 大屏+日跑批（定制，含 WebSocket）→ S1-S14 子功能增强批次 → B3 货架 → B1/B2 payroll 口径对照 → A12/A4/A14 可选项。呈现层（报表页面/发料页面）统一等合流静止后开波。

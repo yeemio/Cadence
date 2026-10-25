@@ -6,7 +6,7 @@
       "localStorage": [
         {
           "name": "cadence.session.v2",
-          "value": "{\"userId\":\"user-demo-admin\",\"tenantId\":\"default\",\"displayName\":\"演示管理员（Web 登录流）\",\"permissions\":[\"*\"],\"token\":\"8Zh848RTM71oyX88BCO2zU2B3bfcrdUS2B2a1zrkdsM\",\"expiresAt\":\"2026-10-26T01:18:37.096Z\"}"
+          "value": "{\"userId\":\"user-demo-admin\",\"tenantId\":\"default\",\"displayName\":\"演示管理员（Web 登录流）\",\"permissions\":[\"*\"],\"token\":\"kB3eeIbWjMJDwM4Ujasb_HLFBXXDf2cX77eWRkRh57o\",\"expiresAt\":\"2026-10-26T02:16:14.511Z\"}"
         }
       ]
     }

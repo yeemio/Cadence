@@ -1,0 +1,545 @@
+45246cebd2101e00f05d05f9474817c9bb9a8a8ce2eb43abb45d1776b2e69d4b
+$ tsc -p tsconfig.build.json
+$ tsc -p tsconfig.build.json
+$ vite build
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 2496 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/manifest.webmanifest         0.70 kB
+dist/index.html                   0.84 kB │ gzip:   0.47 kB
+dist/login.html                   0.97 kB │ gzip:   0.61 kB
+dist/assets/index-BfcNJ7Th.css   39.91 kB │ gzip:   7.61 kB
+dist/assets/login-B5pcI-Mz.js     2.41 kB │ gzip:   1.21 kB
+dist/assets/index-Du7noRN2.js   211.07 kB │ gzip:  69.72 kB
+dist/assets/index-DxgYZ9qe.js   375.14 kB │ gzip: 110.56 kB
+dist/assets/main-CzsxkvHE.js    548.62 kB │ gzip: 142.27 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.33s
+
+PWA v2.0.0
+mode      generateSW
+precache  15 entries (1153.96 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-17dc2a4e.js
+$ prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v6.19.3) to ./../../node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 118ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "cadence", schema "public" at "127.0.0.1:55514"
+
+41 migrations found in prisma/migrations
+
+Applying migration `20261024135930_init`
+Applying migration `20261024163136_org_users_roles_policies`
+Applying migration `20261025120000_masterdata_items_resources_todos`
+Applying migration `20261025140000_approval_cases_records_events`
+Applying migration `20261025150000_auth_password_hash_sessions`
+Applying migration `20261025160000_workorder_module`
+Applying migration `20261025180000_baseline_p1_masters_validation`
+Applying migration `20261025190000_inspection_module`
+Applying migration `20261025193000_rls_tenant_isolation`
+Applying migration `20261025200000_listing_module`
+Applying migration `20261025210000_rls_tenant_isolation_replay`
+Applying migration `20261025220000_dispatch_module`
+Applying migration `20261025220000_inventory_module`
+Applying migration `20261025230000_rls_tenant_isolation_replay`
+Applying migration `20261026010000_reporting_module`
+Applying migration `20261026010400_reporting_rls_replay`
+Applying migration `20261026020000_hours_module`
+Applying migration `20261026030000_costing_module`
+Applying migration `20261026040000_baseline_p2_p3`
+Applying migration `20261026041000_rls_tenant_isolation_replay`
+Applying migration `20261026050000_rls_tenant_isolation_replay`
+Applying migration `20261026060000_payroll_module`
+Applying migration `20261026061000_rls_tenant_isolation_replay`
+Applying migration `20261026070000_maintenance_module`
+Applying migration `20261026080000_drawing_module`
+Applying migration `20261026090000_metric_pack_module`
+Applying migration `20261026091000_rls_tenant_isolation_replay`
+Applying migration `20261026100000_rls_tenant_isolation_replay`
+Applying migration `20261026110000_rls_tenant_isolation_replay`
+Applying migration `20261026120000_backfill_module`
+Applying migration `20261026121000_rls_tenant_isolation_replay`
+Applying migration `20261026130000_s5_capability_module`
+Applying migration `20261026131000_rls_tenant_isolation_replay`
+Applying migration `20261026140000_issue_module`
+Applying migration `20261026140100_rls_tenant_isolation_replay`
+Applying migration `20261026150000_attachment_module`
+Applying migration `20261026150100_rls_tenant_isolation_replay`
+Applying migration `20261026160000_process_material_module`
+Applying migration `20261026160100_rls_tenant_isolation_replay`
+Applying migration `20261026160500_aftercare_claim_module`
+Applying migration `20261026161000_rls_tenant_isolation_replay`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20261024135930_init/
+    └─ migration.sql
+  └─ 20261024163136_org_users_roles_policies/
+    └─ migration.sql
+  └─ 20261025120000_masterdata_items_resources_todos/
+    └─ migration.sql
+  └─ 20261025140000_approval_cases_records_events/
+    └─ migration.sql
+  └─ 20261025150000_auth_password_hash_sessions/
+    └─ migration.sql
+  └─ 20261025160000_workorder_module/
+    └─ migration.sql
+  └─ 20261025180000_baseline_p1_masters_validation/
+    └─ migration.sql
+  └─ 20261025190000_inspection_module/
+    └─ migration.sql
+  └─ 20261025193000_rls_tenant_isolation/
+    └─ migration.sql
+  └─ 20261025200000_listing_module/
+    └─ migration.sql
+  └─ 20261025210000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261025220000_dispatch_module/
+    └─ migration.sql
+  └─ 20261025220000_inventory_module/
+    └─ migration.sql
+  └─ 20261025230000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026010000_reporting_module/
+    └─ migration.sql
+  └─ 20261026010400_reporting_rls_replay/
+    └─ migration.sql
+  └─ 20261026020000_hours_module/
+    └─ migration.sql
+  └─ 20261026030000_costing_module/
+    └─ migration.sql
+  └─ 20261026040000_baseline_p2_p3/
+    └─ migration.sql
+  └─ 20261026041000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026050000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026060000_payroll_module/
+    └─ migration.sql
+  └─ 20261026061000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026070000_maintenance_module/
+    └─ migration.sql
+  └─ 20261026080000_drawing_module/
+    └─ migration.sql
+  └─ 20261026090000_metric_pack_module/
+    └─ migration.sql
+  └─ 20261026091000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026100000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026110000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026120000_backfill_module/
+    └─ migration.sql
+  └─ 20261026121000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026130000_s5_capability_module/
+    └─ migration.sql
+  └─ 20261026131000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026140000_issue_module/
+    └─ migration.sql
+  └─ 20261026140100_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026150000_attachment_module/
+    └─ migration.sql
+  └─ 20261026150100_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026160000_process_material_module/
+    └─ migration.sql
+  └─ 20261026160100_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026160500_aftercare_claim_module/
+    └─ migration.sql
+  └─ 20261026161000_rls_tenant_isolation_replay/
+    └─ migration.sql
+      
+All migrations have been successfully applied.
+[e2e-global] 栈就绪：PG :55514 | server :3599 | preview :http://127.0.0.1:4280
+
+Running 54 tests using 1 worker
+
+  ✓   1 [setup] › e2e/specs/auth-setup.spec.ts:19:1 › 01 登录流程：填表单 → 提交 → MPA 整页跳主壳 (430ms)
+  ✓   2 [chromium] › e2e/specs/desktop-all-modules.spec.ts:52:1 › 21 配件申请页：列表卡 + 申请/决策表单可见 (292ms)
+  ✘   3 [chromium] › e2e/specs/desktop-all-modules.spec.ts:61:1 › 22 清单页：四类清单卡 + 详情卡（含行）表单可见 (10.3s)
+  -   4 [chromium] › e2e/specs/desktop-all-modules.spec.ts:70:1 › 23 缺口核查页：核查卡 + 快照卡 + 双按钮可见
+  -   5 [chromium] › e2e/specs/desktop-all-modules.spec.ts:79:1 › 24 外协明细页：供应商维度卡 + 打印数据卡可见
+  -   6 [chromium] › e2e/specs/desktop-all-modules.spec.ts:88:1 › 25 扫码页：三档降级链组合根渲染（容器横幅 + 采集卡）
+  -   7 [chromium] › e2e/specs/desktop-all-modules.spec.ts:100:1 › 26 报工核查页：待核查队列卡 + 核查备注表单可见
+  -   8 [chromium] › e2e/specs/desktop-all-modules.spec.ts:111:1 › 27 采购申请页：列表卡 + 手工发起表单可见
+  -   9 [chromium] › e2e/specs/desktop-all-modules.spec.ts:120:1 › 28 采购订单页：列表/建单/全流程三卡可见
+  -  10 [chromium] › e2e/specs/desktop-all-modules.spec.ts:130:1 › 29 采购退货页：退货单卡 + 建退货/处置表单可见
+  -  11 [chromium] › e2e/specs/desktop-all-modules.spec.ts:139:1 › 30 采购明细页：明细卡 + 逾期未交明细卡可见
+  -  12 [chromium] › e2e/specs/desktop-all-modules.spec.ts:150:1 › 31 质检队列页：队列卡 + 手工建单 + 判定面板可见
+  -  13 [chromium] › e2e/specs/desktop-all-modules.spec.ts:161:1 › 32 不合格处置页：处置卡 + 详情与操作卡可见
+  -  14 [chromium] › e2e/specs/desktop-all-modules.spec.ts:173:1 › 33 仓库与库位页：列表/详情/建仓三卡可见
+  -  15 [chromium] › e2e/specs/desktop-all-modules.spec.ts:183:1 › 34 收发存操作页：入库/出库/调拨三组表单可见
+  -  16 [chromium] › e2e/specs/desktop-all-modules.spec.ts:193:1 › 35 库存盘点页：台账卡 + 详情与录入卡可见
+  -  17 [chromium] › e2e/specs/desktop-all-modules.spec.ts:203:1 › 36 发货任务页：列表/建任务/详情确认三卡可见
+  -  18 [chromium] › e2e/specs/desktop-all-modules.spec.ts:215:1 › 37 工时统计页：机加工时统计卡 + 月度工时卡可见
+  -  19 [chromium] › e2e/specs/desktop-all-modules.spec.ts:224:1 › 38 成本核算页：口径版本链/事件审计卡 + 求值表单可见
+  -  20 [chromium] › e2e/specs/desktop-all-modules.spec.ts:236:1 › 39 工序页：工序列表卡 + 定义表单 + 过滤可见
+  -  21 [chromium] › e2e/specs/desktop-all-modules.spec.ts:245:1 › 40 工艺路线页：路线卡 + 定义路线表单可见
+  -  22 [chromium] › e2e/specs/desktop-all-modules.spec.ts:255:1 › 41 额定工时页：额定工时卡 + 定义表单可见
+  -  23 [chromium] › e2e/specs/desktop-all-modules.spec.ts:265:1 › 42 设备档案页：设备卡 + 定义表单 + 过滤可见
+  -  24 [chromium] › e2e/specs/desktop-all-modules.spec.ts:274:1 › 43 故障上报页（桌面）：故障单列表卡 + 上报故障表单可见
+  -  25 [chromium] › e2e/specs/desktop-all-modules.spec.ts:284:1 › 44 外协计价页：计价规则卡 + 定义表单可见
+  -  26 [chromium] › e2e/specs/desktop-all-modules.spec.ts:293:1 › 45 物料校验页：校验运行台账卡（只读两径）可见
+  -  27 [chromium] › e2e/specs/desktop-all-modules.spec.ts:303:1 › 46 资源页：资源列表卡 + 创建资源表单可见
+  -  28 [chromium] › e2e/specs/desktop-all-modules.spec.ts:312:1 › 47 客户页：客户列表卡 + 创建表单可见
+  -  29 [chromium] › e2e/specs/desktop-all-modules.spec.ts:321:1 › 48 供应商页：供应商列表卡 + 创建表单可见
+  -  30 [chromium] › e2e/specs/desktop-all-modules.spec.ts:330:1 › 49 计量单位页：单位列表卡 + 创建表单可见
+  -  31 [chromium] › e2e/specs/desktop-all-modules.spec.ts:341:1 › 50 角色与授权页：角色卡 + 创建角色表单可见
+  -  32 [chromium] › e2e/specs/desktop-all-modules.spec.ts:350:1 › 51 机构页：机构列表卡 + 建机构表单可见
+  -  33 [chromium] › e2e/specs/desktop-all-modules.spec.ts:359:1 › 52 岗位页：岗位列表卡 + 建岗位表单可见
+  -  34 [chromium] › e2e/specs/desktop-all-modules.spec.ts:368:1 › 53 操作日志页：日志查询卡（用户/时间窗/条数过滤）可见
+  -  35 [chromium] › e2e/specs/desktop-all-modules.spec.ts:380:1 › 54 运营总览页：四源聚合卡 + 交付/质检/工时下钻可见
+  -  36 [chromium] › e2e/specs/desktop-all-modules.spec.ts:398:1 › 55 菜单管理页（fixme：走查栈 MODULES 不含 menu-config）
+  -  37 [chromium] › e2e/specs/desktop-all-modules.spec.ts:409:1 › 56 审批流配置页（fixme：走查栈 MODULES 不含 approval-config）
+  -  38 [chromium] › e2e/specs/desktop-all-modules.spec.ts:420:1 › 57 通知中心页（fixme：走查栈 MODULES 不含 notifications，入口不可达）
+  ✓  39 [chromium] › e2e/specs/desktop-all-modules.spec.ts:52:1 › 21 配件申请页：列表卡 + 申请/决策表单可见 (retry #1) (291ms)
+  ✘  40 [chromium] › e2e/specs/desktop-all-modules.spec.ts:61:1 › 22 清单页：四类清单卡 + 详情卡（含行）表单可见 (retry #1) (10.3s)
+  -  41 [chromium] › e2e/specs/desktop-all-modules.spec.ts:70:1 › 23 缺口核查页：核查卡 + 快照卡 + 双按钮可见 (retry #1)
+  -  42 [chromium] › e2e/specs/desktop-all-modules.spec.ts:79:1 › 24 外协明细页：供应商维度卡 + 打印数据卡可见 (retry #1)
+  -  43 [chromium] › e2e/specs/desktop-all-modules.spec.ts:88:1 › 25 扫码页：三档降级链组合根渲染（容器横幅 + 采集卡） (retry #1)
+  -  44 [chromium] › e2e/specs/desktop-all-modules.spec.ts:100:1 › 26 报工核查页：待核查队列卡 + 核查备注表单可见 (retry #1)
+  -  45 [chromium] › e2e/specs/desktop-all-modules.spec.ts:111:1 › 27 采购申请页：列表卡 + 手工发起表单可见 (retry #1)
+  -  46 [chromium] › e2e/specs/desktop-all-modules.spec.ts:120:1 › 28 采购订单页：列表/建单/全流程三卡可见 (retry #1)
+  -  47 [chromium] › e2e/specs/desktop-all-modules.spec.ts:130:1 › 29 采购退货页：退货单卡 + 建退货/处置表单可见 (retry #1)
+  -  48 [chromium] › e2e/specs/desktop-all-modules.spec.ts:139:1 › 30 采购明细页：明细卡 + 逾期未交明细卡可见 (retry #1)
+  -  49 [chromium] › e2e/specs/desktop-all-modules.spec.ts:150:1 › 31 质检队列页：队列卡 + 手工建单 + 判定面板可见 (retry #1)
+  -  50 [chromium] › e2e/specs/desktop-all-modules.spec.ts:161:1 › 32 不合格处置页：处置卡 + 详情与操作卡可见 (retry #1)
+  -  51 [chromium] › e2e/specs/desktop-all-modules.spec.ts:173:1 › 33 仓库与库位页：列表/详情/建仓三卡可见 (retry #1)
+  -  52 [chromium] › e2e/specs/desktop-all-modules.spec.ts:183:1 › 34 收发存操作页：入库/出库/调拨三组表单可见 (retry #1)
+  -  53 [chromium] › e2e/specs/desktop-all-modules.spec.ts:193:1 › 35 库存盘点页：台账卡 + 详情与录入卡可见 (retry #1)
+  -  54 [chromium] › e2e/specs/desktop-all-modules.spec.ts:203:1 › 36 发货任务页：列表/建任务/详情确认三卡可见 (retry #1)
+  -  55 [chromium] › e2e/specs/desktop-all-modules.spec.ts:215:1 › 37 工时统计页：机加工时统计卡 + 月度工时卡可见 (retry #1)
+  -  56 [chromium] › e2e/specs/desktop-all-modules.spec.ts:224:1 › 38 成本核算页：口径版本链/事件审计卡 + 求值表单可见 (retry #1)
+  -  57 [chromium] › e2e/specs/desktop-all-modules.spec.ts:236:1 › 39 工序页：工序列表卡 + 定义表单 + 过滤可见 (retry #1)
+  -  58 [chromium] › e2e/specs/desktop-all-modules.spec.ts:245:1 › 40 工艺路线页：路线卡 + 定义路线表单可见 (retry #1)
+  -  59 [chromium] › e2e/specs/desktop-all-modules.spec.ts:255:1 › 41 额定工时页：额定工时卡 + 定义表单可见 (retry #1)
+  -  60 [chromium] › e2e/specs/desktop-all-modules.spec.ts:265:1 › 42 设备档案页：设备卡 + 定义表单 + 过滤可见 (retry #1)
+  -  61 [chromium] › e2e/specs/desktop-all-modules.spec.ts:274:1 › 43 故障上报页（桌面）：故障单列表卡 + 上报故障表单可见 (retry #1)
+  -  62 [chromium] › e2e/specs/desktop-all-modules.spec.ts:284:1 › 44 外协计价页：计价规则卡 + 定义表单可见 (retry #1)
+  -  63 [chromium] › e2e/specs/desktop-all-modules.spec.ts:293:1 › 45 物料校验页：校验运行台账卡（只读两径）可见 (retry #1)
+  -  64 [chromium] › e2e/specs/desktop-all-modules.spec.ts:303:1 › 46 资源页：资源列表卡 + 创建资源表单可见 (retry #1)
+  -  65 [chromium] › e2e/specs/desktop-all-modules.spec.ts:312:1 › 47 客户页：客户列表卡 + 创建表单可见 (retry #1)
+  -  66 [chromium] › e2e/specs/desktop-all-modules.spec.ts:321:1 › 48 供应商页：供应商列表卡 + 创建表单可见 (retry #1)
+  -  67 [chromium] › e2e/specs/desktop-all-modules.spec.ts:330:1 › 49 计量单位页：单位列表卡 + 创建表单可见 (retry #1)
+  -  68 [chromium] › e2e/specs/desktop-all-modules.spec.ts:341:1 › 50 角色与授权页：角色卡 + 创建角色表单可见 (retry #1)
+  -  69 [chromium] › e2e/specs/desktop-all-modules.spec.ts:350:1 › 51 机构页：机构列表卡 + 建机构表单可见 (retry #1)
+  -  70 [chromium] › e2e/specs/desktop-all-modules.spec.ts:359:1 › 52 岗位页：岗位列表卡 + 建岗位表单可见 (retry #1)
+  -  71 [chromium] › e2e/specs/desktop-all-modules.spec.ts:368:1 › 53 操作日志页：日志查询卡（用户/时间窗/条数过滤）可见 (retry #1)
+  -  72 [chromium] › e2e/specs/desktop-all-modules.spec.ts:380:1 › 54 运营总览页：四源聚合卡 + 交付/质检/工时下钻可见 (retry #1)
+  -  73 [chromium] › e2e/specs/desktop-all-modules.spec.ts:398:1 › 55 菜单管理页（fixme：走查栈 MODULES 不含 menu-config） (retry #1)
+  -  74 [chromium] › e2e/specs/desktop-all-modules.spec.ts:409:1 › 56 审批流配置页（fixme：走查栈 MODULES 不含 approval-config） (retry #1)
+  -  75 [chromium] › e2e/specs/desktop-all-modules.spec.ts:420:1 › 57 通知中心页（fixme：走查栈 MODULES 不含 notifications，入口不可达） (retry #1)
+  ✓  76 [chromium] › e2e/specs/desktop-all-modules.spec.ts:52:1 › 21 配件申请页：列表卡 + 申请/决策表单可见 (retry #2) (302ms)
+  ✘  77 [chromium] › e2e/specs/desktop-all-modules.spec.ts:61:1 › 22 清单页：四类清单卡 + 详情卡（含行）表单可见 (retry #2) (10.3s)
+  -  78 [chromium] › e2e/specs/desktop-all-modules.spec.ts:70:1 › 23 缺口核查页：核查卡 + 快照卡 + 双按钮可见 (retry #2)
+  -  79 [chromium] › e2e/specs/desktop-all-modules.spec.ts:79:1 › 24 外协明细页：供应商维度卡 + 打印数据卡可见 (retry #2)
+  -  80 [chromium] › e2e/specs/desktop-all-modules.spec.ts:88:1 › 25 扫码页：三档降级链组合根渲染（容器横幅 + 采集卡） (retry #2)
+  -  81 [chromium] › e2e/specs/desktop-all-modules.spec.ts:100:1 › 26 报工核查页：待核查队列卡 + 核查备注表单可见 (retry #2)
+  -  82 [chromium] › e2e/specs/desktop-all-modules.spec.ts:111:1 › 27 采购申请页：列表卡 + 手工发起表单可见 (retry #2)
+  -  83 [chromium] › e2e/specs/desktop-all-modules.spec.ts:120:1 › 28 采购订单页：列表/建单/全流程三卡可见 (retry #2)
+  -  84 [chromium] › e2e/specs/desktop-all-modules.spec.ts:130:1 › 29 采购退货页：退货单卡 + 建退货/处置表单可见 (retry #2)
+  -  85 [chromium] › e2e/specs/desktop-all-modules.spec.ts:139:1 › 30 采购明细页：明细卡 + 逾期未交明细卡可见 (retry #2)
+  -  86 [chromium] › e2e/specs/desktop-all-modules.spec.ts:150:1 › 31 质检队列页：队列卡 + 手工建单 + 判定面板可见 (retry #2)
+  -  87 [chromium] › e2e/specs/desktop-all-modules.spec.ts:161:1 › 32 不合格处置页：处置卡 + 详情与操作卡可见 (retry #2)
+  -  88 [chromium] › e2e/specs/desktop-all-modules.spec.ts:173:1 › 33 仓库与库位页：列表/详情/建仓三卡可见 (retry #2)
+  -  89 [chromium] › e2e/specs/desktop-all-modules.spec.ts:183:1 › 34 收发存操作页：入库/出库/调拨三组表单可见 (retry #2)
+  -  90 [chromium] › e2e/specs/desktop-all-modules.spec.ts:193:1 › 35 库存盘点页：台账卡 + 详情与录入卡可见 (retry #2)
+  -  91 [chromium] › e2e/specs/desktop-all-modules.spec.ts:203:1 › 36 发货任务页：列表/建任务/详情确认三卡可见 (retry #2)
+  -  92 [chromium] › e2e/specs/desktop-all-modules.spec.ts:215:1 › 37 工时统计页：机加工时统计卡 + 月度工时卡可见 (retry #2)
+  -  93 [chromium] › e2e/specs/desktop-all-modules.spec.ts:224:1 › 38 成本核算页：口径版本链/事件审计卡 + 求值表单可见 (retry #2)
+  -  94 [chromium] › e2e/specs/desktop-all-modules.spec.ts:236:1 › 39 工序页：工序列表卡 + 定义表单 + 过滤可见 (retry #2)
+  -  95 [chromium] › e2e/specs/desktop-all-modules.spec.ts:245:1 › 40 工艺路线页：路线卡 + 定义路线表单可见 (retry #2)
+  -  96 [chromium] › e2e/specs/desktop-all-modules.spec.ts:255:1 › 41 额定工时页：额定工时卡 + 定义表单可见 (retry #2)
+  -  97 [chromium] › e2e/specs/desktop-all-modules.spec.ts:265:1 › 42 设备档案页：设备卡 + 定义表单 + 过滤可见 (retry #2)
+  -  98 [chromium] › e2e/specs/desktop-all-modules.spec.ts:274:1 › 43 故障上报页（桌面）：故障单列表卡 + 上报故障表单可见 (retry #2)
+  -  99 [chromium] › e2e/specs/desktop-all-modules.spec.ts:284:1 › 44 外协计价页：计价规则卡 + 定义表单可见 (retry #2)
+  -  100 [chromium] › e2e/specs/desktop-all-modules.spec.ts:293:1 › 45 物料校验页：校验运行台账卡（只读两径）可见 (retry #2)
+  -  101 [chromium] › e2e/specs/desktop-all-modules.spec.ts:303:1 › 46 资源页：资源列表卡 + 创建资源表单可见 (retry #2)
+  -  102 [chromium] › e2e/specs/desktop-all-modules.spec.ts:312:1 › 47 客户页：客户列表卡 + 创建表单可见 (retry #2)
+  -  103 [chromium] › e2e/specs/desktop-all-modules.spec.ts:321:1 › 48 供应商页：供应商列表卡 + 创建表单可见 (retry #2)
+  -  104 [chromium] › e2e/specs/desktop-all-modules.spec.ts:330:1 › 49 计量单位页：单位列表卡 + 创建表单可见 (retry #2)
+  -  105 [chromium] › e2e/specs/desktop-all-modules.spec.ts:341:1 › 50 角色与授权页：角色卡 + 创建角色表单可见 (retry #2)
+  -  106 [chromium] › e2e/specs/desktop-all-modules.spec.ts:350:1 › 51 机构页：机构列表卡 + 建机构表单可见 (retry #2)
+  -  107 [chromium] › e2e/specs/desktop-all-modules.spec.ts:359:1 › 52 岗位页：岗位列表卡 + 建岗位表单可见 (retry #2)
+  -  108 [chromium] › e2e/specs/desktop-all-modules.spec.ts:368:1 › 53 操作日志页：日志查询卡（用户/时间窗/条数过滤）可见 (retry #2)
+  -  109 [chromium] › e2e/specs/desktop-all-modules.spec.ts:380:1 › 54 运营总览页：四源聚合卡 + 交付/质检/工时下钻可见 (retry #2)
+  -  110 [chromium] › e2e/specs/desktop-all-modules.spec.ts:398:1 › 55 菜单管理页（fixme：走查栈 MODULES 不含 menu-config） (retry #2)
+  -  111 [chromium] › e2e/specs/desktop-all-modules.spec.ts:409:1 › 56 审批流配置页（fixme：走查栈 MODULES 不含 approval-config） (retry #2)
+  -  112 [chromium] › e2e/specs/desktop-all-modules.spec.ts:420:1 › 57 通知中心页（fixme：走查栈 MODULES 不含 notifications，入口不可达） (retry #2)
+  ✓  113 [chromium] › e2e/specs/desktop-core-pages.spec.ts:46:1 › 02 工作台（登录落点）：待办概览卡 + 我的待办卡渲染 (180ms)
+  ✓  114 [chromium] › e2e/specs/desktop-core-pages.spec.ts:51:1 › 03 工作令列表页：菜单点击 → 列表/建令/齐套看板三卡可见 (258ms)
+  ✓  115 [chromium] › e2e/specs/desktop-core-pages.spec.ts:62:1 › 04 真实操作：创建工作令 → 列表表格出现项目行 (327ms)
+  ✓  116 [chromium] › e2e/specs/desktop-core-pages.spec.ts:74:1 › 05 工作令详情：点列表行 → 详情与操作面板出现 (294ms)
+  ✓  117 [chromium] › e2e/specs/desktop-core-pages.spec.ts:84:1 › 06 标准报表：菜单点击 → 口径四选一控件 + 真实求值出结果卡 (295ms)
+  ✓  118 [chromium] › e2e/specs/desktop-core-pages.spec.ts:95:1 › 07 物品页 + 真实操作：创建物品 → 列表表格出现 code 行 (341ms)
+  ✓  119 [chromium] › e2e/specs/desktop-core-pages.spec.ts:111:1 › 08 派工页：列表/创建/任务视图卡可见 (257ms)
+  ✓  120 [chromium] › e2e/specs/desktop-core-pages.spec.ts:120:1 › 09 实时库存页：库存/库位分布/流水卡可见 (257ms)
+  ✓  121 [chromium] › e2e/specs/desktop-core-pages.spec.ts:128:1 › 10 报工单页：列表/进度/趋势卡可见 (257ms)
+  ✓  122 [chromium] › e2e/specs/desktop-core-pages.spec.ts:136:1 › 11 用户与角色页：种子数据真实读回（种子管理员行可见） (274ms)
+  ✓  123 [chromium] › e2e/specs/mobile-shell.spec.ts:21:1 › 12 移动壳：/m 底部标签导航 + 车间工作台渲染 (287ms)
+  ✘  124 [chromium] › e2e/specs/mobile-subpages.spec.ts:47:1 › 71 移动子页 m.verify：报工核查表单渲染（快捷区真实导航） (10.2s)
+  -  125 [chromium] › e2e/specs/mobile-subpages.spec.ts:54:1 › 72 移动子页 m.parts：配件申请表单渲染
+  -  126 [chromium] › e2e/specs/mobile-subpages.spec.ts:62:1 › 73 移动子页 m.inspection：质检判定表单渲染
+  -  127 [chromium] › e2e/specs/mobile-subpages.spec.ts:69:1 › 74 移动子页 m.fault：故障上报表单渲染（设备/描述/维修人员三字段）
+  -  128 [chromium] › e2e/specs/mobile-subpages.spec.ts:78:1 › 75 移动子页 m.stocktake：盘点开单与录入表单渲染
+  ✘  129 [chromium] › e2e/specs/mobile-subpages.spec.ts:47:1 › 71 移动子页 m.verify：报工核查表单渲染（快捷区真实导航） (retry #1) (10.3s)
+  -  130 [chromium] › e2e/specs/mobile-subpages.spec.ts:54:1 › 72 移动子页 m.parts：配件申请表单渲染 (retry #1)
+  -  131 [chromium] › e2e/specs/mobile-subpages.spec.ts:62:1 › 73 移动子页 m.inspection：质检判定表单渲染 (retry #1)
+  -  132 [chromium] › e2e/specs/mobile-subpages.spec.ts:69:1 › 74 移动子页 m.fault：故障上报表单渲染（设备/描述/维修人员三字段） (retry #1)
+  -  133 [chromium] › e2e/specs/mobile-subpages.spec.ts:78:1 › 75 移动子页 m.stocktake：盘点开单与录入表单渲染 (retry #1)
+  ✘  134 [chromium] › e2e/specs/mobile-subpages.spec.ts:47:1 › 71 移动子页 m.verify：报工核查表单渲染（快捷区真实导航） (retry #2) (10.3s)
+  -  135 [chromium] › e2e/specs/mobile-subpages.spec.ts:54:1 › 72 移动子页 m.parts：配件申请表单渲染 (retry #2)
+  -  136 [chromium] › e2e/specs/mobile-subpages.spec.ts:62:1 › 73 移动子页 m.inspection：质检判定表单渲染 (retry #2)
+  -  137 [chromium] › e2e/specs/mobile-subpages.spec.ts:69:1 › 74 移动子页 m.fault：故障上报表单渲染（设备/描述/维修人员三字段） (retry #2)
+  -  138 [chromium] › e2e/specs/mobile-subpages.spec.ts:78:1 › 75 移动子页 m.stocktake：盘点开单与录入表单渲染 (retry #2)
+[e2e-global] 栈已拆除（preview / server / docker 容器）
+
+
+  1) [chromium] › e2e/specs/desktop-all-modules.spec.ts:61:1 › 22 清单页：四类清单卡 + 详情卡（含行）表单可见 ──────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('main').getByText('清单详情（含行）', { exact: true })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('main').getByText('清单详情（含行）', { exact: true }) with timeout 10000ms
+      - waiting for getByRole('main').getByText('清单详情（含行）', { exact: true })
+
+
+      63 |   const main = page.getByRole('main');
+      64 |   await expect(main.getByText('四类清单', { exact: true })).toBeVisible();
+    > 65 |   await expect(main.getByText('清单详情（含行）', { exact: true })).toBeVisible();
+         |                                                             ^
+      66 |   await expect(page.locator('#sheets-wo')).toBeVisible();
+      67 |   await shot(page, 'listing-sheets');
+      68 | });
+        at /Users/yeemio/AI/gitrep/Cadence/packages/testkit/e2e/specs/desktop-all-modules.spec.ts:65:61
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('main').getByText('清单详情（含行）', { exact: true })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('main').getByText('清单详情（含行）', { exact: true }) with timeout 10000ms
+      - waiting for getByRole('main').getByText('清单详情（含行）', { exact: true })
+
+
+      63 |   const main = page.getByRole('main');
+      64 |   await expect(main.getByText('四类清单', { exact: true })).toBeVisible();
+    > 65 |   await expect(main.getByText('清单详情（含行）', { exact: true })).toBeVisible();
+         |                                                             ^
+      66 |   await expect(page.locator('#sheets-wo')).toBeVisible();
+      67 |   await shot(page, 'listing-sheets');
+      68 | });
+        at /Users/yeemio/AI/gitrep/Cadence/packages/testkit/e2e/specs/desktop-all-modules.spec.ts:65:61
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium-retry1/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium-retry1/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium-retry1/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('main').getByText('清单详情（含行）', { exact: true })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('main').getByText('清单详情（含行）', { exact: true }) with timeout 10000ms
+      - waiting for getByRole('main').getByText('清单详情（含行）', { exact: true })
+
+
+      63 |   const main = page.getByRole('main');
+      64 |   await expect(main.getByText('四类清单', { exact: true })).toBeVisible();
+    > 65 |   await expect(main.getByText('清单详情（含行）', { exact: true })).toBeVisible();
+         |                                                             ^
+      66 |   await expect(page.locator('#sheets-wo')).toBeVisible();
+      67 |   await shot(page, 'listing-sheets');
+      68 | });
+        at /Users/yeemio/AI/gitrep/Cadence/packages/testkit/e2e/specs/desktop-all-modules.spec.ts:65:61
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium-retry2/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium-retry2/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium-retry2/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace e2e/artifacts/test-results/desktop-all-modules-22-清单页：四类清单卡-详情卡（含行）表单可见-chromium-retry2/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › e2e/specs/mobile-subpages.spec.ts:47:1 › 71 移动子页 m.verify：报工核查表单渲染（快捷区真实导航） ──────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByPlaceholder('核查备注（可选）')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByPlaceholder('核查备注（可选）') with timeout 10000ms
+      - waiting for getByPlaceholder('核查备注（可选）')
+
+
+      48 |   await gotoSubpageViaQuickEntry(page, '报工核查', /\/m\/verify$/);
+      49 |   await expect(page.getByRole('main').getByText('报工核查', { exact: true })).toBeVisible();
+    > 50 |   await expect(page.getByPlaceholder('核查备注（可选）')).toBeVisible();
+         |                                                   ^
+      51 |   await shot(page, 'verify');
+      52 | });
+      53 |
+        at /Users/yeemio/AI/gitrep/Cadence/packages/testkit/e2e/specs/mobile-subpages.spec.ts:50:51
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByPlaceholder('核查备注（可选）')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByPlaceholder('核查备注（可选）') with timeout 10000ms
+      - waiting for getByPlaceholder('核查备注（可选）')
+
+
+      48 |   await gotoSubpageViaQuickEntry(page, '报工核查', /\/m\/verify$/);
+      49 |   await expect(page.getByRole('main').getByText('报工核查', { exact: true })).toBeVisible();
+    > 50 |   await expect(page.getByPlaceholder('核查备注（可选）')).toBeVisible();
+         |                                                   ^
+      51 |   await shot(page, 'verify');
+      52 | });
+      53 |
+        at /Users/yeemio/AI/gitrep/Cadence/packages/testkit/e2e/specs/mobile-subpages.spec.ts:50:51
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium-retry1/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium-retry1/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium-retry1/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByPlaceholder('核查备注（可选）')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByPlaceholder('核查备注（可选）') with timeout 10000ms
+      - waiting for getByPlaceholder('核查备注（可选）')
+
+
+      48 |   await gotoSubpageViaQuickEntry(page, '报工核查', /\/m\/verify$/);
+      49 |   await expect(page.getByRole('main').getByText('报工核查', { exact: true })).toBeVisible();
+    > 50 |   await expect(page.getByPlaceholder('核查备注（可选）')).toBeVisible();
+         |                                                   ^
+      51 |   await shot(page, 'verify');
+      52 | });
+      53 |
+        at /Users/yeemio/AI/gitrep/Cadence/packages/testkit/e2e/specs/mobile-subpages.spec.ts:50:51
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium-retry2/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium-retry2/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium-retry2/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace e2e/artifacts/test-results/mobile-subpages-71-移动子页-m-verify：报工核查表单渲染（快捷区真实导航）-chromium-retry2/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    [chromium] › e2e/specs/desktop-all-modules.spec.ts:61:1 › 22 清单页：四类清单卡 + 详情卡（含行）表单可见 ───────────
+    [chromium] › e2e/specs/mobile-subpages.spec.ts:47:1 › 71 移动子页 m.verify：报工核查表单渲染（快捷区真实导航） ───────
+  39 did not run
+  13 passed (1.3m)

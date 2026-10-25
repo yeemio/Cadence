@@ -4,7 +4,8 @@
  */
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { TenantContext, reportSourceProviderOf, type ReportSourceProvider } from '@smes/application';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { TenantContext, reportSourceProviderOf, type ReportSourceProvider, LocalFileSystemObjectStorage } from '@smes/application';
 import { connectApprovalStore } from '@smes/business-store/approval';
 import { connectBaselineStore } from '@smes/business-store/baseline';
 import { connectCostingStore } from '@smes/business-store/costing';
@@ -27,6 +28,8 @@ import { connectStandardReportsSources } from '@smes/business-store/standardrepo
 import { connectMenuConfigStore } from '@smes/business-store/menu-config';
 import { connectNotificationStore } from '@smes/business-store/notifications';
 import { connectApprovalConfigStore } from '@smes/business-store/approval-config';
+import { connectIssueStore } from '@smes/business-store/issue';
+import { connectAttachmentStore } from '@smes/business-store/attachment';
 import { metricSourceSetOf } from '@smes/metric-pack';
 import { hostBasedTenantResolver, TenantResolutionError, type TenantId } from '@smes/business-core';
 import { buildAppModule, parseModulesEnabled } from './app-registry.js';
@@ -53,6 +56,7 @@ import { DrawingErrorFilter } from './drawing-error.filter.js';
 import { MetricPackErrorFilter } from './metric-pack-error.filter.js';
 import { BackfillErrorFilter } from './backfill-error.filter.js';
 import { CapabilityErrorFilter } from './capability-error.filter.js';
+import { UWaveErrorFilter } from './u-wave-error.filter.js';
 
 const DEFAULT_PORT = 3000;
 
@@ -105,6 +109,16 @@ async function bootstrap(): Promise<void> {
   const menuConfigStoreHandle = process.env['DATABASE_URL'] ? connectMenuConfigStore() : undefined;
   const notificationStoreHandle = process.env['DATABASE_URL'] ? connectNotificationStore() : undefined;
   const approvalConfigStoreHandle = process.env['DATABASE_URL'] ? connectApprovalConfigStore() : undefined;
+  // U6 接线波两存储（issue 六存储 / attachment 元数据）：同上惰性连接；零 DB
+  // 不注入 = buildAppModule 回落模块内存实现（零 DB boot 语义完整）。
+  const issueStoreHandle = process.env['DATABASE_URL'] ? connectIssueStore() : undefined;
+  const attachmentStoreHandle = process.env['DATABASE_URL'] ? connectAttachmentStore() : undefined;
+  // 对象存储（U6）：显式 SMES_ATTACHMENT_DIR 时注入本地文件适配器（字节落盘
+  // 跨重启存活）；缺省不注入 = 模块内存适配器（重启即失——零接线形态语义诚实，
+  // 部署期换装 MinIO/S3 经同端口替换，不动业务面）。
+  const attachmentObjectStorage = process.env['SMES_ATTACHMENT_DIR']
+    ? new LocalFileSystemObjectStorage({ rootDirectory: process.env['SMES_ATTACHMENT_DIR'] })
+    : undefined;
   const standardReportsProviderByTenant = new Map<string, ReportSourceProvider>();
   const standardReportsSourceProvider = process.env['DATABASE_URL']
     ? {
@@ -183,6 +197,16 @@ async function bootstrap(): Promise<void> {
       menuConfigStore: menuConfigStoreHandle?.menuConfigStore,
       notificationStore: notificationStoreHandle?.notificationStore,
       approvalFlowConfigStore: approvalConfigStoreHandle?.flowConfigStore,
+      // U6 接线波：issue 六存储 + attachment 元数据/对象存储注入
+      issueTaskStore: issueStoreHandle?.taskStore,
+      issueTaskLineStore: issueStoreHandle?.taskLineStore,
+      issueRecordStore: issueStoreHandle?.recordStore,
+      issueExpressStore: issueStoreHandle?.expressStore,
+      issueOperationStore: issueStoreHandle?.operationStore,
+      issueDomainEventStore: issueStoreHandle?.domainEventStore,
+      aftercareClaimStore: dispatchStoreHandle?.aftercareClaimStore,
+      attachmentStore: attachmentStoreHandle?.attachmentStore,
+      objectStorage: attachmentObjectStorage,
       workOrderStore: workOrderStoreHandle?.orderStore,
       workOrderAttachmentStore: workOrderStoreHandle?.attachmentStore,
       workOrderPartsStore: workOrderStoreHandle?.partsStore,
@@ -237,7 +261,20 @@ async function bootstrap(): Promise<void> {
       printSink: edgeSinks.printSink,
       imSink: edgeSinks.imSink,
     }),
+    // 关内建 body parser（U6 #⑥ attachment 上传 bodyLimit）：改由下方
+    // useBodyParser 注册放大限额的 json/urlencoded——内建 100kb 默认会先于
+    // 自定义解析器拒绝大载荷（Nest 文档体例：bodyParser:false + 重注册）。
+    { bodyParser: false },
   );
+
+  // 上传传输面护栏对齐（U6）：附件上传字节护栏 32MiB（attachment-input），base64
+  // 传输膨胀 ×4/3 ≈ 43MiB + JSON 封装余量 → 45MiB 限额（业务上限仍由
+  // attachment-input MAX_UPLOAD_BYTES 把关，此处只放大传输面不放大业务面）。
+  // useBodyParser 是 platform-express 面方法（INestApplication 类型未声明——
+  // 结构 typing 收口，不换 create 泛型）。
+  const expressApp = app as NestExpressApplication;
+  expressApp.useBodyParser('json', { limit: '45mb' });
+  expressApp.useBodyParser('urlencoded', { extended: true, limit: '45mb' });
 
   // 域错误 -> HTTP 状态（400/401/404/409；域错误类在 application，映射在组合根）。
   app.useGlobalFilters(
@@ -260,6 +297,7 @@ async function bootstrap(): Promise<void> {
     new MetricPackErrorFilter(),
     new BackfillErrorFilter(),
     new CapabilityErrorFilter(),
+    new UWaveErrorFilter(),
   );
 
   // 跨模块端口接线收口（M2 后第一增量）：buildAppModule 已把 store 级适配器随

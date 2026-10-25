@@ -1,0 +1,242 @@
+fe6fd94af96dbf874c633bf9ad6ea07d43190cec2f338661547e962313db2b21
+$ tsc -p tsconfig.build.json
+$ tsc -p tsconfig.build.json
+$ vite build
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 2496 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/manifest.webmanifest         0.70 kB
+dist/index.html                   0.84 kB │ gzip:   0.47 kB
+dist/login.html                   0.97 kB │ gzip:   0.61 kB
+dist/assets/index-BfcNJ7Th.css   39.91 kB │ gzip:   7.61 kB
+dist/assets/login-B5pcI-Mz.js     2.41 kB │ gzip:   1.21 kB
+dist/assets/index-Du7noRN2.js   211.07 kB │ gzip:  69.72 kB
+dist/assets/index-DxgYZ9qe.js   375.14 kB │ gzip: 110.56 kB
+dist/assets/main-CzsxkvHE.js    548.62 kB │ gzip: 142.27 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.37s
+
+PWA v2.0.0
+mode      generateSW
+precache  15 entries (1153.96 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-17dc2a4e.js
+$ prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v6.19.3) to ./../../node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 131ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Interested in query caching in just a few lines of code? Try Accelerate today! https://pris.ly/tip-3-accelerate
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "cadence", schema "public" at "127.0.0.1:55514"
+
+41 migrations found in prisma/migrations
+
+Applying migration `20261024135930_init`
+Applying migration `20261024163136_org_users_roles_policies`
+Applying migration `20261025120000_masterdata_items_resources_todos`
+Applying migration `20261025140000_approval_cases_records_events`
+Applying migration `20261025150000_auth_password_hash_sessions`
+Applying migration `20261025160000_workorder_module`
+Applying migration `20261025180000_baseline_p1_masters_validation`
+Applying migration `20261025190000_inspection_module`
+Applying migration `20261025193000_rls_tenant_isolation`
+Applying migration `20261025200000_listing_module`
+Applying migration `20261025210000_rls_tenant_isolation_replay`
+Applying migration `20261025220000_dispatch_module`
+Applying migration `20261025220000_inventory_module`
+Applying migration `20261025230000_rls_tenant_isolation_replay`
+Applying migration `20261026010000_reporting_module`
+Applying migration `20261026010400_reporting_rls_replay`
+Applying migration `20261026020000_hours_module`
+Applying migration `20261026030000_costing_module`
+Applying migration `20261026040000_baseline_p2_p3`
+Applying migration `20261026041000_rls_tenant_isolation_replay`
+Applying migration `20261026050000_rls_tenant_isolation_replay`
+Applying migration `20261026060000_payroll_module`
+Applying migration `20261026061000_rls_tenant_isolation_replay`
+Applying migration `20261026070000_maintenance_module`
+Applying migration `20261026080000_drawing_module`
+Applying migration `20261026090000_metric_pack_module`
+Applying migration `20261026091000_rls_tenant_isolation_replay`
+Applying migration `20261026100000_rls_tenant_isolation_replay`
+Applying migration `20261026110000_rls_tenant_isolation_replay`
+Applying migration `20261026120000_backfill_module`
+Applying migration `20261026121000_rls_tenant_isolation_replay`
+Applying migration `20261026130000_s5_capability_module`
+Applying migration `20261026131000_rls_tenant_isolation_replay`
+Applying migration `20261026140000_issue_module`
+Applying migration `20261026140100_rls_tenant_isolation_replay`
+Applying migration `20261026150000_attachment_module`
+Applying migration `20261026150100_rls_tenant_isolation_replay`
+Applying migration `20261026160000_process_material_module`
+Applying migration `20261026160100_rls_tenant_isolation_replay`
+Applying migration `20261026160500_aftercare_claim_module`
+Applying migration `20261026161000_rls_tenant_isolation_replay`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20261024135930_init/
+    └─ migration.sql
+  └─ 20261024163136_org_users_roles_policies/
+    └─ migration.sql
+  └─ 20261025120000_masterdata_items_resources_todos/
+    └─ migration.sql
+  └─ 20261025140000_approval_cases_records_events/
+    └─ migration.sql
+  └─ 20261025150000_auth_password_hash_sessions/
+    └─ migration.sql
+  └─ 20261025160000_workorder_module/
+    └─ migration.sql
+  └─ 20261025180000_baseline_p1_masters_validation/
+    └─ migration.sql
+  └─ 20261025190000_inspection_module/
+    └─ migration.sql
+  └─ 20261025193000_rls_tenant_isolation/
+    └─ migration.sql
+  └─ 20261025200000_listing_module/
+    └─ migration.sql
+  └─ 20261025210000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261025220000_dispatch_module/
+    └─ migration.sql
+  └─ 20261025220000_inventory_module/
+    └─ migration.sql
+  └─ 20261025230000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026010000_reporting_module/
+    └─ migration.sql
+  └─ 20261026010400_reporting_rls_replay/
+    └─ migration.sql
+  └─ 20261026020000_hours_module/
+    └─ migration.sql
+  └─ 20261026030000_costing_module/
+    └─ migration.sql
+  └─ 20261026040000_baseline_p2_p3/
+    └─ migration.sql
+  └─ 20261026041000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026050000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026060000_payroll_module/
+    └─ migration.sql
+  └─ 20261026061000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026070000_maintenance_module/
+    └─ migration.sql
+  └─ 20261026080000_drawing_module/
+    └─ migration.sql
+  └─ 20261026090000_metric_pack_module/
+    └─ migration.sql
+  └─ 20261026091000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026100000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026110000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026120000_backfill_module/
+    └─ migration.sql
+  └─ 20261026121000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026130000_s5_capability_module/
+    └─ migration.sql
+  └─ 20261026131000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026140000_issue_module/
+    └─ migration.sql
+  └─ 20261026140100_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026150000_attachment_module/
+    └─ migration.sql
+  └─ 20261026150100_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026160000_process_material_module/
+    └─ migration.sql
+  └─ 20261026160100_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026160500_aftercare_claim_module/
+    └─ migration.sql
+  └─ 20261026161000_rls_tenant_isolation_replay/
+    └─ migration.sql
+      
+All migrations have been successfully applied.
+[e2e-global] 栈就绪：PG :55514 | server :3599 | preview :http://127.0.0.1:4280
+
+Running 61 tests using 1 worker
+
+  ✓   1 [setup] › e2e/specs/auth-setup.spec.ts:19:1 › 01 登录流程：填表单 → 提交 → MPA 整页跳主壳 (327ms)
+  ✓   2 [chromium] › e2e/specs/desktop-all-modules.spec.ts:52:1 › 21 配件申请页：列表卡 + 申请/决策表单可见 (272ms)
+  ✓   3 [chromium] › e2e/specs/desktop-all-modules.spec.ts:61:1 › 22 清单页：四类清单卡 + 查询/骨架导入表单可见 (261ms)
+  ✓   4 [chromium] › e2e/specs/desktop-all-modules.spec.ts:72:1 › 23 缺口核查页：核查卡 + 快照卡 + 双按钮可见 (277ms)
+  ✓   5 [chromium] › e2e/specs/desktop-all-modules.spec.ts:81:1 › 24 外协明细页：供应商维度卡 + 打印数据卡可见 (277ms)
+  ✓   6 [chromium] › e2e/specs/desktop-all-modules.spec.ts:90:1 › 25 扫码页：三档降级链组合根渲染（容器横幅 + 采集/结果卡） (279ms)
+  ✓   7 [chromium] › e2e/specs/desktop-all-modules.spec.ts:106:1 › 26 报工核查页：待核查队列卡 + 核查备注表单可见 (262ms)
+  ✓   8 [chromium] › e2e/specs/desktop-all-modules.spec.ts:117:1 › 27 采购申请页：列表卡 + 手工发起表单可见 (279ms)
+  ✓   9 [chromium] › e2e/specs/desktop-all-modules.spec.ts:126:1 › 28 采购订单页：列表卡 + 建单提交表单可见 (281ms)
+  ✓  10 [chromium] › e2e/specs/desktop-all-modules.spec.ts:138:1 › 29 采购退货页：退货单卡 + 建退货/处置表单可见 (264ms)
+  ✓  11 [chromium] › e2e/specs/desktop-all-modules.spec.ts:147:1 › 30 采购明细页：明细卡 + 逾期未交明细卡可见 (261ms)
+  ✓  12 [chromium] › e2e/specs/desktop-all-modules.spec.ts:158:1 › 31 质检队列页：队列卡 + 手工建单表单可见 (278ms)
+  ✓  13 [chromium] › e2e/specs/desktop-all-modules.spec.ts:170:1 › 32 不合格处置页：处置列表卡 + 过滤表单可见 (241ms)
+  ✓  14 [chromium] › e2e/specs/desktop-all-modules.spec.ts:182:1 › 33 仓库与库位页：列表/详情/建仓三卡可见 (276ms)
+  ✓  15 [chromium] › e2e/specs/desktop-all-modules.spec.ts:193:1 › 34 收发存操作页：入库/出库/调拨三组表单可见 (277ms)
+  ✓  16 [chromium] › e2e/specs/desktop-all-modules.spec.ts:203:1 › 35 库存盘点页：台账卡 + 开单表单可见 (274ms)
+  ✓  17 [chromium] › e2e/specs/desktop-all-modules.spec.ts:213:1 › 36 发货任务页：任务卡 + 建任务表单可见 (277ms)
+  ✓  18 [chromium] › e2e/specs/desktop-all-modules.spec.ts:226:1 › 37 工时统计页：机加工时统计卡 + 月度工时卡可见 (263ms)
+  ✓  19 [chromium] › e2e/specs/desktop-all-modules.spec.ts:235:1 › 38 成本核算页：口径版本链/事件审计卡 + 求值表单可见 (263ms)
+  ✓  20 [chromium] › e2e/specs/desktop-all-modules.spec.ts:247:1 › 39 工序页：工序列表卡 + 定义表单 + 过滤可见 (275ms)
+  ✓  21 [chromium] › e2e/specs/desktop-all-modules.spec.ts:256:1 › 40 工艺路线页：路线卡 + 定义路线表单可见 (276ms)
+  ✓  22 [chromium] › e2e/specs/desktop-all-modules.spec.ts:267:1 › 41 额定工时页：额定工时卡 + 定义表单可见 (259ms)
+  ✓  23 [chromium] › e2e/specs/desktop-all-modules.spec.ts:278:1 › 42 设备档案页：设备卡 + 定义表单 + 过滤可见 (274ms)
+  ✓  24 [chromium] › e2e/specs/desktop-all-modules.spec.ts:287:1 › 43 故障上报页（桌面）：故障单列表卡 + 上报故障表单可见 (258ms)
+  ✓  25 [chromium] › e2e/specs/desktop-all-modules.spec.ts:298:1 › 44 外协计价页：计价规则卡 + 定义表单可见 (277ms)
+  ✓  26 [chromium] › e2e/specs/desktop-all-modules.spec.ts:307:1 › 45 物料校验页：校验运行台账卡（只读两径）可见 (276ms)
+  ✓  27 [chromium] › e2e/specs/desktop-all-modules.spec.ts:317:1 › 46 资源页：资源列表卡 + 创建资源表单可见 (258ms)
+  ✓  28 [chromium] › e2e/specs/desktop-all-modules.spec.ts:327:1 › 47 客户页：客户列表卡 + 创建表单可见 (257ms)
+  ✓  29 [chromium] › e2e/specs/desktop-all-modules.spec.ts:336:1 › 48 供应商页：供应商列表卡 + 创建表单可见 (276ms)
+  ✓  30 [chromium] › e2e/specs/desktop-all-modules.spec.ts:345:1 › 49 计量单位页：单位列表卡 + 创建表单可见 (261ms)
+  ✓  31 [chromium] › e2e/specs/desktop-all-modules.spec.ts:356:1 › 50 角色与授权页：角色卡 + 创建角色表单可见 (278ms)
+  ✓  32 [chromium] › e2e/specs/desktop-all-modules.spec.ts:366:1 › 51 机构页：机构列表卡 + 建机构表单可见 (263ms)
+  ✓  33 [chromium] › e2e/specs/desktop-all-modules.spec.ts:375:1 › 52 岗位页：岗位列表卡 + 建岗位表单可见 (259ms)
+  ✓  34 [chromium] › e2e/specs/desktop-all-modules.spec.ts:385:1 › 53 操作日志页：日志查询卡（用户/时间窗/条数过滤）可见 (257ms)
+  ✓  35 [chromium] › e2e/specs/desktop-all-modules.spec.ts:397:1 › 54 运营总览页：四源聚合卡 + 交付/质检/工时下钻可见 (295ms)
+  -  36 [chromium] › e2e/specs/desktop-all-modules.spec.ts:415:1 › 55 菜单管理页（fixme：走查栈 MODULES 不含 menu-config）
+  -  37 [chromium] › e2e/specs/desktop-all-modules.spec.ts:426:1 › 56 审批流配置页（fixme：走查栈 MODULES 不含 approval-config）
+  -  38 [chromium] › e2e/specs/desktop-all-modules.spec.ts:437:1 › 57 通知中心页（fixme：走查栈 MODULES 不含 notifications，入口不可达）
+  ✓  39 [chromium] › e2e/specs/desktop-core-pages.spec.ts:46:1 › 02 工作台（登录落点）：待办概览卡 + 我的待办卡渲染 (174ms)
+  ✓  40 [chromium] › e2e/specs/desktop-core-pages.spec.ts:51:1 › 03 工作令列表页：菜单点击 → 列表/建令/齐套看板三卡可见 (283ms)
+  ✓  41 [chromium] › e2e/specs/desktop-core-pages.spec.ts:62:1 › 04 真实操作：创建工作令 → 列表表格出现项目行 (347ms)
+  ✓  42 [chromium] › e2e/specs/desktop-core-pages.spec.ts:74:1 › 05 工作令详情：点列表行 → 详情与操作面板出现 (295ms)
+  ✓  43 [chromium] › e2e/specs/desktop-core-pages.spec.ts:84:1 › 06 标准报表：菜单点击 → 口径四选一控件 + 真实求值出结果卡 (310ms)
+  ✓  44 [chromium] › e2e/specs/desktop-core-pages.spec.ts:95:1 › 07 物品页 + 真实操作：创建物品 → 列表表格出现 code 行 (360ms)
+  ✓  45 [chromium] › e2e/specs/desktop-core-pages.spec.ts:111:1 › 08 派工页：列表/创建/任务视图卡可见 (277ms)
+  ✓  46 [chromium] › e2e/specs/desktop-core-pages.spec.ts:120:1 › 09 实时库存页：库存/库位分布/流水卡可见 (259ms)
+  ✓  47 [chromium] › e2e/specs/desktop-core-pages.spec.ts:128:1 › 10 报工单页：列表/进度/趋势卡可见 (263ms)
+  ✓  48 [chromium] › e2e/specs/desktop-core-pages.spec.ts:136:1 › 11 用户与角色页：种子数据真实读回（种子管理员行可见） (268ms)
+  ✓  49 [chromium] › e2e/specs/desktop-real-chain.spec.ts:113:1 › 61 链路步骤1（UI）：建物品 → 列表行出现；建仓库 → 列表行出现并读回仓库 id (532ms)
+  ✓  50 [chromium] › e2e/specs/desktop-real-chain.spec.ts:154:1 › 62 链路步骤2（UI）：建工作令 not_started → 流转 in_progress（列表行状态读回） (551ms)
+  ✓  51 [chromium] › e2e/specs/desktop-real-chain.spec.ts:187:1 › 63 链路步骤3：清单骨架导入（UI）+ excel 行导入（API 预置）→ 缺口核查（UI）出快照 (599ms)
+  ✓  52 [chromium] › e2e/specs/desktop-real-chain.spec.ts:265:1 › 64 链路步骤4（UI）：生产入库 10 → 实时库存可用读数 +10（读-改-读） (5.5s)
+  ✓  53 [chromium] › e2e/specs/desktop-real-chain.spec.ts:288:1 › 65 链路步骤5（UI）：刷新齐套检查 → 齐套看板 complete=true（缺口闭合） (402ms)
+  ✓  54 [chromium] › e2e/specs/desktop-real-chain.spec.ts:304:1 › 66 链路步骤6（UI）：运营总览读数——链路工作令计入非终态与 in_progress 分布 (298ms)
+  ✓  55 [chromium] › e2e/specs/desktop-real-chain.spec.ts:326:1 › 67 链路快照重读（UI）：缺口核查页最新快照可重读（结构自洽留档） (330ms)
+  ✓  56 [chromium] › e2e/specs/mobile-shell.spec.ts:21:1 › 12 移动壳：/m 底部标签导航 + 车间工作台渲染 (289ms)
+  ✓  57 [chromium] › e2e/specs/mobile-subpages.spec.ts:47:1 › 71 移动子页 m.verify：报工核查卡渲染（快捷区真实导航） (237ms)
+  ✓  58 [chromium] › e2e/specs/mobile-subpages.spec.ts:57:1 › 72 移动子页 m.parts：配件申请表单渲染 (253ms)
+  ✓  59 [chromium] › e2e/specs/mobile-subpages.spec.ts:65:1 › 73 移动子页 m.inspection：质检卡 + 四类过滤标签渲染 (270ms)
+  ✓  60 [chromium] › e2e/specs/mobile-subpages.spec.ts:77:1 › 74 移动子页 m.fault：故障上报表单渲染（设备/描述/维修人员三字段） (254ms)
+  ✓  61 [chromium] › e2e/specs/mobile-subpages.spec.ts:86:1 › 75 移动子页 m.stocktake：盘点开单表单渲染 (236ms)
+[e2e-global] 栈已拆除（preview / server / docker 容器）
+
+  3 skipped
+  58 passed (35.9s)

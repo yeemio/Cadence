@@ -1,0 +1,50 @@
+7463d7c9bac486ca55e66ad13b854b4c52bcc4169d9de553b1974b894d80dccf
+$ tsc -p tsconfig.build.json
+$ tsc -p tsconfig.build.json
+src/cross-module-wiring.ts(970,4): error TS2304: Cannot find name 'CommandEnvelope'.
+src/cross-module-wiring.ts(1127,21): error TS2552: Cannot find name 'StockMovementRow'. Did you mean 'StockMovementStore'?
+src/cross-module-wiring.ts(1130,29): error TS2552: Cannot find name 'StockMovementRow'. Did you mean 'StockMovementStore'?
+/Users/yeemio/AI/gitrep/Cadence/apps/server:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @smes/server@0.1.0 build: `tsc -p tsconfig.build.json`
+Exit status 2
+$ vite build
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 2496 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/manifest.webmanifest         0.70 kB
+dist/index.html                   0.84 kB │ gzip:   0.47 kB
+dist/login.html                   0.97 kB │ gzip:   0.61 kB
+dist/assets/index-BfcNJ7Th.css   39.91 kB │ gzip:   7.61 kB
+dist/assets/login-B5pcI-Mz.js     2.41 kB │ gzip:   1.21 kB
+dist/assets/index-Du7noRN2.js   211.07 kB │ gzip:  69.72 kB
+dist/assets/index-DxgYZ9qe.js   375.14 kB │ gzip: 110.56 kB
+dist/assets/main-CzsxkvHE.js    548.62 kB │ gzip: 142.27 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.41s
+
+PWA v2.0.0
+mode      generateSW
+precache  15 entries (1153.96 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-17dc2a4e.js
+[e2e-global] 栈已拆除（preview / server / docker 容器）
+Error: 构建失败（application / server / web）
+
+   at ../scripts/global-setup.ts:133
+
+  131 |     ];
+  132 |     if (!hard.every((result) => result.status === 0)) {
+> 133 |       throw new Error('构建失败（application / server / web）');
+      |             ^
+  134 |     }
+  135 |     // business-store 尽力构建：并行线（T1）approval-config 等中间态可能 tsc 失败；
+  136 |     // 浏览器走查栈是 15 模块运行时（不含 approval-config），dist 存在即可沿用
+    at globalSetup (/Users/yeemio/AI/gitrep/Cadence/packages/testkit/e2e/scripts/global-setup.ts:133:13)
+

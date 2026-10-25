@@ -147,6 +147,31 @@
  *     "将待办、审批等业务消息推送至站内消息"：approval/workorder/listing/
  *     inspection/dispatch/baseline 七方待办联动全部经此一点进收件箱，
  *     不逐模块加钩子。notifications 模块未装配 = 不包（零行为变化）。
+ *
+ * U6 接线波（issue/attachment/aftercare-claim 三模块进组合根 + 四端口适配）：
+ * 28. issue.material ← inventory 库存/预占联动（IssueMaterialPort）
+ *     机制：service+store 混级——读面 InventoryService.availableQtyOf（迟到
+ *     绑定）+ 预占/流水/域事件三个 store 级共享实例（app-registry 裁决同源）；
+ *     写面经 InventoryService.execute stock.issue.v1（库位分配逐行子命令，
+ *     子键 `<issueKey>@<i>r|@<i>a` 承载 sourceKey 幂等）；撤销 = 逐子流水
+ *     stock.receive.v1(kind=production) 原路回补 + StockIssued 事件载荷恢复
+ *     预占（restoreKey 确定性幂等）。预占锚点取舍见适配器头注（itemId 粒度，
+ *     清单行粒度未加维——粒度待定项归对账阶段）。
+ * 29. dispatch→issue 派工生成钩子（IssueSyncPort.syncFromDispatch）
+ *     机制：store 级装饰——DispatchOrderStore.advance→'assigned' 且
+ *     kind∈{assembly,electrical} 且挂工作令时触发（#27 待办桥同体例单点包一层，
+ *     不动 dispatch 源码）。assembly 走 rollup=true 整线归拢（dispatch 单面无
+ *     设备选择维，归拢是唯一可解析模式）；electrical 须 equipmentRefs（组合根
+ *     无解析源——demand 行源本波为空实现）不触发，显式同步面 POST
+ *     /issue/tasks/sync 兜底。通知式合同：派工已提交，同步失败仅 console.warn
+ *     不回滚派工。
+ * 30. aftercare-claim.reportPort ← reporting 审批通过报工读
+ *     机制：service 级迟到绑定——createAftercareReportPort(ReportingService
+ *     .listReports)（投影 application 已备，此处只粘迟到引用）。
+ * NotificationSourcePort（点名/派修）裁决：组合根直投不可行——NotifyChannel
+ *     消息无 recipient 面；两事件点（inspection 闭环超时点名 / baseline 故障
+ *     派修）均建待办，收件箱投递经 #27 待办桥完成（收件人 = 事件点侧经办人，
+ *     正确同源）。站内通知不加第二投递（避免与桥重复行）——本波接线不缺口。
  */
 import { randomUUID } from 'node:crypto';
 import type { INestApplicationContext, Type } from '@nestjs/common';
@@ -159,6 +184,7 @@ import {
   BASELINE_EVENT_TYPES,
   BaselineNotFoundError,
   BaselineService,
+  createAftercareReportPort,
   createDispatchProgressAdapter,
   createHoursCostSource,
   createInventoryAvailabilityAdapter,
@@ -169,13 +195,24 @@ import {
   DISPATCH_NOOP_INSPECTION_INTAKE,
   DispatchService,
   HoursService,
+  INVENTORY_EVENT_TYPES,
   InspectionService,
   InventoryService,
+  IssueService,
   LISTING_UNWIRED_MATERIAL_VALIDATION,
   ListingService,
   minutesToHours,
+  ReportingService,
+  STOCK_MOVEMENT_AGGREGATE_TYPE,
+  type AftercareApprovedReportPort,
   type InventoryAvailabilityPort,
+  type InventoryCommand,
+  type InventoryDomainEventStore,
+  type IssueMaterialPort,
+  type IssueStockAllocationReceipt,
+  type IssueSyncTrigger,
   type ListingRequirementPort,
+  type StockReservationStore,
   REPORT_EVENT_TYPES,
   WORKORDER_EVENT_TYPES,
   WORK_ORDER_AGGREGATE_TYPE,
@@ -185,10 +222,14 @@ import {
   type BaselineCommandEnvelope,
   type BaselineEventStore,
   type CostingExcelPort,
+  type DispatchDomainEventStore,
+  type DispatchOperationStore,
   type DispatchOrderStore,
   type DispatchPrintPort,
   type ExcelPort,
   type InspectionIntakePort,
+  type IssueStockCommand,
+  type IssueStockReceipt,
   type KitCheckReadPort,
   type KitCheckStore,
   type MaterialCostLine,
@@ -206,6 +247,7 @@ import {
   type ReportEventMessage,
   type LaborEntryStore,
   type StockMovementStore,
+  type StockMovement,
   type StockReleasePort,
   type ValidDispatchSource,
   type WorkOrderAttachmentStore,
@@ -226,6 +268,7 @@ import {
   UserId,
   WorkOrderId,
   type BusinessEvent,
+  type CommandEnvelope,
   type CommandOutcome,
   type TenantId,
 } from '@smes/business-core';
@@ -264,6 +307,14 @@ export interface CrossModuleWiringStores {
   readonly hoursEntries?: LaborEntryStore | undefined;
   /** baseline 域事件（maintenance 故障联动事实源，#22；与 BaselineModule 同源）。 */
   readonly baselineEvents?: BaselineEventStore | undefined;
+  /** dispatch 命令幂等记账（U6 #29/#30：aftercare-claim 与 DispatchModule 共享同源）。 */
+  readonly dispatchOperations?: DispatchOperationStore | undefined;
+  /** dispatch 域事件（U6：aftercare-claim 与 DispatchModule 共享同源）。 */
+  readonly dispatchDomainEvents?: DispatchDomainEventStore | undefined;
+  /** inventory 预占（U6 #28：issue.material 适配器读面，与 InventoryModule 同源）。 */
+  readonly inventoryReservations?: StockReservationStore | undefined;
+  /** inventory 域事件（U6 #28：issue.material 撤销恢复预占的事实源）。 */
+  readonly inventoryDomainEvents?: InventoryDomainEventStore | undefined;
 }
 
 /** 各模块 register 的跨模块端口注入面（形状与 *ModuleOptions 对应字段同构）。 */
@@ -330,6 +381,14 @@ export interface CrossModuleRegisterPorts {
     readonly notifyChannel?: NotifyChannel | undefined;
     readonly workOrderDrawingSource?: WorkOrderDrawingSource | undefined;
   };
+  /** U6 #28：issue 库存/预占联动（inventory 侧实现；缺省回落模块 NOOP）。 */
+  readonly issue?: {
+    readonly material?: IssueMaterialPort | undefined;
+  } | undefined;
+  /** U6 #30：aftercare-claim 审批通过报工读（reporting 侧实现；缺省 fail-closed）。 */
+  readonly 'aftercare-claim'?: {
+    readonly reportPort?: AftercareApprovedReportPort | undefined;
+  } | undefined;
 }
 
 // ---- M3 接线端口形状（#22/#23；实现见下方适配器） ----
@@ -863,6 +922,325 @@ export function createTodoNotifyingStore(
   };
 }
 
+// ---- U6 #28/#29：issue 库存/预占联动 + 派工触发生成（组合根适配器） ----
+
+/**
+ * issue 锚预占键约定（U6 #28）：`issue-rsv:v1:<enc(workOrderId)>:<enc(equipmentRef)>:<enc(itemId)>`
+ * （enc=encodeURIComponent——产出必无 ':'，段界安全）。锚粒度取舍（U1 验收
+ * "itemId vs 清单行"复核点）：按（工作令, 设备, 物料）三段锚定——与
+ * IssueMaterialPort.reservedQtyOf 查询面同粒度；**清单行粒度不加维**（四数量
+ * 消费面全部按 equipment+item 收口，无行粒度消费者；预占粒度待定项归对账
+ * 阶段，m2 草案 07-inventory §"预占的粒度"）。equipmentRef 空串 = 订单级锚
+ * （standard/electrical 确认发料的可核销集）；非空 = 设备级锚（equipment 行
+ * 四数量只读面，本端口不核销）。撤销恢复键追加 `:rb:<enc(subKey)>` 段——
+ * 解析归并为原锚（同 workOrder/equipment/item 维度）。
+ */
+export function buildIssueReservationKey(
+  workOrderId: string,
+  equipmentRef: string | null,
+  itemId: string,
+): string {
+  const enc = (value: string): string => encodeURIComponent(value);
+  return `issue-rsv:v1:${enc(workOrderId)}:${enc(equipmentRef ?? '')}:${enc(itemId)}`;
+}
+
+/** 解析 issue 锚预占键；非本约定形状（含 decode 失败）返回 null（防御）。 */
+export function parseIssueReservationKey(
+  key: string,
+): { readonly workOrderId: string; readonly equipmentRef: string; readonly itemId: string } | null {
+  const parts = key.split(':');
+  if (parts.length !== 5 && parts.length !== 7) return null;
+  if (parts[0] !== 'issue-rsv' || parts[1] !== 'v1') return null;
+  if (parts.length === 7 && parts[5] !== 'rb') return null;
+  try {
+    return {
+      workOrderId: decodeURIComponent(parts[2] as string),
+      equipmentRef: decodeURIComponent(parts[3] as string),
+      itemId: decodeURIComponent(parts[4] as string),
+    };
+  } catch {
+    return null; // 非法百分号序列——非本约定键
+  }
+}
+
+/** 系统信封（U6 适配器命令面；操作者记系统账号，幂等由子键 sourceKey 承载）。 */
+function wiringIssueEnvelope(
+  tenant: TenantId,
+  operationId: string,
+  kind: 'stock.issue.v1' | 'stock.receive.v1',
+  payload: Record<string, unknown>,
+): CommandEnvelope<InventoryCommand> {
+  return makeCommandEnvelope<InventoryCommand>({
+    tenantId: tenant,
+    issuedBy: UserId.create('u-system-wiring-issue'),
+    operationId: OperationId.create(operationId),
+    expectedRevision: 'initial',
+    issuedAt: new Date().toISOString(),
+    command: { kind, payload },
+  });
+}
+
+/** 适配器依赖面（inventory service 迟到解析 + 三个 store 级共享实例）。 */
+export interface InventoryIssueMaterialDeps {
+  /** inventory service 解析面（bind 前后行为确定性：未绑定回落 NOOP 同构语义）。 */
+  readonly inventory: () => InventoryService | undefined;
+  readonly reservations: StockReservationStore;
+  readonly movements: StockMovementStore;
+  readonly domainEvents: InventoryDomainEventStore;
+}
+
+/**
+ * IssueMaterialPort ← inventory 适配器（U6 #28）。
+ *
+ * 写面：每个库位分配折成 stock.issue.v1 子命令——预占核销份额（同仓、订单级
+ * 锚、createdAt FIFO）与直扣份额各成子键 `<issueKey>@<i>r<n>` / `<issueKey>@<i>a`
+ * （sourceKey 幂等——重试不重复扣减；重试时预占挑选可能与首次不同，锚语义
+ * 同源不破账）。撤销：按子键枚举流水逐条 stock.receive.v1(kind=production)
+ * 原路回补（receiptKey `issue-rb:<子键>` 幂等）+ 按 StockIssued 事件载荷恢复
+ * 预占（restoreKey `<原键>:rb:<子键>` 确定性幂等——inventory 预占键 consumed
+ * 后不得复用，恢复 = 新键同锚重立）。预占恢复失败（如可用量被并发占用）不
+ * 阻塞撤销回执（stock 已回补，拒绝撤销反而制造更大漂移）——console.warn 留
+ * 痕归对账。预占创建面不在本端口（IssueMaterialPort 无 reserve；外部经
+ * InventoryService.reserveStock 按上述键约定立锚）。
+ */
+export function createInventoryIssueMaterialPort(deps: InventoryIssueMaterialDeps): IssueMaterialPort {
+  const refusedReasonOf = (outcome: { status: string; reason?: string }): string =>
+    outcome.reason ?? outcome.status;
+
+  return {
+    availableQtyOf: async (tenant, itemIds) => {
+      const inventory = deps.inventory();
+      if (inventory === undefined) return new Map(itemIds.map((itemId) => [itemId, 0])); // NOOP 同构
+      return inventory.availableQtyOf(tenant, itemIds);
+    },
+
+    reservedQtyOf: async (tenant, query) => {
+      const wanted = new Set(query.itemIds);
+      const result = new Map<string, number>(query.itemIds.map((itemId) => [itemId, 0]));
+      const rows = await deps.reservations.list(tenant, { status: 'active' });
+      const equipment = query.equipmentRef ?? '';
+      for (const row of rows) {
+        if (row.refType !== 'issue' || row.refId !== query.workOrderId) continue;
+        if (!wanted.has(row.itemId)) continue;
+        const anchor = parseIssueReservationKey(row.reservationKey);
+        if (anchor === null || anchor.equipmentRef !== equipment) continue;
+        result.set(row.itemId, (result.get(row.itemId) ?? 0) + row.remaining);
+      }
+      return result;
+    },
+
+    issueStock: async (tenant, command: IssueStockCommand): Promise<IssueStockReceipt> => {
+      const inventory = deps.inventory();
+      if (inventory === undefined) {
+        return { issued: true, allocations: command.allocations.map((a) => ({ locationId: a.locationId, quantity: a.quantity, reservedConsumedQty: 0, availableConsumedQty: a.quantity })) }; // NOOP 同构（bind 前窗口）
+      }
+      if (command.allocations.length === 0) return { issued: true, allocations: [] };
+
+      // 库位 → 仓解析（逐调用扫描——仓库主数据规模小，不缓存避免陈旧）。
+      const locationWarehouse = new Map<string, string>();
+      for (const warehouse of await inventory.listWarehouses(tenant)) {
+        for (const location of warehouse.locations) locationWarehouse.set(location.id, warehouse.id);
+      }
+
+      // 可核销预占：订单级锚（equipment 段空）+ 同 workOrder/item，createdAt FIFO。
+      const consumable = (await deps.reservations.list(tenant, { status: 'active' }))
+        .map((row) => ({ row, anchor: parseIssueReservationKey(row.reservationKey) }))
+        .filter(
+          (entry) =>
+            entry.row.refType === 'issue' &&
+            entry.row.refId === command.workOrderId &&
+            entry.row.itemId === command.itemId &&
+            entry.anchor !== null &&
+            (entry.anchor as { equipmentRef: string }).equipmentRef === '',
+        )
+        .sort((a, b) => a.row.createdAt.localeCompare(b.row.createdAt) || a.row.id.localeCompare(b.row.id));
+      const remainingOf = new Map<string, number>(consumable.map((entry) => [entry.row.reservationKey, entry.row.remaining]));
+
+      const receipts: IssueStockAllocationReceipt[] = [];
+      for (const [index, allocation] of command.allocations.entries()) {
+        const warehouseId = locationWarehouse.get(allocation.locationId);
+        if (warehouseId === undefined) {
+          return { issued: false, refusedReason: `库位 '${allocation.locationId}' 不属于任何仓库（发料 ${command.issueKey}）` };
+        }
+        let reservedPart = 0;
+        let reservedSeq = 0;
+        for (const entry of consumable) {
+          if (reservedPart >= allocation.quantity) break;
+          if (entry.row.warehouseId !== warehouseId) continue;
+          const remaining = remainingOf.get(entry.row.reservationKey) ?? 0;
+          if (remaining <= 0) continue;
+          const take = Math.min(remaining, allocation.quantity - reservedPart);
+          const subKey = `${command.issueKey}@${index}r${reservedSeq}`;
+          reservedSeq += 1;
+          const outcome = await inventory.execute(
+            wiringIssueEnvelope(tenant, `wiring-issue-${subKey}`, 'stock.issue.v1', {
+              itemId: command.itemId,
+              warehouseId,
+              locationId: allocation.locationId,
+              quantity: take,
+              purpose: 'production',
+              workOrderId: command.workOrderId,
+              reservationKey: entry.row.reservationKey,
+              issueKey: subKey,
+              remark: `发料任务确认（预占核销）：${command.issueKey}`,
+            }),
+          );
+          if (outcome.status !== 'committed') {
+            return { issued: false, refusedReason: `库位 '${allocation.locationId}' 预占核销出库被拒：${refusedReasonOf(outcome)}` };
+          }
+          remainingOf.set(entry.row.reservationKey, remaining - take);
+          reservedPart += take;
+        }
+        const availablePart = allocation.quantity - reservedPart;
+        if (availablePart > 0) {
+          const subKey = `${command.issueKey}@${index}a`;
+          const outcome = await inventory.execute(
+            wiringIssueEnvelope(tenant, `wiring-issue-${subKey}`, 'stock.issue.v1', {
+              itemId: command.itemId,
+              warehouseId,
+              locationId: allocation.locationId,
+              quantity: availablePart,
+              purpose: 'production',
+              workOrderId: command.workOrderId,
+              reservationKey: null,
+              issueKey: subKey,
+              remark: `发料任务确认（直扣可用）：${command.issueKey}`,
+            }),
+          );
+          if (outcome.status !== 'committed') {
+            return { issued: false, refusedReason: `库位 '${allocation.locationId}' 出库被拒：${refusedReasonOf(outcome)}` };
+          }
+        }
+        receipts.push({
+          locationId: allocation.locationId,
+          quantity: allocation.quantity,
+          reservedConsumedQty: reservedPart,
+          availableConsumedQty: availablePart,
+        });
+      }
+      return { issued: true, allocations: receipts };
+    },
+
+    rollbackIssue: async (tenant, command) => {
+      const inventory = deps.inventory();
+      if (inventory === undefined) return { rolled: true }; // NOOP 同构（bind 前窗口）
+
+      // 子键枚举（i 连续自 0；每 i 有至多一个 a 份额与一串 r<n> 份额；双缺即止）。
+      const issued: StockMovement[] = [];
+      for (let index = 0; index < 10_000; index += 1) {
+        const direct = await deps.movements.findBySourceKey(tenant, `${command.issueKey}@${index}a`);
+        const reservedRows: StockMovement[] = [];
+        for (let seq = 0; seq < 10_000; seq += 1) {
+          const row = await deps.movements.findBySourceKey(tenant, `${command.issueKey}@${index}r${seq}`);
+          if (row === null) break;
+          reservedRows.push(row);
+        }
+        if (direct === null && reservedRows.length === 0) break;
+        if (direct !== null) issued.push(direct);
+        issued.push(...reservedRows);
+      }
+      if (issued.length === 0) return { rolled: true }; // 无对应流水（未发过/已回滚）——幂等空回执
+
+      for (const movement of issued) {
+        const receiptKey = `issue-rb:${movement.sourceKey as string}`;
+        const outcome = await inventory.execute(
+          wiringIssueEnvelope(tenant, `wiring-issue-${receiptKey}`, 'stock.receive.v1', {
+            kind: 'production',
+            itemId: movement.itemId,
+            warehouseId: movement.warehouseId,
+            locationId: movement.locationId,
+            quantity: movement.quantity,
+            inspectionId: null,
+            purchaseOrderId: null,
+            workOrderId: movement.workOrderId,
+            receiptKey,
+            remark: `发料撤销原路回滚：${command.issueKey}`,
+          }),
+        );
+        if (outcome.status !== 'committed') {
+          return { rolled: false, refusedReason: `流水 '${movement.sourceKey}' 回补被拒：${refusedReasonOf(outcome)}` };
+        }
+
+        // 预占恢复：StockIssued 事件载荷（事实源）→ 同锚新键重立（确定性幂等）。
+        const events = await deps.domainEvents.byAggregate({ id: movement.id, type: STOCK_MOVEMENT_AGGREGATE_TYPE });
+        for (const event of events) {
+          if (event.eventType !== INVENTORY_EVENT_TYPES.stockIssued) continue;
+          const payload = (event.payload ?? {}) as Record<string, unknown>;
+          const reservationKey = readString(payload['reservationKey']);
+          const consumedQty = payload['consumedReservationQty'];
+          if (reservationKey === null || typeof consumedQty !== 'number' || consumedQty <= 0) continue;
+          const restoreKey = `${reservationKey}:rb:${movement.sourceKey}`;
+          if ((await deps.reservations.findByKey(tenant, restoreKey)) !== null) continue; // 已恢复
+          const restored = await inventory.reserveStock(tenant, {
+            reservationKey: restoreKey,
+            itemId: movement.itemId,
+            warehouseId: movement.warehouseId,
+            quantity: consumedQty,
+            refType: 'issue',
+            refId: movement.workOrderId ?? '',
+          });
+          if (!restored.reserved) {
+            console.warn(
+              `[smes] 发料撤销预占恢复失败（stock 已回补，漂移归对账）：${restored.refusedReason ?? '未知原因'}`,
+            );
+          }
+        }
+      }
+      return { rolled: true };
+    },
+  };
+}
+
+/**
+ * dispatch→issue 派工生成钩子（U6 #29）：装饰 DispatchOrderStore.advance——
+ * draft→assigned（派工成功）且 kind=assembly 且挂工作令时调 syncFromDispatch
+ * （rollup=true 整线归拢；取舍见文件头）。通知式合同：派工已提交，同步失败
+ * console.warn 不回滚（显式同步面 POST /issue/tasks/sync 兜底）。
+ */
+export function createIssueSyncDispatchStore(
+  store: DispatchOrderStore,
+  resolveIssue: () => IssueService | undefined,
+): DispatchOrderStore {
+  return {
+    create: (input) => store.create(input),
+    find: (tenant, id) => store.find(tenant, id),
+    list: (tenant, filter) => store.list(tenant, filter),
+    advance: async (tenant, id, expectedObjectVersion, nextState, nextObjectVersion, extra) => {
+      const before = nextState === 'assigned' ? await store.find(tenant, id) : null;
+      const advanced = await store.advance(tenant, id, expectedObjectVersion, nextState, nextObjectVersion, extra);
+      if (
+        before !== null &&
+        before.state !== 'assigned' &&
+        advanced.state === 'assigned' &&
+        before.workOrderId !== null &&
+        before.kind === 'assembly'
+      ) {
+        try {
+          const issue = resolveIssue();
+          if (issue !== undefined) {
+            await issue.syncFromDispatch(tenant, {
+              workOrderId: before.workOrderId,
+              dispatchKind: 'assembly',
+              rollup: true,
+              workOrderLabel: advanced.title,
+              plannedStartAt: null,
+              plannedEndAt: advanced.dueAt,
+              ...(advanced.assignee === null ? {} : { operators: [String(advanced.assignee)] }),
+              triggerRef: { type: 'dispatch-order', id },
+            });
+          }
+        } catch (error) {
+          console.warn(
+            '[smes] 派工→发料任务同步失败（通知式合同，不回滚派工；POST /issue/tasks/sync 可补触发）:',
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
+      return advanced;
+    },
+  };
+}
+
 // ---- wiring 装配 ----
 
 /** wiring 构造入参。 */
@@ -902,6 +1280,12 @@ export interface CrossModuleWiring {
    * POST /hours/ingest 是等价重放面）。仅 reporting+hours 同时装配时非空。
    */
   readonly hoursIngestTrigger: ((tenant: TenantId, actor: UserId) => Promise<void>) | undefined;
+  /**
+   * store 级装饰实例（U6 #29）：dispatch 派工单存储经装饰后的 advance 在
+   * 派工成功时触发发料任务同步——app-registry 的 dispatch/aftercare-claim
+   * 工厂读本字段拿实例（未接线形态 = undefined，回落原 store）。
+   */
+  readonly storeOverrides: { readonly dispatchOrders?: DispatchOrderStore | undefined };
 }
 
 /** 组装全部跨模块接线（清单见文件头；两侧装配才接，机制各见条目注释）。 */
@@ -910,7 +1294,7 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
   const has = (module: string): boolean => enabled.includes(module);
 
   // 迟到引用（#3/#8/#9/#12~#17 的 service 级端口；#22 的 maintenance；
-  // #25 的 listing）
+  // #25 的 listing；U6 #29/#30 的 issue/reporting）
   const lateInventory = new LateBound<InventoryService>();
   const lateListing = new LateBound<ListingService>();
   const lateDispatch = new LateBound<DispatchService>();
@@ -918,6 +1302,8 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
   const lateInspection = new LateBound<InspectionService>();
   const lateHours = new LateBound<HoursService>();
   const lateMaintenance = new LateBound<MaintenanceService>();
+  const lateIssue = new LateBound<IssueService>();
+  const lateReporting = new LateBound<ReportingService>();
 
   // #1 reporting.validDispatch（store 级）
   const validDispatch: ValidDispatchSource | undefined =
@@ -1267,6 +1653,43 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
       ? new WorkOrderAttachmentDrawingRefsAdapter(stores.workOrderAttachments)
       : undefined;
 
+  // U6 #28 issue.material（service+store 混级：读面迟到绑定 + 预占/流水/域事件
+  // 三共享实例；机制与预占键约定见适配器头注）。
+  const issueMaterial: IssueMaterialPort | undefined =
+    has('issue') &&
+    has('inventory') &&
+    stores.inventoryReservations !== undefined &&
+    stores.inventoryMovements !== undefined &&
+    stores.inventoryDomainEvents !== undefined
+      ? createInventoryIssueMaterialPort({
+          inventory: () => lateInventory.resolve(),
+          reservations: stores.inventoryReservations,
+          movements: stores.inventoryMovements,
+          domainEvents: stores.inventoryDomainEvents,
+        })
+      : undefined;
+
+  // U6 #29 dispatch→issue 派工生成钩子（store 装饰——advance→assigned 触发；
+  // DispatchModule 经 app-registry 读 storeOverrides.dispatchOrders 拿装饰态实例）。
+  const issueSyncDispatchOrders: DispatchOrderStore | undefined =
+    has('dispatch') && has('issue') && stores.dispatchOrders !== undefined
+      ? createIssueSyncDispatchStore(stores.dispatchOrders, () => lateIssue.resolve())
+      : undefined;
+
+  // U6 #30 aftercare-claim.reportPort（service 级迟到绑定：application 备好的
+  // 投影 + 此处粘 reporting 查询面）。
+  const aftercareReportPort: AftercareApprovedReportPort | undefined =
+    has('aftercare-claim') && has('reporting')
+      ? createAftercareReportPort({
+          listReports: (tenant, filter) => {
+            const reporting = lateReporting.resolve();
+            return reporting === undefined
+              ? Promise.resolve([])
+              : reporting.listReports(tenant, filter);
+          },
+        })
+      : undefined;
+
   // #19 baseline.workOrderDrawingSource（store 级）
   const workOrderDrawingSource: WorkOrderDrawingSource | undefined =
     has('baseline') && has('workorder') && stores.workOrders !== undefined && stores.workOrderAttachments !== undefined
@@ -1399,6 +1822,8 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
             },
           }
         : {}),
+      ...(issueMaterial !== undefined ? { issue: { material: issueMaterial } } : {}),
+      ...(aftercareReportPort !== undefined ? { 'aftercare-claim': { reportPort: aftercareReportPort } } : {}),
     },
     bind(app: INestApplicationContext): void {
       const resolveOptional = <T>(token: Type<T>): T | undefined => {
@@ -1436,8 +1861,17 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
         const maintenance = resolveOptional(MaintenanceService);
         if (maintenance !== undefined) lateMaintenance.bind(maintenance);
       }
+      if (has('issue')) {
+        const issue = resolveOptional(IssueService);
+        if (issue !== undefined) lateIssue.bind(issue);
+      }
+      if (has('reporting')) {
+        const reporting = resolveOptional(ReportingService);
+        if (reporting !== undefined) lateReporting.bind(reporting);
+      }
     },
     hoursIngestTrigger,
+    storeOverrides: { dispatchOrders: issueSyncDispatchOrders },
   };
 }
 

@@ -17,6 +17,9 @@ import {
   CostingModule,
   DemoModule,
   DispatchModule,
+  AftercareClaimModule,
+  AttachmentModule,
+  IssueModule,
   HoursModule,
   InspectionModule,
   InMemoryDispatchOrderStore,
@@ -44,6 +47,10 @@ import {
   InMemoryMenuConfigStore,
   InMemoryNotificationStore,
   InMemoryApprovalFlowConfigStore,
+  InMemoryDispatchOperationStore,
+  InMemoryDispatchDomainEventStore,
+  InMemoryStockReservationStore,
+  InMemoryInventoryDomainEventStore,
   OrgModule,
   ReportingModule,
   StandardReportsModule,
@@ -121,6 +128,15 @@ import {
   type MenuConfigStore,
   type NotificationStore,
   type ApprovalFlowConfigStore,
+  type AftercareClaimStore,
+  type AttachmentStore,
+  type ObjectStoragePort,
+  type IssueTaskStore,
+  type IssueTaskLineStore,
+  type IssueRecordStore,
+  type IssueExpressStore,
+  type IssueOperationStore,
+  type IssueDomainEventStore,
 } from '@smes/application';
 import { inMemoryPayrollStores, type PayrollStores } from '@smes/payroll';
 import { PayrollHttpModule } from './payroll-http.module.js';
@@ -339,6 +355,24 @@ export interface StorePorts {
    * T1 能力子集：0920 #102——组合根保证配置面与案件运行时同源）。
    */
   readonly approvalFlowConfigStore?: ApprovalFlowConfigStore | undefined;
+  /** 发料任务主表存储（IssueModule 注入点，U6：PG 形态经 connectIssueStore 注入）。 */
+  readonly issueTaskStore?: IssueTaskStore | undefined;
+  /** 发料任务子行存储（IssueModule 注入点）。 */
+  readonly issueTaskLineStore?: IssueTaskLineStore | undefined;
+  /** 发料记录存储（IssueModule 注入点）。 */
+  readonly issueRecordStore?: IssueRecordStore | undefined;
+  /** 快递单存储（IssueModule 注入点）。 */
+  readonly issueExpressStore?: IssueExpressStore | undefined;
+  /** issue 命令幂等记账存储（IssueModule 注入点）。 */
+  readonly issueOperationStore?: IssueOperationStore | undefined;
+  /** issue 域事件存储（IssueModule 注入点）。 */
+  readonly issueDomainEventStore?: IssueDomainEventStore | undefined;
+  /** 售后报销单存储（AftercareClaimModule 注入点，U6：PG 形态随 dispatch 束注入）。 */
+  readonly aftercareClaimStore?: AftercareClaimStore | undefined;
+  /** 附件元数据存储（AttachmentModule 注入点，U6：PG 形态经 connectAttachmentStore 注入）。 */
+  readonly attachmentStore?: AttachmentStore | undefined;
+  /** 对象存储端口（AttachmentModule 注入点；字节持久面——缺省 = 模块内存实现）。 */
+  readonly objectStorage?: ObjectStoragePort | undefined;
 }
 
 /**
@@ -481,6 +515,10 @@ export const MODULE_DEFINITIONS: Record<
     }),
   dispatch: (stores, wiring) =>
     DispatchModule.register({
+      // U6 #29：issue 装配时组合根在工厂实参里注入装饰态派工单存储
+      //（advance→assigned 触发发料任务同步）；operation/domainEvent 两存储
+      // 同经 wiringStores 共享面（aftercare-claim 须与 DispatchModule 同实例
+      //——模块头注共享裁决）。
       orderStore: stores.dispatchOrderStore,
       outsourcingLineStore: stores.dispatchOutsourcingLineStore,
       operationStore: stores.dispatchOperationStore,
@@ -573,6 +611,36 @@ export const MODULE_DEFINITIONS: Record<
     NotificationsModule.register({ notificationStore: stores.notificationStore }),
   'approval-config': (stores) =>
     ApprovalConfigModule.register({ flowConfigStore: stores.approvalFlowConfigStore }),
+  // U6 接线波三模块（激活价语义：仅显式 MODULES_ENABLED 开启，同 T1/S1 先例；
+  // 存储缺省回落模块内存实现——零 DB boot 语义完整）：
+  // - issue：跨模块端口 material ← wiring #28（inventory 适配器；缺省 NOOP）；
+  // - attachment：objectStorage 由 main.ts 按部署环境注入本地文件适配器
+  //   （SMES_ATTACHMENT_DIR），缺省内存适配器（合同 U3：零对象存储运行时依赖）；
+  // - aftercare-claim：order/operation/domainEvent 三存储与 DispatchModule
+  //   共享（buildAppModule 裁决同源）；reportPort ← wiring #30（reporting）。
+  issue: (stores, wiring) =>
+    IssueModule.register({
+      taskStore: stores.issueTaskStore,
+      taskLineStore: stores.issueTaskLineStore,
+      recordStore: stores.issueRecordStore,
+      expressStore: stores.issueExpressStore,
+      operationStore: stores.issueOperationStore,
+      domainEventStore: stores.issueDomainEventStore,
+      material: wiring.issue?.material,
+    }),
+  attachment: (stores) =>
+    AttachmentModule.register({
+      attachmentStore: stores.attachmentStore,
+      objectStorage: stores.objectStorage,
+    }),
+  'aftercare-claim': (stores, wiring) =>
+    AftercareClaimModule.register({
+      orderStore: stores.dispatchOrderStore,
+      claimStore: stores.aftercareClaimStore,
+      operationStore: stores.dispatchOperationStore,
+      domainEventStore: stores.dispatchDomainEventStore,
+      reportPort: wiring['aftercare-claim']?.reportPort,
+    }),
   demo: () => DemoModule.register(),
 };
 
@@ -709,6 +777,22 @@ export interface BuildAppModuleOptions {
    * 0920 #102；配置面与 approval 案件运行时解析器共享同源）。
    */
   readonly approvalFlowConfigStore?: ApprovalFlowConfigStore | undefined;
+  /** issue 六存储（PG 形态经 connectIssueStore 注入，U6 接线波）。 */
+  readonly issueTaskStore?: IssueTaskStore | undefined;
+  readonly issueTaskLineStore?: IssueTaskLineStore | undefined;
+  readonly issueRecordStore?: IssueRecordStore | undefined;
+  readonly issueExpressStore?: IssueExpressStore | undefined;
+  readonly issueOperationStore?: IssueOperationStore | undefined;
+  readonly issueDomainEventStore?: IssueDomainEventStore | undefined;
+  /** 售后报销单存储（PG 形态经 connectDispatchStore().aftercareClaimStore 注入）。 */
+  readonly aftercareClaimStore?: AftercareClaimStore | undefined;
+  /** 附件元数据存储（PG 形态经 connectAttachmentStore 注入）。 */
+  readonly attachmentStore?: AttachmentStore | undefined;
+  /**
+   * 对象存储端口（U6：main.ts 按 SMES_ATTACHMENT_DIR 注入本地文件适配器；
+   * 缺省 = 模块内存适配器——字节重启即失，部署期换装 MinIO/S3 不动业务面）。
+   */
+  readonly objectStorage?: ObjectStoragePort | undefined;
 }
 
 export class ModuleRegistryError extends Error {
@@ -857,6 +941,26 @@ export function buildAppModule(
     baselineEvents:
       options.baselineEventStore ??
       (enabled.includes('baseline') ? new InMemoryBaselineEventStore() : undefined),
+    // U6 #29/#30：dispatch 幂等/域事件两存储与 DispatchModule、AftercareClaimModule
+    // 三方同源（模块头注共享裁决——零 DB 形态组合根预建，PG 形态 options 注入）。
+    dispatchOperations:
+      options.dispatchOperationStore ??
+      (enabled.includes('dispatch') || enabled.includes('aftercare-claim')
+        ? new InMemoryDispatchOperationStore()
+        : undefined),
+    dispatchDomainEvents:
+      options.dispatchDomainEventStore ??
+      (enabled.includes('dispatch') || enabled.includes('aftercare-claim')
+        ? new InMemoryDispatchDomainEventStore()
+        : undefined),
+    // U6 #28：inventory 预占/域事件与 InventoryModule 同源（issue.material 适配器
+    // 读面 + 撤销恢复事实源——零 DB 形态组合根预建共享实例，PG 形态注入同源）。
+    inventoryReservations:
+      options.inventoryReservationStore ??
+      (enabled.includes('inventory') ? new InMemoryStockReservationStore() : undefined),
+    inventoryDomainEvents:
+      options.inventoryDomainEventStore ??
+      (enabled.includes('inventory') ? new InMemoryInventoryDomainEventStore() : undefined),
   };
   // 跨模块端口接线（清单与机制见 cross-module-wiring.ts 文件头；print/IM sink
   // 由 main.ts 注入 integration 适配，缺省回落拒绝/console 降级——清单 #10/#18；
@@ -925,17 +1029,19 @@ export function buildAppModule(
         inventoryAccountStore: options.inventoryAccountStore,
         inventoryLocationBalanceStore: options.inventoryLocationBalanceStore,
         inventoryMovementStore: wiringStores.inventoryMovements,
-        inventoryReservationStore: options.inventoryReservationStore,
+        inventoryReservationStore: wiringStores.inventoryReservations,
         inventoryStocktakeStore: options.inventoryStocktakeStore,
         inventoryShippingStore: options.inventoryShippingStore,
         inventoryReleaseFactStore: options.inventoryReleaseFactStore,
         inventoryOperationStore: options.inventoryOperationStore,
-        inventoryDomainEventStore: options.inventoryDomainEventStore,
+        inventoryDomainEventStore: wiringStores.inventoryDomainEvents,
         inventoryMachineEventStore: options.inventoryMachineEventStore,
-        dispatchOrderStore: wiringStores.dispatchOrders,
+        // U6 #29：issue 装配时派工单存储为装饰态实例（advance→assigned 触发
+        // 发料任务同步）；operation/domainEvent 与 aftercare-claim 三方同源。
+        dispatchOrderStore: wiring.storeOverrides.dispatchOrders ?? wiringStores.dispatchOrders,
         dispatchOutsourcingLineStore: wiringStores.dispatchOutsourcingLines,
-        dispatchOperationStore: options.dispatchOperationStore,
-        dispatchDomainEventStore: options.dispatchDomainEventStore,
+        dispatchOperationStore: wiringStores.dispatchOperations,
+        dispatchDomainEventStore: wiringStores.dispatchDomainEvents,
         dispatchMachineEventStore: options.dispatchMachineEventStore,
         reportingReportStore: wiringStores.workReports,
         reportingAuditStore: options.reportingAuditStore,
@@ -972,6 +1078,15 @@ export function buildAppModule(
         menuConfigStore: sharedMenuConfigStore,
         notificationStore: sharedNotificationStore,
         approvalFlowConfigStore: sharedApprovalFlowConfigStore,
+        issueTaskStore: options.issueTaskStore,
+        issueTaskLineStore: options.issueTaskLineStore,
+        issueRecordStore: options.issueRecordStore,
+        issueExpressStore: options.issueExpressStore,
+        issueOperationStore: options.issueOperationStore,
+        issueDomainEventStore: options.issueDomainEventStore,
+        aftercareClaimStore: options.aftercareClaimStore,
+        attachmentStore: options.attachmentStore,
+        objectStorage: options.objectStorage,
       }, wiring.register);
     }),
   ];

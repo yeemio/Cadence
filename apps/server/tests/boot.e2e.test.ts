@@ -18,6 +18,7 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, describe, expect, it } from 'vitest';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { TenantContext } from '@smes/application';
 import { buildAppModule, parseModulesEnabled } from '../src/app-registry.js';
 import { ApprovalErrorFilter } from '../src/approval-error.filter.js';
@@ -37,6 +38,9 @@ import { InventoryErrorFilter } from '../src/inventory-error.filter.js';
 import { ListingErrorFilter } from '../src/listing-error.filter.js';
 import { OrgErrorFilter } from '../src/org-error.filter.js';
 import { WorkOrderErrorFilter } from '../src/workorder-error.filter.js';
+import { BackfillErrorFilter } from '../src/backfill-error.filter.js';
+import { CapabilityErrorFilter } from '../src/capability-error.filter.js';
+import { UWaveErrorFilter } from '../src/u-wave-error.filter.js';
 
 /** 本文件起过的全部应用：afterAll 统一 close，保证不留孤儿端口。 */
 const bootedApps: INestApplication[] = [];
@@ -51,10 +55,17 @@ const suiteStartAt = Date.now();
  */
 async function bootApp(): Promise<string> {
   const enabled = parseModulesEnabled(process.env['MODULES_ENABLED']);
-  const app = await NestFactory.create(buildAppModule(enabled), { logger: ['error', 'warn'] });
+  // bodyParser:false + 重注册（main.ts U6 #⑥ 同构——attachment 上传传输面 45MiB）。
+  const app = (await NestFactory.create(buildAppModule(enabled), {
+    logger: ['error', 'warn'],
+    bodyParser: false,
+  })) as NestExpressApplication;
+  app.useBodyParser('json', { limit: '45mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '45mb' });
 
   // 域错误过滤器与 main.ts 同构（收尾波-③ 起含 AuthErrorFilter——
-  // 认证域错误 400/401 的映射是组合根装配的一部分，boot 路径不可缺）。
+  // 认证域错误 400/401 的映射是组合根装配的一部分，boot 路径不可缺；
+  // U6 起含 Backfill/Capability/UWave 三聚合过滤器）。
   app.useGlobalFilters(
     new OrgErrorFilter(),
     new AuthErrorFilter(),
@@ -73,6 +84,9 @@ async function bootApp(): Promise<string> {
     new MaintenanceErrorFilter(),
     new DrawingErrorFilter(),
     new MetricPackErrorFilter(),
+    new BackfillErrorFilter(),
+    new CapabilityErrorFilter(),
+    new UWaveErrorFilter(),
   );
 
   const tenantContext = app.get(TenantContext);
@@ -240,5 +254,55 @@ describe('boot smoke（真实 HTTP 起停，零 DB 装配）', () => {
     expect((await fetch(`${baseUrl}/maintenance/tasks`)).status).toBe(401);
     expect((await fetch(`${baseUrl}/drawing/notices/dwg-probe`)).status).toBe(401);
     expect((await fetch(`${baseUrl}/metric-pack/packs`)).status).toBe(401);
+  });
+
+  it('U6：issue/aftercare-claim + T1 三域全装，零 DB 起服且路由门禁同构（含 45MiB 传输面）', async () => {
+    setEnv(
+      'MODULES_ENABLED',
+      'core,workbench,workorder,dispatch,inventory,reporting,issue,aftercare-claim,attachment,menu-config,notifications,approval-config',
+    );
+    setEnv('DATABASE_URL', undefined); // 零 DB：U 波模块 + T1 三域内存回落可起服
+    setEnv('SMES_DEV_AUTH', undefined);
+    const baseUrl = await bootApp();
+
+    // attachment.controllers.ts 的 import type 缺陷已由总控修复（值导入，Nest DI
+    // 元数据恢复）——模块进全装场景清单，路由探针回归。
+    const modules = await fetch(`${baseUrl}/modules`);
+    expect(modules.status).toBe(200);
+    expect(await modules.json()).toEqual({
+      modules: [
+        'core',
+        'workbench',
+        'workorder',
+        'dispatch',
+        'inventory',
+        'reporting',
+        'issue',
+        'aftercare-claim',
+        'attachment',
+        'menu-config',
+        'notifications',
+        'approval-config',
+      ],
+    });
+
+    // U 波两模块路由探针（无凭据 → 401——每路由必挂 @RequirePermission 同构门禁）
+    expect((await fetch(`${baseUrl}/issue/tasks`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/dispatch/aftercare/claims/context?dispatchId=dsp-1`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/attachment/list-by-biz-id?bizId=biz-1`)).status).toBe(401);
+    // T1 三域路由探针（M1 线已接，此处回归防线——全装形态下与 U 波模块共存）
+    expect((await fetch(`${baseUrl}/menu-config/configs`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/notifications`)).status).toBe(401);
+    expect((await fetch(`${baseUrl}/approval-config/flows`)).status).toBe(401);
+
+    // 传输面护栏（U6 #⑥）：45MiB json parser 装配证据——>100kb 的合法 JSON
+    // 载荷不被内建 100kb 拒绝（业务上限另由 attachment-input 把关，此处只证
+    // 传输面放宽生效；~1MiB 载荷足够区分 100kb 默认与 45mb 限额）。
+    const bigPayload = await fetch(`${baseUrl}/issue/tasks/sync`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ padding: 'x'.repeat(1024 * 1024) }),
+    });
+    expect(bigPayload.status).toBe(401); // 门禁先于 body 解析语义——但 413（Payload Too Large）不得出现
   });
 });
