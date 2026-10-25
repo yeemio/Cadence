@@ -104,3 +104,37 @@ describe('hostBasedTenantResolver：SaaS 形态（基础域严格后缀匹配）
     expect(() => hostBasedTenantResolver({ domain: '  ', lookup: () => [] })).toThrow(TenantResolutionError);
   });
 });
+
+describe('TenantResolutionError.reason：结构化失败原因（HTTP 状态码映射依据）', () => {
+  // M5 收尾波：组合根 main.ts 以 reason 区分 404（unknown-tenant）与
+  // 421（off-domain/missing-host/invalid-subdomain）——本块锚定 reason 值
+  // 稳定，防消息文案演进悄悄破坏状态码映射。
+  const resolver = hostBasedTenantResolver({ domain: 'smes.example.com', lookup: () => ['acme'] });
+  const request = (host: string) => ({ headers: { host } });
+  const reasonOf = (fn: () => unknown): string => {
+    try {
+      fn();
+    } catch (error) {
+      expect(error).toBeInstanceOf(TenantResolutionError);
+      return (error as TenantResolutionError).reason;
+    }
+    throw new Error('expected TenantResolutionError, got none');
+  };
+
+  it('域内未知租户 → unknown-tenant', () => {
+    expect(reasonOf(() => resolver(request('ghost.smes.example.com')))).toBe('unknown-tenant');
+  });
+
+  it('域外 Host / 裸基础域 / 多级子域 → off-domain / invalid-subdomain', () => {
+    expect(reasonOf(() => resolver(request('acme.evil.example.com')))).toBe('off-domain');
+    // 裸基础域不以后缀 `.domain` 结尾，落 off-domain（而非 invalid-subdomain——
+    // 后者仅覆盖"后缀匹配但标签空/含点"：前导点 Host 与多级子域）
+    expect(reasonOf(() => resolver(request('smes.example.com')))).toBe('off-domain');
+    expect(reasonOf(() => resolver(request('.smes.example.com')))).toBe('invalid-subdomain');
+    expect(reasonOf(() => resolver(request('a.b.smes.example.com')))).toBe('invalid-subdomain');
+  });
+
+  it('缺 Host → missing-host', () => {
+    expect(reasonOf(() => resolver({ headers: {} }))).toBe('missing-host');
+  });
+});

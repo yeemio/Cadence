@@ -14,4 +14,4 @@ export {
   singleTenantResolver,
   hostBasedTenantResolver,
 } from './tenant-resolution.js';
-export type { HostBasedTenantResolverOptions } from './tenant-resolution.js';
+export type { HostBasedTenantResolverOptions, TenantResolutionReason } from './tenant-resolution.js';
