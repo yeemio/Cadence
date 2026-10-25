@@ -2056,6 +2056,110 @@ export {
 export { CostingModule } from './costing/costing.module.js';
 export type { CostingModuleOptions } from './costing/costing.module.js';
 
+// ---- costing U7：项目成本六块（A5 项目成本报表；六块聚合 + 快照 + 命令化跑批 +
+// 录入价格 + 详情 KPI 查询面） ----
+export {
+  PROJECT_COST_BLOCKS,
+  PROJECT_COST_SEGMENTS,
+  PROJECT_COST_BLOCK_LABELS,
+  PROJECT_LABOR_TRADES,
+  AFTERCARE_LABOR_TRADE,
+  laborBlockOfTrade,
+  aggregateProjectCost,
+  laborAmountsByTrade,
+  sameProjectTotals,
+  EMPTY_PROJECT_COST_TOTALS,
+  emptySegmentTotals,
+} from './costing/project-cost-model.js';
+export type {
+  ProjectCostBlock,
+  ProjectCostDisplayBlock,
+  ProjectCostSegment,
+  MaterialSegmentTotals,
+  MaterialRawTotals,
+  ProjectLaborRow,
+  AftercareTotals,
+  EquipmentTotals,
+  OutsourceSupplierRow,
+  ProjectCostTotals,
+  ProjectEntryFact,
+  LaborEntryFact,
+} from './costing/project-cost-model.js';
+export {
+  EMPTY_PROJECT_ISSUE_SOURCE,
+  EMPTY_PROJECT_EQUIPMENT_PURCHASE_SOURCE,
+  EMPTY_PROJECT_AFTERCARE_CLAIM_SOURCE,
+  NOOP_ISSUE_PRICE_WRITEBACK,
+  emptyProjectCostSourcePorts,
+} from './costing/project-cost-ports.js';
+export type {
+  ProjectIssueSegmentLine,
+  ProjectIssueCostSourcePort,
+  ProjectEquipmentPurchaseLine,
+  ProjectEquipmentPurchaseSourcePort,
+  ProjectAftercareClaimLine,
+  ProjectAftercareClaimSourcePort,
+  IssuePriceWritebackEntry,
+  IssuePriceWritebackPort,
+  ProjectCostSourcePorts,
+} from './costing/project-cost-ports.js';
+export type {
+  CostProjectEntryRow,
+  AppendCostProjectEntryInput,
+  ListCostProjectEntriesFilter,
+  CostProjectEntryStore,
+  CostProjectSnapshotRow,
+  AppendCostProjectSnapshotInput,
+  CostProjectSnapshotStore,
+  CostPriceEntryRow,
+  UpsertCostPriceEntryInput,
+  CostPriceEntryStore,
+  ProjectCostStores,
+} from './costing/project-cost-stores.js';
+export {
+  PROJECT_COST_EVENT_TYPES,
+  PROJECT_COST_AGGREGATE_TYPES,
+  makeCostProjectEntryCommittedEvent,
+  makeCostProjectSnapshotRebuiltEvent,
+  makeCostPriceEntryRecordedEvent,
+} from './costing/project-cost-events.js';
+export type {
+  CostProjectEntryCommittedPayload,
+  CostProjectSnapshotRebuiltPayload,
+  CostPriceEntryRecordedPayload,
+} from './costing/project-cost-events.js';
+export {
+  PROJECT_COST_COMMAND_KINDS,
+  parseProjectCommandEnvelopeBody,
+  parseProjectCommandBodyForKind,
+  parseProjectRebuildPayload,
+  parsePriceEntryPayload,
+} from './costing/project-cost-input.js';
+export type {
+  ProjectCostCommandKind,
+  ProjectCostCommand,
+  ProjectCostCommandEnvelope,
+  ProjectCostEnvelopeBody,
+  ProjectRebuildPayload,
+  PriceEntryRowInput,
+  PriceEntryPayload,
+} from './costing/project-cost-input.js';
+export {
+  InMemoryCostProjectEntryStore,
+  InMemoryCostProjectSnapshotStore,
+  InMemoryCostPriceEntryStore,
+  createInMemoryProjectCostStores,
+} from './costing/in-memory-project-cost-stores.js';
+export { ProjectCostController } from './costing/project-cost.controllers.js';
+export { ProjectCostService } from './costing/project-cost.service.js';
+export type {
+  ProjectCostSharedStores,
+  ProjectCostCommitted,
+  ProjectCostCommandResult,
+  ProjectCostServiceOptions,
+  ProjectKpiRow,
+} from './costing/project-cost.service.js';
+
 // ---- issue：发料任务/发料记录（U 波 A11 增量：发料链路；IssueMaterialPort 库存
 // 联动与 dispatch 触发钩子接线归合流） ----
 export {

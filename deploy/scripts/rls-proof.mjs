@@ -27,7 +27,7 @@ import {
 const PG_PORT = 55521; // 避开 e2e 脚本端口（55491/55494…）
 const CONTAINER = `cadence-rls-proof-${process.pid}`;
 const DATABASE_URL = `postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/cadence`;
-const EXPECTED_RLS_TABLES = 98; // schema 全部带 tenant_id 的表（rls-conformance 守恒；S1 backfill 六表 80→86；U 波 T1 三表+issue 五表+attachment+原材料关联+售后报销两表 86→98）
+const EXPECTED_RLS_TABLES = 101; // schema 全部带 tenant_id 的表（rls-conformance 守恒；S1 backfill 六表 80→86；U 波 T1 三表+issue 五表+attachment+原材料关联+售后报销两表 86→98；U7 项目成本三表 98→101）
 
 const kit = createProofAsserts();
 

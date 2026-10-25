@@ -172,6 +172,26 @@
  *     消息无 recipient 面；两事件点（inspection 闭环超时点名 / baseline 故障
  *     派修）均建待办，收件箱投递经 #27 待办桥完成（收件人 = 事件点侧经办人，
  *     正确同源）。站内通知不加第二投递（避免与桥重复行）——本波接线不缺口。
+ *
+ * U7 接线波（costing 项目成本六块三源适配，A5）：
+ * 31. costing.projectIssueSource ← issue 发料记录段事实（②材料两段/原材料段 +
+ *     ⑥设备利库段数量）
+ *     机制：store 级——IssueRecordStore.list(state=active) 明细快照按行拆段：
+ *     part 利库段=reservedConsumedQty（金额归 costing 录入价格表，端口行金额
+ *     null）、采购段=max(0,thisQty−reserved)×本令 PO 加权价、原材料段=工序×
+ *     原材料关联行（尺寸×件数×单价×净发料）；std/elec 两段=Σ allocations 的
+ *     reserved/available 回执（合同 U7 两段拆分口径）；equipment 利库段=
+ *     useInventoryConsumedQty。无价段金额 null（跑批不计、remark 留痕）。
+ * 32. costing.projectEquipmentSource ← listing 外购设备采购行（⑥采购段）
+ *     机制：store 级——PO 行 × equipment 清单行按 itemId/drawingNo 匹配；金额
+ *     = receivedQty × unitPriceMinor（listing 既定金额汇总口径；未收货/未价=0
+ *     不计）。
+ * 33. costing.projectAftercareSource ← dispatch 售后报销（⑤报销段）
+ *     机制：store 级——DispatchOrderStore.list(kind=aftermarket, workOrder) ×
+ *     AftercareClaimStore.findByDispatch（四费合计 aftercareClaimTotalMinor；
+ *     无工作令归属的售后单不入项目成本——口径差异登记）。
+ *     ④/⑤ 工时段与 ③ 外协段复用 #3/#4 既有源；录入价格写回端口缺省 NOOP
+ *     （issue 源码冻结，写回交互归后续波裁定）。
  */
 import { randomUUID } from 'node:crypto';
 import type { INestApplicationContext, Type } from '@nestjs/common';
@@ -204,15 +224,26 @@ import {
   minutesToHours,
   ReportingService,
   STOCK_MOVEMENT_AGGREGATE_TYPE,
+  aftercareClaimTotalMinor,
   type AftercareApprovedReportPort,
   type InventoryAvailabilityPort,
   type InventoryCommand,
   type InventoryDomainEventStore,
+  type AftercareClaimStore,
   type IssueMaterialPort,
+  type IssueRecordStore,
   type IssueStockAllocationReceipt,
   type IssueSyncTrigger,
+  type ListingLineStore,
   type ListingRequirementPort,
   type StockReservationStore,
+  type ProcessMaterialLinkStore,
+  type ProjectAftercareClaimSourcePort,
+  type ProjectAftercareClaimLine,
+  type ProjectEquipmentPurchaseSourcePort,
+  type ProjectEquipmentPurchaseLine,
+  type ProjectIssueCostSourcePort,
+  type ProjectIssueSegmentLine,
   REPORT_EVENT_TYPES,
   WORKORDER_EVENT_TYPES,
   WORK_ORDER_AGGREGATE_TYPE,
@@ -241,6 +272,8 @@ import {
   type OutsourcingLineStore,
   type OutsourcingPriceSource,
   type PartsIssuePort,
+  type ProcessMaterialLink,
+  type PurchaseOrder,
   type PurchaseOrderStore,
   type ReportDomainEventStore,
   type ReportEventFeedPort,
@@ -315,6 +348,14 @@ export interface CrossModuleWiringStores {
   readonly inventoryReservations?: StockReservationStore | undefined;
   /** inventory 域事件（U6 #28：issue.material 撤销恢复预占的事实源）。 */
   readonly inventoryDomainEvents?: InventoryDomainEventStore | undefined;
+  /** issue 发料记录投影（U7 #31：projectIssueSource 段事实源）。 */
+  readonly issueRecords?: IssueRecordStore | undefined;
+  /** listing 清单行投影（U7 #31/#32：原材料关联锚 + 设备采购匹配面）。 */
+  readonly listingLines?: ListingLineStore | undefined;
+  /** listing 工序×原材料关联（U7 #31：②原材料段尺寸/单价快照源）。 */
+  readonly processMaterialLinks?: ProcessMaterialLinkStore | undefined;
+  /** dispatch 售后报销投影（U7 #33：projectAftercareSource 四费事实源）。 */
+  readonly aftercareClaims?: AftercareClaimStore | undefined;
 }
 
 /** 各模块 register 的跨模块端口注入面（形状与 *ModuleOptions 对应字段同构）。 */
@@ -372,6 +413,12 @@ export interface CrossModuleRegisterPorts {
     readonly workOrderSubject?: WorkOrderSubjectPort | undefined;
     /** 成本快照导出（xlsx-base64 字节，ExcelJS 适配器——与 listing 共享实例）。 */
     readonly excelPort?: CostingExcelPort | undefined;
+    /** U7 #31：issue 发料行段事实（②材料两段/原材料段 + ⑥设备利库段）。 */
+    readonly projectIssueSource?: ProjectIssueCostSourcePort | undefined;
+    /** U7 #32：listing 外购设备采购行（⑥采购段）。 */
+    readonly projectEquipmentSource?: ProjectEquipmentPurchaseSourcePort | undefined;
+    /** U7 #33：dispatch 售后报销（⑤报销段）。 */
+    readonly projectAftercareSource?: ProjectAftercareClaimSourcePort | undefined;
   };
   readonly inspection?: {
     readonly stockReleasePort?: StockReleasePort | undefined;
@@ -747,6 +794,234 @@ async function latestPurchasePrices(
     }
   }
   return prices;
+}
+
+// ---- U7 #31~#33：costing 项目成本六块源适配器（组合根装配） ----
+
+/**
+ * 本工作令 PO 加权含税单价（分；U7 #31/#32 单价口径）：itemId 与 drawingNo 两键
+ * 各建一张——Σ(订购量×单价)/Σ订购量 四舍五入，仅计已定价行（文档「多张 PO 按
+ * 订单采购数量加权平均；单价为空该笔暂不计」的 Cadence 重述）。
+ */
+function weightedPoPrices(
+  orders: readonly PurchaseOrder[],
+): { readonly byItemId: ReadonlyMap<string, number>; readonly byDrawingNo: ReadonlyMap<string, number> } {
+  const accItemId = new Map<string, { qty: number; amount: number }>();
+  const accDrawingNo = new Map<string, { qty: number; amount: number }>();
+  for (const order of orders) {
+    for (const line of order.lines) {
+      if (line.unitPriceMinor === null) continue; // 未定价行不计入加权
+      const item = accItemId.get(line.itemId) ?? { qty: 0, amount: 0 };
+      item.qty += line.quantity;
+      item.amount += line.quantity * line.unitPriceMinor;
+      accItemId.set(line.itemId, item);
+      if (line.drawingNo !== null) {
+        const drawing = accDrawingNo.get(line.drawingNo) ?? { qty: 0, amount: 0 };
+        drawing.qty += line.quantity;
+        drawing.amount += line.quantity * line.unitPriceMinor;
+        accDrawingNo.set(line.drawingNo, drawing);
+      }
+    }
+  }
+  const byItemId = new Map<string, number>();
+  for (const [key, acc] of accItemId) byItemId.set(key, Math.round(acc.amount / acc.qty));
+  const byDrawingNo = new Map<string, number>();
+  for (const [key, acc] of accDrawingNo) byDrawingNo.set(key, Math.round(acc.amount / acc.qty));
+  return { byItemId, byDrawingNo };
+}
+
+/**
+ * ②原材料段金额（分）：Σ 关联行（尺寸换算量 × 件数 × 录入单价 × 自制净发料）。
+ * 尺寸换算量（U4 关联行快照）：length=长/1000(m)；长宽厚=(L/1000)(W/1000)(H/1000)(m³)；
+ * area=面积值(m²)。无价行不计（文档「某一行无单价则该行不计入，其余行仍计」）。
+ */
+function rawMaterialAmountMinor(links: readonly ProcessMaterialLink[], netIssueQty: number): number | null {
+  if (links.length === 0) return null; // 无关联行：该图号不可计原材料成本
+  let total = 0;
+  let computed = false;
+  for (const link of links) {
+    if (link.unitPriceMinor === null) continue; // 无价行不计
+    const size =
+      link.cutSizeForm === 'length'
+        ? link.partLength / 1000
+        : link.cutSizeForm === 'length-width-height'
+          ? (link.partLength / 1000) * ((link.partWidth ?? 0) / 1000) * ((link.partHeight ?? 0) / 1000)
+          : link.partLength; // area：m² 原值
+    if (!(size > 0)) continue; // 尺寸无效不计
+    total += Math.round(link.unitPriceMinor * size * link.quantity * netIssueQty);
+    computed = true;
+  }
+  return computed ? total : null; // 全部行不可计 → null（该段不计）
+}
+
+/**
+ * #31 issue 发料行段适配器（store 级）：IssueRecordStore 明细快照按行拆段——
+ * 两段拆分以回执快照为据（合同 U7 裁定）：part 利库段=reservedConsumedQty
+ * （金额归 costing 录入价格表，端口行金额 null）、采购段/原材料段基数=max(0,
+ * thisQty−reservedConsumedQty)；std/elec 两段=Σ allocations reserved/available；
+ * equipment 利库段=useInventoryConsumedQty。撤销记录（revoked）按**清零行**
+ * 投影（该锚点当前净贡献 = 0——已发累计退出口径；costing 侧经 delta 冲销条目
+ * 对齐净额到零，文档 §1.2.1「净数量 = 已发 − 撤销回冲」）。
+ */
+function createProjectIssueSource(stores: {
+  readonly issueRecords: IssueRecordStore;
+  readonly purchaseOrders: PurchaseOrderStore | undefined;
+  readonly processMaterialLinks: ProcessMaterialLinkStore | undefined;
+}): ProjectIssueCostSourcePort {
+  return {
+    issueSegments: async (tenant, workOrderId): Promise<readonly ProjectIssueSegmentLine[]> => {
+      const records = await stores.issueRecords.list(tenant, { workOrderId }); // active + revoked（清零行）
+      const orders = stores.purchaseOrders === undefined ? [] : await stores.purchaseOrders.list(tenant, { workOrderId });
+      const prices = weightedPoPrices(orders);
+      const priceOf = (itemId: string | null, drawingNo: string | null): number | null => {
+        if (drawingNo !== null) {
+          const byDrawing = prices.byDrawingNo.get(drawingNo);
+          if (byDrawing !== undefined) return byDrawing;
+        }
+        if (itemId !== null) return prices.byItemId.get(itemId) ?? null;
+        return null;
+      };
+      const lines: ProjectIssueSegmentLine[] = [];
+      for (const record of [...records].sort((a, b) => a.issuedAt.localeCompare(b.issuedAt))) {
+        const revoked = record.state === 'revoked'; // 撤销锚点：清零行（净贡献 0，delta 对齐用）
+        for (const line of record.lines) {
+          const base = {
+            recordId: record.id,
+            taskLineId: line.taskLineId,
+            workOrderId,
+            sourceLineId: line.sourceLineId,
+            itemId: line.itemId,
+            drawingNo: line.drawingNo,
+            equipmentRef: record.equipmentRef,
+            issuedAt: record.issuedAt,
+          };
+          const emit = (
+            segment: 'reserved' | 'purchase' | 'raw',
+            kind: ProjectIssueSegmentLine['kind'],
+            quantity: number,
+            amountMinor: number | null,
+          ): void => {
+            if (revoked) {
+              lines.push({ ...base, kind, segment, quantity: 0, amountMinor: 0 });
+              return;
+            }
+            if (quantity === 0) return;
+            lines.push({ ...base, kind, segment, quantity, amountMinor });
+          };
+          if (line.kind === 'part') {
+            const reservedQty = line.reservedConsumedQty;
+            const netQty = Math.max(0, line.thisQty - reservedQty);
+            if (reservedQty !== 0) emit('reserved', 'part', reservedQty, null);
+            if (netQty > 0) {
+              const price = priceOf(line.itemId, line.drawingNo);
+              emit('purchase', 'part', netQty, price === null ? null : Math.round(netQty * price));
+              if (stores.processMaterialLinks !== undefined && line.sourceLineId !== null) {
+                const links = await stores.processMaterialLinks.listByLine(tenant, line.sourceLineId);
+                const rawAmount = rawMaterialAmountMinor(links, netQty);
+                if (rawAmount !== null) emit('raw', 'part', netQty, rawAmount);
+              }
+            }
+            continue;
+          }
+          if (line.kind === 'standard' || line.kind === 'electrical') {
+            const reservedQty = line.allocations.reduce((sum, alloc) => sum + alloc.reservedConsumedQty, 0);
+            const availableQty = line.allocations.reduce((sum, alloc) => sum + alloc.availableConsumedQty, 0);
+            if (reservedQty > 0) {
+              const price = priceOf(line.itemId, line.drawingNo);
+              emit('reserved', line.kind, reservedQty, price === null ? null : Math.round(reservedQty * price));
+            }
+            if (availableQty > 0) {
+              const price = priceOf(line.itemId, line.drawingNo);
+              emit('purchase', line.kind, availableQty, price === null ? null : Math.round(availableQty * price));
+            }
+            continue;
+          }
+          if (line.kind === 'equipment' && line.useInventoryConsumedQty > 0) {
+            emit('reserved', 'equipment', line.useInventoryConsumedQty, null);
+          }
+        }
+      }
+      return lines;
+    },
+  };
+}
+
+/**
+ * #32 外购设备采购行适配器（store 级）：PO 行 × equipment 清单行按 itemId/
+ * drawingNo 匹配；金额 = receivedQty × unitPriceMinor（listing 既定金额汇总口径
+ * ——文档「申请子行 Σ amount」的 Cadence 对应面；未收货/未价 = 0 不计）。
+ */
+function createProjectEquipmentSource(stores: {
+  readonly purchaseOrders: PurchaseOrderStore | undefined;
+  readonly listingLines: ListingLineStore | undefined;
+}): ProjectEquipmentPurchaseSourcePort {
+  return {
+    equipmentPurchases: async (tenant, workOrderId): Promise<readonly ProjectEquipmentPurchaseLine[]> => {
+      if (stores.purchaseOrders === undefined) return [];
+      const orders = await stores.purchaseOrders.list(tenant, { workOrderId });
+      const equipmentLines =
+        stores.listingLines === undefined
+          ? []
+          : (await stores.listingLines.listByWorkOrder(tenant, workOrderId)).filter((line) => line.kind === 'equipment');
+      const byItemId = new Map(equipmentLines.filter((line) => line.itemId !== null).map((line) => [line.itemId!, line]));
+      const byDrawingNo = new Map(equipmentLines.filter((line) => line.drawingNo !== null).map((line) => [line.drawingNo!, line]));
+      const lines: ProjectEquipmentPurchaseLine[] = [];
+      for (const order of orders) {
+        for (const line of order.lines) {
+          const matched =
+            (line.drawingNo !== null ? byDrawingNo.get(line.drawingNo) : undefined) ??
+            (line.itemId !== null ? byItemId.get(line.itemId) : undefined);
+          const amount =
+            line.unitPriceMinor === null || line.receivedQty <= 0
+              ? 0
+              : Math.round(line.receivedQty * line.unitPriceMinor);
+          lines.push({
+            purchaseOrderId: order.id,
+            lineNo: line.lineNo,
+            workOrderId,
+            itemId: line.itemId,
+            drawingNo: line.drawingNo,
+            quantity: line.quantity,
+            receivedQty: line.receivedQty,
+            unitPriceMinor: line.unitPriceMinor,
+            amountMinor: amount,
+            equipmentListingLineId: matched?.id ?? null,
+            equipmentRef: null, // Cadence equipment 清单行无设备维面（口径差异登记）
+          });
+        }
+      }
+      return lines.sort((a, b) => a.purchaseOrderId.localeCompare(b.purchaseOrderId) || a.lineNo - b.lineNo);
+    },
+  };
+}
+
+/**
+ * #33 售后报销适配器（store 级）：aftermarket 派工单 × 报销单联查——四费合计
+ * （aftercareClaimTotalMinor）；工作令归属取派工单 workOrderId（无归属单不入
+ * 项目成本，口径差异登记）。
+ */
+function createProjectAftercareSource(stores: {
+  readonly dispatchOrders: DispatchOrderStore;
+  readonly aftercareClaims: AftercareClaimStore;
+}): ProjectAftercareClaimSourcePort {
+  return {
+    aftercareClaims: async (tenant, workOrderId): Promise<readonly ProjectAftercareClaimLine[]> => {
+      const orders = await stores.dispatchOrders.list(tenant, { kind: 'aftermarket', workOrderId });
+      const lines: ProjectAftercareClaimLine[] = [];
+      for (const order of orders) {
+        const claim = await stores.aftercareClaims.findByDispatch(tenant, order.id);
+        if (claim === null) continue; // 未填报报销不计
+        lines.push({
+          claimId: claim.id,
+          dispatchId: claim.dispatchId,
+          workOrderId,
+          reimburseMinor: aftercareClaimTotalMinor(claim),
+          filedAt: claim.updatedAt,
+        });
+      }
+      return lines.sort((a, b) => a.filedAt.localeCompare(b.filedAt));
+    },
+  };
 }
 
 // ---- integration 边缘口的 sink 接口（清单 #10/#18；实现见 integration-edge-adapters.ts） ----
@@ -1399,6 +1674,28 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
         }
       : undefined;
 
+  // U7 #31 costing.projectIssueSource（store 级：issue 发料记录段事实 + PO 加权价 + 原材料关联）
+  const projectIssueSource: ProjectIssueCostSourcePort | undefined =
+    has('costing') && has('issue') && stores.issueRecords !== undefined
+      ? createProjectIssueSource({
+          issueRecords: stores.issueRecords,
+          purchaseOrders: stores.purchaseOrders,
+          processMaterialLinks: stores.processMaterialLinks,
+        })
+      : undefined;
+
+  // U7 #32 costing.projectEquipmentSource（store 级：PO 行 × equipment 清单行匹配）
+  const projectEquipmentSource: ProjectEquipmentPurchaseSourcePort | undefined =
+    has('costing') && has('listing') && stores.purchaseOrders !== undefined
+      ? createProjectEquipmentSource({ purchaseOrders: stores.purchaseOrders, listingLines: stores.listingLines })
+      : undefined;
+
+  // U7 #33 costing.projectAftercareSource（store 级：aftermarket 派工 × 报销单联查）
+  const projectAftercareSource: ProjectAftercareClaimSourcePort | undefined =
+    has('costing') && has('dispatch') && stores.dispatchOrders !== undefined && stores.aftercareClaims !== undefined
+      ? createProjectAftercareSource({ dispatchOrders: stores.dispatchOrders, aftercareClaims: stores.aftercareClaims })
+      : undefined;
+
   // #7 dispatch.kitCheck（store 级）
   const kitCheck: KitCheckReadPort | undefined =
     has('dispatch') && has('workorder') && stores.workOrderKitChecks !== undefined
@@ -1795,6 +2092,9 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
       laborSource !== undefined ||
       outsourcingSource !== undefined ||
       workOrderSubject !== undefined ||
+      projectIssueSource !== undefined ||
+      projectEquipmentSource !== undefined ||
+      projectAftercareSource !== undefined ||
       (has('costing') && excel !== undefined)
         ? {
             costing: {
@@ -1803,6 +2103,9 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
               ...(outsourcingSource !== undefined ? { outsourcingSource } : {}),
               ...(workOrderSubject !== undefined ? { workOrderSubject } : {}),
               ...(has('costing') && excel !== undefined ? { excelPort: excel } : {}),
+              ...(projectIssueSource !== undefined ? { projectIssueSource } : {}),
+              ...(projectEquipmentSource !== undefined ? { projectEquipmentSource } : {}),
+              ...(projectAftercareSource !== undefined ? { projectAftercareSource } : {}),
             },
           }
         : {}),

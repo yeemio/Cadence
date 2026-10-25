@@ -8,7 +8,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { TenantContext, reportSourceProviderOf, type ReportSourceProvider, LocalFileSystemObjectStorage } from '@smes/application';
 import { connectApprovalStore } from '@smes/business-store/approval';
 import { connectBaselineStore } from '@smes/business-store/baseline';
-import { connectCostingStore } from '@smes/business-store/costing';
+import { connectCostingStore, connectProjectCostStore } from '@smes/business-store/costing';
 import { connectDispatchStore } from '@smes/business-store/dispatch';
 import { connectHoursStore } from '@smes/business-store/hours';
 import { connectReportingStore } from '@smes/business-store/reporting';
@@ -95,6 +95,9 @@ async function bootstrap(): Promise<void> {
   const reportingStoreHandle = process.env['DATABASE_URL'] ? connectReportingStore() : undefined;
   const hoursStoreHandle = process.env['DATABASE_URL'] ? connectHoursStore() : undefined;
   const costingStoreHandle = process.env['DATABASE_URL'] ? connectCostingStore() : undefined;
+  // U7 项目成本三存储（段事实/六块快照/录入价格）：同上惰性连接；零 DB 不注入
+  // = buildAppModule 回落模块内存实现（六块归集零接线形态语义完整）。
+  const projectCostStoreHandle = process.env['DATABASE_URL'] ? connectProjectCostStore() : undefined;
   const maintenanceStoreHandle = process.env['DATABASE_URL'] ? connectMaintenanceStore() : undefined;
   const drawingStoreHandle = process.env['DATABASE_URL'] ? connectDrawingStore() : undefined;
   const metricPackStoreHandle = process.env['DATABASE_URL'] ? connectMetricPackStore() : undefined;
@@ -207,6 +210,11 @@ async function bootstrap(): Promise<void> {
       aftercareClaimStore: dispatchStoreHandle?.aftercareClaimStore,
       attachmentStore: attachmentStoreHandle?.attachmentStore,
       objectStorage: attachmentObjectStorage,
+      // U7 项目成本：三存储 + 六块源读面（issue 记录/清单行/工序原材料关联同源注入）
+      costingProjectEntryStore: projectCostStoreHandle?.projectEntryStore,
+      costingProjectSnapshotStore: projectCostStoreHandle?.projectSnapshotStore,
+      costingPriceEntryStore: projectCostStoreHandle?.priceEntryStore,
+      processMaterialLinkStore: listingStoreHandle?.processMaterialStore,
       workOrderStore: workOrderStoreHandle?.orderStore,
       workOrderAttachmentStore: workOrderStoreHandle?.attachmentStore,
       workOrderPartsStore: workOrderStoreHandle?.partsStore,

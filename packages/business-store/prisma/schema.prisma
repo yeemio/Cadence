@@ -1740,6 +1740,103 @@ model CostingOperationRecord {
 }
 
 // ============================================================================
+// costing 模块 U7 项目成本六块（A5 项目成本报表）——段事实 append-only + 六块
+// 快照可重算 + 录入价格运营投影。域事件不建新表（落既有 event_records /
+// outbox_records）；幂等记账复用 costing_operations（见 pg-project-cost-stores）。
+// ============================================================================
+
+/// 项目成本段事实行（CostProjectEntryStore 端口的 PG 持久化；append-only 事实，
+/// 证据七公共列 TEXT 口径；(tenant, source_key) 唯一 = 段幂等锚点；来源事实漂移
+/// 追加 delta 条目（deltaOf 指回基准），净额 = Σ 同基准条目。block=六块
+/// （材料四类各占一块）；segment=两段拆分（reserved 利库/purchase 采购/raw
+/// 原材料/purchase-order 设备采购/reimburse 报销/labor 工时）。
+model CostProjectEntryRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  seq           BigInt    @default(autoincrement()) @db.BigInt
+  workOrderId   String    @map("work_order_id")
+  block         String
+  segment       String?
+  lineKind      String?   @map("line_kind")
+  amountMinor   Int?      @map("amount_minor")
+  quantity      Float?
+  trade         String?
+  supplierRef   String?   @map("supplier_ref")
+  equipmentRef  String?   @map("equipment_ref")
+  sourceType    String    @map("source_type")
+  sourceRefId   String    @map("source_ref_id")
+  sourceKey     String    @map("source_key")
+  deltaOf       String?   @map("delta_of")
+  workDate      String?   @map("work_date")
+  remark        String?
+  occurredAt    DateTime  @db.Timestamptz(6) @map("occurred_at")
+  recordedBy    String    @map("recorded_by")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@unique([tenantId, sourceKey])
+  @@index([tenantId, workOrderId])
+  @@index([tenantId, block])
+  @@map("cost_project_entries")
+}
+
+/// 项目成本六块快照行（CostProjectSnapshotStore 端口的 PG 持久化；工作令×口径
+/// 的六块重算结果，可重算快照——supersedes 链，重算幂等 = 值未变不追加新行；
+/// totals JSONB = 六块合计 + 块明细（材料四类两段/外协供应商行/人工三行/
+/// 售后/设备两段）。legacy 七张结果表的 Cadence 合一落点（口径差异登记）。
+model CostProjectSnapshotRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workOrderId   String    @map("work_order_id")
+  modelCode     String    @map("model_code")
+  modelVersion  Int       @map("model_version")
+  totals        Json
+  rebuiltBy     String    @map("rebuilt_by")
+  rebuiltAt     DateTime  @db.Timestamptz(6) @map("rebuilt_at")
+  objectVersion Int       @default(1) @map("object_version")
+  supersedes    String?
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, workOrderId, modelCode, modelVersion, objectVersion])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, workOrderId])
+  @@map("cost_project_snapshots")
+}
+
+/// 录入价格行（CostPriceEntryStore 端口的 PG 持久化；运营投影可 UPDATE——
+/// 文档 §2.1.5 非标件利库/外购设备利库两 Tab 的 Cadence 合一锚点：一行 = 一条
+/// 发料明细行；重录覆盖 upsert；不套证据公共列（取舍同 issue_records 投影）；
+/// 写回发料明细经 IssuePriceWritebackPort 单向通知（本表即成本口径唯一事实）。
+model CostPriceEntryRecord {
+  id             String   @id @default(uuid(7))
+  tenantId       String   @map("tenant_id")
+  workOrderId    String   @map("work_order_id")
+  recordId       String   @map("record_id")
+  taskLineId     String   @map("task_line_id")
+  kind           String
+  sourceLineId   String?  @map("source_line_id")
+  reservedQty    Float    @map("reserved_qty")
+  unitPriceMinor Int?     @map("unit_price_minor")
+  totalMinor     Int?     @map("total_minor")
+  amountManual   Boolean  @default(false) @map("amount_manual")
+  recordedBy     String   @map("recorded_by")
+  createdAt      DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, workOrderId, recordId, taskLineId])
+  @@index([tenantId, workOrderId])
+  @@map("cost_price_entries")
+}
+
+// ============================================================================
 // payroll 模块（M3，m3-drafts/01-payroll.md v1.0）——薪酬账：计薪规则版本化
 // 主数据 + 人×月核算批次快照 + append-only 薪酬记录事实 + 幂等记账运营表。
 // 域事件不建新表（落既有 event_records / outbox_records，见 pg-payroll-stores）。

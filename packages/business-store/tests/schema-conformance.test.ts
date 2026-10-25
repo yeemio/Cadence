@@ -89,7 +89,7 @@ describe('schema 骨架', () => {
     expect(schemaText).toMatch(/generator\s+client\s*\{/);
   });
 
-  it('九十六张表齐全（M1 十三表 + baseline P1 五表（M2-W2）+ workorder 六表（M2-W1）+ inspection 四表（M2-W4）+ listing 八表（M2-W3）+ dispatch 四表（M2-W6）+ inventory 十一表（M2-W5）+ reporting 四表（M2-W7）+ baseline P2/P3 四表（M2-W7）+ hours 三表（M2-W6）+ costing 四表（M2-W6）+ payroll 四表（M3）+ metric-pack 两表（M3）+ drawing 四表（M3）+ maintenance 四表（M3）+ backfill 六表（S1）+ S5 能力子集三表（T 波）+ issue 五表（U1）+ attachment 单表（U3）+ process-material 单表（U4））', () => {
+  it('一百零一张表齐全（M1 十三表 + baseline P1 五表（M2-W2）+ workorder 六表（M2-W1）+ inspection 四表（M2-W4）+ listing 八表（M2-W3）+ dispatch 四表（M2-W6）+ inventory 十一表（M2-W5）+ reporting 四表（M2-W7）+ baseline P2/P3 四表（M2-W7）+ hours 三表（M2-W6）+ costing 四表（M2-W6）+ payroll 四表（M3）+ metric-pack 两表（M3）+ drawing 四表（M3）+ maintenance 四表（M3）+ backfill 六表（S1）+ S5 能力子集三表（T 波）+ issue 五表（U1）+ attachment 单表（U3）+ process-material 单表（U4）+ aftercare claim 两表（U5）+ project cost 三表（U7））', () => {
     expect(models.has('WorkOrderRecord')).toBe(true);
     expect(models.has('BusinessEventRecord')).toBe(true);
     expect(models.has('OutboxRecord')).toBe(true);
@@ -202,7 +202,11 @@ describe('schema 骨架', () => {
     // U5 aftercare claim 售后报销两表（守恒计数 96 → 98，A12 增量：一单一投影 + 明细行）
     expect(models.has('AftercareClaimRecord')).toBe(true);
     expect(models.has('AftercareClaimLineRecord')).toBe(true);
-    expect(models.size).toBe(98);
+    // U7 项目成本六块三表（守恒计数 98 → 101，A5 增量：段事实 + 六块快照 + 录入价格）
+    expect(models.has('CostProjectEntryRecord')).toBe(true);
+    expect(models.has('CostProjectSnapshotRecord')).toBe(true);
+    expect(models.has('CostPriceEntryRecord')).toBe(true);
+    expect(models.size).toBe(101);
   });
 
   it('ADR-0005：全表 tenant_id（非空、snake_case 映射）', () => {

@@ -27,6 +27,11 @@ import {
   InMemoryCostingModelStore,
   InMemoryCostingOperationStore,
 } from './in-memory-costing-stores.js';
+import {
+  InMemoryCostPriceEntryStore,
+  InMemoryCostProjectEntryStore,
+  InMemoryCostProjectSnapshotStore,
+} from './in-memory-project-cost-stores.js';
 import type {
   CostEntryStore,
   CostSnapshotStore,
@@ -44,9 +49,28 @@ import {
   type OutsourcingCostSourcePort,
   type WorkOrderSubjectPort,
 } from './costing-ports.js';
+import {
+  EMPTY_PROJECT_AFTERCARE_CLAIM_SOURCE,
+  EMPTY_PROJECT_EQUIPMENT_PURCHASE_SOURCE,
+  EMPTY_PROJECT_ISSUE_SOURCE,
+  NOOP_ISSUE_PRICE_WRITEBACK,
+  type IssuePriceWritebackPort,
+  type ProjectAftercareClaimSourcePort,
+  type ProjectEquipmentPurchaseSourcePort,
+  type ProjectIssueCostSourcePort,
+  type ProjectCostSourcePorts,
+} from './project-cost-ports.js';
+import type {
+  CostPriceEntryStore,
+  CostProjectEntryStore,
+  CostProjectSnapshotStore,
+  ProjectCostStores,
+} from './project-cost-stores.js';
 import { JsonTablesCostingExcelPort, type CostingExcelPort } from './costing-excel-port.js';
 import { CostingLedgerController, CostingModelsController } from './costing.controllers.js';
+import { ProjectCostController } from './project-cost.controllers.js';
 import { CostingService, type CostingServiceOptions } from './costing.service.js';
+import { ProjectCostService, type ProjectCostServiceOptions } from './project-cost.service.js';
 
 export const COSTING_ENTRY_STORE = Symbol('smes.costing.entryStore');
 export const COSTING_MODEL_STORE = Symbol('smes.costing.modelStore');
@@ -59,6 +83,15 @@ export const COSTING_OUTSOURCING_SOURCE = Symbol('smes.costing.outsourcingSource
 export const COSTING_WORK_ORDER_SUBJECT = Symbol('smes.costing.workOrderSubject');
 export const COSTING_EXCEL_PORT = Symbol('smes.costing.excelPort');
 export const COSTING_SERVICE_OPTIONS = Symbol('smes.costing.serviceOptions');
+// ---- U7 项目成本注入点（六块取数源 + 三存储 + 写回端口 + 服务选项） ----
+export const COSTING_PROJECT_ENTRY_STORE = Symbol('smes.costing.projectEntryStore');
+export const COSTING_PROJECT_SNAPSHOT_STORE = Symbol('smes.costing.projectSnapshotStore');
+export const COSTING_PRICE_ENTRY_STORE = Symbol('smes.costing.priceEntryStore');
+export const COSTING_PROJECT_ISSUE_SOURCE = Symbol('smes.costing.projectIssueSource');
+export const COSTING_PROJECT_EQUIPMENT_SOURCE = Symbol('smes.costing.projectEquipmentSource');
+export const COSTING_PROJECT_AFTERCARE_SOURCE = Symbol('smes.costing.projectAftercareSource');
+export const COSTING_PROJECT_PRICE_WRITEBACK = Symbol('smes.costing.projectPriceWriteback');
+export const COSTING_PROJECT_SERVICE_OPTIONS = Symbol('smes.costing.projectServiceOptions');
 
 export interface CostingModuleOptions {
   /** 成本条目存储；缺省 = 内存实现（重启即失）。显式 undefined 同缺省。 */
@@ -83,6 +116,23 @@ export interface CostingModuleOptions {
   readonly excelPort?: CostingExcelPort | undefined;
   /** 服务选项（时钟注入）；缺省 = 系统时钟。 */
   readonly serviceOptions?: CostingServiceOptions | undefined;
+  // ---- U7 项目成本（六块聚合；缺省 = 内存存储 + 空源——零接线各块归集为空） ----
+  /** 项目成本段事实存储；缺省 = 内存实现。 */
+  readonly projectEntryStore?: CostProjectEntryStore | undefined;
+  /** 项目成本快照存储；缺省 = 内存实现。 */
+  readonly projectSnapshotStore?: CostProjectSnapshotStore | undefined;
+  /** 录入价格存储；缺省 = 内存实现。 */
+  readonly priceEntryStore?: CostPriceEntryStore | undefined;
+  /** issue 发料行段源（②材料 + ⑥利库段）；缺省 = 空实现。 */
+  readonly projectIssueSource?: ProjectIssueCostSourcePort | undefined;
+  /** listing 外购设备采购源（⑥采购段）；缺省 = 空实现。 */
+  readonly projectEquipmentSource?: ProjectEquipmentPurchaseSourcePort | undefined;
+  /** dispatch 售后报销源（⑤报销段）；缺省 = 空实现。 */
+  readonly projectAftercareSource?: ProjectAftercareClaimSourcePort | undefined;
+  /** 录入价格写回端口（单向通知）；缺省 = NOOP。 */
+  readonly priceWriteback?: IssuePriceWritebackPort | undefined;
+  /** 项目成本服务选项（时钟/写回失败钩子）；缺省 = 系统时钟 + console.warn。 */
+  readonly projectServiceOptions?: ProjectCostServiceOptions | undefined;
 }
 
 @Module({})
@@ -100,6 +150,63 @@ export class CostingModule {
       { provide: COSTING_WORK_ORDER_SUBJECT, useValue: options.workOrderSubject ?? ALWAYS_WORK_ORDER_SUBJECT },
       { provide: COSTING_EXCEL_PORT, useValue: options.excelPort ?? new JsonTablesCostingExcelPort() },
       { provide: COSTING_SERVICE_OPTIONS, useValue: options.serviceOptions ?? {} },
+      // ---- U7 项目成本：存储缺省内存 + 源缺省空 + 共享三存储复用上面同实例 ----
+      { provide: COSTING_PROJECT_ENTRY_STORE, useValue: options.projectEntryStore ?? new InMemoryCostProjectEntryStore() },
+      { provide: COSTING_PROJECT_SNAPSHOT_STORE, useValue: options.projectSnapshotStore ?? new InMemoryCostProjectSnapshotStore() },
+      { provide: COSTING_PRICE_ENTRY_STORE, useValue: options.priceEntryStore ?? new InMemoryCostPriceEntryStore() },
+      { provide: COSTING_PROJECT_ISSUE_SOURCE, useValue: options.projectIssueSource ?? EMPTY_PROJECT_ISSUE_SOURCE },
+      { provide: COSTING_PROJECT_EQUIPMENT_SOURCE, useValue: options.projectEquipmentSource ?? EMPTY_PROJECT_EQUIPMENT_PURCHASE_SOURCE },
+      { provide: COSTING_PROJECT_AFTERCARE_SOURCE, useValue: options.projectAftercareSource ?? EMPTY_PROJECT_AFTERCARE_CLAIM_SOURCE },
+      { provide: COSTING_PROJECT_PRICE_WRITEBACK, useValue: options.priceWriteback ?? NOOP_ISSUE_PRICE_WRITEBACK },
+      { provide: COSTING_PROJECT_SERVICE_OPTIONS, useValue: options.projectServiceOptions ?? {} },
+      {
+        provide: ProjectCostService,
+        useFactory: (
+          projectEntries: CostProjectEntryStore,
+          projectSnapshots: CostProjectSnapshotStore,
+          priceEntries: CostPriceEntryStore,
+          models: CostingModelStore,
+          events: CostingDomainEventStore,
+          operations: CostingOperationStore,
+          labor: LaborCostSourcePort,
+          outsourcing: OutsourcingCostSourcePort,
+          workOrder: WorkOrderSubjectPort,
+          issueSegments: ProjectIssueCostSourcePort,
+          equipmentPurchases: ProjectEquipmentPurchaseSourcePort,
+          aftercareClaims: ProjectAftercareClaimSourcePort,
+          priceWriteback: IssuePriceWritebackPort,
+          projectServiceOptions: ProjectCostServiceOptions,
+        ) => {
+          const sources: ProjectCostSourcePorts = {
+            issueSegments,
+            equipmentPurchases,
+            aftercareClaims,
+            labor,
+            outsourcing,
+            workOrder,
+            priceWriteback,
+          };
+          const stores: ProjectCostStores = { projectEntries, projectSnapshots, priceEntries };
+          return new ProjectCostService(stores, { models, events, operations }, sources, projectServiceOptions);
+        },
+        inject: [
+          COSTING_PROJECT_ENTRY_STORE,
+          COSTING_PROJECT_SNAPSHOT_STORE,
+          COSTING_PRICE_ENTRY_STORE,
+          COSTING_MODEL_STORE,
+          COSTING_EVENT_STORE,
+          COSTING_OPERATION_STORE,
+          // ④/⑤ 工时段与 ③ 外协段、主体校验复用既有三源注入令牌（同一实例）
+          COSTING_LABOR_SOURCE,
+          COSTING_OUTSOURCING_SOURCE,
+          COSTING_WORK_ORDER_SUBJECT,
+          COSTING_PROJECT_ISSUE_SOURCE,
+          COSTING_PROJECT_EQUIPMENT_SOURCE,
+          COSTING_PROJECT_AFTERCARE_SOURCE,
+          COSTING_PROJECT_PRICE_WRITEBACK,
+          COSTING_PROJECT_SERVICE_OPTIONS,
+        ],
+      },
       {
         provide: CostingService,
         useFactory: (
@@ -139,7 +246,7 @@ export class CostingModule {
 
     return {
       module: CostingModule,
-      controllers: [CostingModelsController, CostingLedgerController],
+      controllers: [CostingModelsController, CostingLedgerController, ProjectCostController],
       providers,
     };
   }

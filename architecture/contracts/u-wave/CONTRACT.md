@@ -51,6 +51,14 @@ A11 发料任务+发料记录（新 issue 模块，后端全量）与 A1/A2/A6/A
 - 写入面：apps/server/src/**、packages/business-store/package.json、deploy/scripts/rls-proof.mjs、相关测试。禁改：application/product-ui 业务源码（发现缺口停手上报）
 - 验证：server 全量测试+boot e2e+局部 tsc 绿即停；全仓 verify 总控收口统一跑
 
+## U7 项目成本大扩（A5，code-writer-pro；2026-10-26 凌晨③追加，前置 U1/U4/U5/U6 全就绪）
+
+- **需求文档**（必读，口径权威）：`/Users/yeemio/AI/project/sieracMes-AI/docs/开发文档/报表/项目成本报表-开发文档.md`（六块成本：材料四类按发料两段拆分利库/外协/人工三类别/售后保内保外/外购设备采购+利库；详情 KPI 7 项；录入价格写回发料明细；跑批七表）
+- 范围：costing 模块扩展——六块成本聚合（取数源=U1 issue 发料记录+U4 process-material 原材料单价+U5 aftercare-claim 售后四费+listing 外购+hours 人工+dispatch 外协）、成本快照表+命令化跑批（沿 costing 既有 supersedes/幂等体例）、详情 KPI 查询面。**录入价格写回发料明细**经端口单向（写回交互若超 costing 写入面→停手上报裁定）
+- 写入面：packages/application/src/costing/**、business-store costing store+schema+迁移+RLS、两侧 tests；apps/server 仅注册/接线追加（沿 U6 体例）。禁改：issue/reporting/dispatch 既有源码（经端口/事件消费）
+- 验证：application+business-store 局部全量+tsc+server 测试绿即停；全仓 verify 总控收口
+- 口径对照：材料四类的"两段拆分"（利用库存段/采购入库段）以 U1 发料记录的 reservedConsumed/availableConsumed 回执快照为据；口径差异如实登记对账
+
 ## 待办池（本波不做，已排序）
 
 A13 文件管理（横切面，需对象存储 port 化设计）→ A5 项目成本大扩（依赖 S10 原材料关联表+A12 售后报销）→ A8+A10 大屏+日跑批（定制，含 WebSocket）→ S1-S14 子功能增强批次 → B3 货架 → B1/B2 payroll 口径对照 → A12/A4/A14 可选项。呈现层（报表页面/发料页面）统一等合流静止后开波。

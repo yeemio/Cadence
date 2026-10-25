@@ -44,6 +44,7 @@ import {
   CostingLedgerController,
   CostingModelsController,
 } from '../../src/costing/costing.controllers.js';
+import { ProjectCostController } from '../../src/costing/project-cost.controllers.js';
 import { CostingModule } from '../../src/costing/costing.module.js';
 import { CostingService, type CostingCommandResult } from '../../src/costing/costing.service.js';
 import type { CostingCommand, CostingCommandKind } from '../../src/costing/costing-input.js';
@@ -511,10 +512,10 @@ describe('costing 项目成本账（09-costing.md v1.0）', () => {
     await expect(h.costing.modelDetail(t1, 'nope')).rejects.toBeInstanceOf(CostingNotFoundError);
   });
 
-  it('模块装配缺省（内存回落 + 空源端口）+ 路由权限码（09-costing.md §5 最小集）', () => {
+  it('模块装配缺省（内存回落 + 空源端口）+ 路由权限码（09-costing.md §5 最小集 + U7 项目成本面）', () => {
     const dynamic = CostingModule.register();
     expect(dynamic.module).toBe(CostingModule);
-    expect(dynamic.controllers).toHaveLength(2);
+    expect(dynamic.controllers).toHaveLength(3);
     expect(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, CostingModule)).toBeUndefined();
 
     const expected: readonly [object, string, string][] = [
@@ -528,6 +529,14 @@ describe('costing 项目成本账（09-costing.md v1.0）', () => {
       [CostingLedgerController.prototype, 'details', 'costing:read'],
       [CostingLedgerController.prototype, 'snapshots', 'costing:read'],
       [CostingLedgerController.prototype, 'events', 'costing:read'],
+      // U7 项目成本（六块重算/录入价格/KPI 查询面）
+      [ProjectCostController.prototype, 'rebuild', 'costing:rebuild'],
+      [ProjectCostController.prototype, 'summary', 'costing:read'],
+      [ProjectCostController.prototype, 'detail', 'costing:read'],
+      [ProjectCostController.prototype, 'snapshots', 'costing:read'],
+      [ProjectCostController.prototype, 'entries', 'costing:read'],
+      [ProjectCostController.prototype, 'priceEntry', 'costing:rebuild'],
+      [ProjectCostController.prototype, 'priceEntries', 'costing:read'],
     ];
     for (const [target, method, code] of expected) {
       expect(

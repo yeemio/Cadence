@@ -38,6 +38,9 @@ import {
   InMemoryWorkOrderDomainEventStore,
   InMemoryWorkOrderStore,
   InMemoryWorkReportStore,
+  InMemoryAftercareClaimStore,
+  InMemoryIssueRecordStore,
+  InMemoryListingLineStore,
   InventoryModule,
   ListingModule,
   MasterdataModule,
@@ -65,6 +68,9 @@ import {
   type CostingModelStore,
   type CostingOperationStore,
   type CostSnapshotStore,
+  type CostProjectEntryStore,
+  type CostProjectSnapshotStore,
+  type CostPriceEntryStore,
   type CustomerStore,
   type DepartmentStore,
   type DispatchDomainEventStore,
@@ -137,6 +143,7 @@ import {
   type IssueExpressStore,
   type IssueOperationStore,
   type IssueDomainEventStore,
+  type ProcessMaterialLinkStore,
 } from '@smes/application';
 import { inMemoryPayrollStores, type PayrollStores } from '@smes/payroll';
 import { PayrollHttpModule } from './payroll-http.module.js';
@@ -241,6 +248,8 @@ export interface StorePorts {
   readonly listingLineStore?: ListingLineStore | undefined;
   /** 缺口核查快照存储（ListingModule 注入点）。 */
   readonly listingGapStore?: GapCheckStore | undefined;
+  /** 工序×原材料关联存储（ListingModule 注入点，U4；U7 验收发现 2 补齐——缺省回落内存实现）。 */
+  readonly listingProcessMaterialStore?: ProcessMaterialLinkStore | undefined;
   /** 采购申请投影存储（ListingModule 注入点）。 */
   readonly listingRequestStore?: PurchaseRequestStore | undefined;
   /** 采购订单投影存储（ListingModule 注入点）。 */
@@ -323,6 +332,12 @@ export interface StorePorts {
   readonly costingEventStore?: CostingDomainEventStore | undefined;
   /** costing 命令幂等记账存储（CostingModule 注入点）。 */
   readonly costingOperationStore?: CostingOperationStore | undefined;
+  /** 项目成本段事实存储（CostingModule 注入点，U7：六块 append-only 事实）。 */
+  readonly costingProjectEntryStore?: CostProjectEntryStore | undefined;
+  /** 项目成本六块快照存储（CostingModule 注入点，U7）。 */
+  readonly costingProjectSnapshotStore?: CostProjectSnapshotStore | undefined;
+  /** 录入价格存储（CostingModule 注入点，U7：非标/设备利库单价录入）。 */
+  readonly costingPriceEntryStore?: CostPriceEntryStore | undefined;
   /** 工艺路线存储（BaselineModule P2 注入点）。 */
   readonly baselineRoutingStore?: RoutingStore | undefined;
   /** 额定工时存储（BaselineModule P3 注入点）。 */
@@ -477,6 +492,9 @@ export const MODULE_DEFINITIONS: Record<
       domainEventStore: stores.listingDomainEventStore,
       machineEventStore: stores.listingMachineEventStore,
       todoStore: stores.todoStore,
+      // U4 接线漏项补齐（U7 验收发现 2）：不传则 PG 形态下 HTTP 录入落内存
+      // store，与 costing 读面（main.ts 注入的 PG processMaterialStore）读写分家。
+      processMaterialStore: stores.listingProcessMaterialStore,
       // 跨模块接线（#11~#14 + #20）：workorder 创建事件订阅 + inventory 可用量/收货
       // + baseline 物料校验 + ExcelJS 导入导出
       workOrderFeed: wiring.listing?.workOrderFeed,
@@ -568,6 +586,13 @@ export const MODULE_DEFINITIONS: Record<
       outsourcingSource: wiring.costing?.outsourcingSource,
       workOrderSubject: wiring.costing?.workOrderSubject,
       excelPort: wiring.costing?.excelPort,
+      // U7 六块源（#31~#33）+ 三存储（段事实/六块快照/录入价格）
+      projectEntryStore: stores.costingProjectEntryStore,
+      projectSnapshotStore: stores.costingProjectSnapshotStore,
+      priceEntryStore: stores.costingPriceEntryStore,
+      projectIssueSource: wiring.costing?.projectIssueSource,
+      projectEquipmentSource: wiring.costing?.projectEquipmentSource,
+      projectAftercareSource: wiring.costing?.projectAftercareSource,
     }),
   // M3 首波专业包（激活价语义：仅显式 MODULES_ENABLED 开启；HTTP 面在组合根
   // payroll-http.module——pro-pack 零框架耦合，R-M3-3 裁定）
@@ -729,6 +754,9 @@ export interface BuildAppModuleOptions {
   readonly costingSnapshotStore?: CostSnapshotStore | undefined;
   readonly costingEventStore?: CostingDomainEventStore | undefined;
   readonly costingOperationStore?: CostingOperationStore | undefined;
+  readonly costingProjectEntryStore?: CostProjectEntryStore | undefined;
+  readonly costingProjectSnapshotStore?: CostProjectSnapshotStore | undefined;
+  readonly costingPriceEntryStore?: CostPriceEntryStore | undefined;
   readonly baselineRoutingStore?: RoutingStore | undefined;
   readonly baselineStandardTimeStore?: StandardTimeStore | undefined;
   readonly baselineFaultReportStore?: FaultReportStore | undefined;
@@ -786,6 +814,8 @@ export interface BuildAppModuleOptions {
   readonly issueDomainEventStore?: IssueDomainEventStore | undefined;
   /** 售后报销单存储（PG 形态经 connectDispatchStore().aftercareClaimStore 注入）。 */
   readonly aftercareClaimStore?: AftercareClaimStore | undefined;
+  /** 工序×原材料关联存储（U7 #31：②原材料段尺寸/单价读面；PG 形态经 connectListingStore().processMaterialStore 注入）。 */
+  readonly processMaterialLinkStore?: ProcessMaterialLinkStore | undefined;
   /** 附件元数据存储（PG 形态经 connectAttachmentStore 注入）。 */
   readonly attachmentStore?: AttachmentStore | undefined;
   /**
@@ -961,6 +991,18 @@ export function buildAppModule(
     inventoryDomainEvents:
       options.inventoryDomainEventStore ??
       (enabled.includes('inventory') ? new InMemoryInventoryDomainEventStore() : undefined),
+    // U7 #31~#33：六块源读面（issue 发料记录 / listing 清单行 / dispatch 售后
+    // 报销——零 DB 形态组合根预建共享实例，PG 形态 options 注入同源；工序×
+    // 原材料关联仅 PG 形态有值——模块未注册组合根，读面缺省 undefined = 原材料
+    // 段不计，语义诚实）。
+    issueRecords:
+      options.issueRecordStore ?? (enabled.includes('issue') ? new InMemoryIssueRecordStore() : undefined),
+    listingLines:
+      options.listingLineStore ?? (enabled.includes('listing') ? new InMemoryListingLineStore() : undefined),
+    processMaterialLinks: options.processMaterialLinkStore,
+    aftercareClaims:
+      options.aftercareClaimStore ??
+      (enabled.includes('aftercare-claim') ? new InMemoryAftercareClaimStore() : undefined),
   };
   // 跨模块端口接线（清单与机制见 cross-module-wiring.ts 文件头；print/IM sink
   // 由 main.ts 注入 integration 适配，缺省回落拒绝/console 降级——清单 #10/#18；
@@ -1014,6 +1056,7 @@ export function buildAppModule(
         listingSheetStore: options.listingSheetStore,
         listingLineStore: options.listingLineStore,
         listingGapStore: options.listingGapStore,
+        listingProcessMaterialStore: options.processMaterialLinkStore,
         listingRequestStore: options.listingRequestStore,
         listingOrderStore: wiringStores.purchaseOrders,
         listingReturnStore: options.listingReturnStore,
@@ -1057,6 +1100,9 @@ export function buildAppModule(
         costingSnapshotStore: options.costingSnapshotStore,
         costingEventStore: options.costingEventStore,
         costingOperationStore: options.costingOperationStore,
+        costingProjectEntryStore: options.costingProjectEntryStore,
+        costingProjectSnapshotStore: options.costingProjectSnapshotStore,
+        costingPriceEntryStore: options.costingPriceEntryStore,
         baselineRoutingStore: options.baselineRoutingStore,
         baselineStandardTimeStore: options.baselineStandardTimeStore,
         baselineFaultReportStore: options.baselineFaultReportStore,

@@ -141,4 +141,9 @@ export const RLS_TABLES: readonly RlsTableSpec[] = [
   // 兄弟线 160100 重放，快照含全量表集）
   tenantTable('aftercare_claims'),
   tenantTable('aftercare_claim_lines'),
+  // U7 项目成本六块线（2026-10-26 落库：A5 段事实/六块快照/录入价格三表；
+  // 守恒测试触发补登 + 全量重放迁移 20261026170100——101 表快照）
+  tenantTable('cost_project_entries'),
+  tenantTable('cost_project_snapshots'),
+  tenantTable('cost_price_entries'),
 ];
