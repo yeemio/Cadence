@@ -1,0 +1,49 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-listing-import-part",
+    "description": "03-listing §7 对账点 1「同清单经物料校验与缺口计算，输出与活系统一致」+ 对账点 3 Excel 表头别名（D13 导入复刻口径）：listing.import.v1（xlsx-bytes 源，e2e-live-db 断言③b 形态；工作簿=固定两行表头 图号/物料编码/物料名称/规格型号/需求数量/需求日期）。链式场景——录制前替换 __WORK_ORDER_ID__ 与 __XLSX_BASE64__（固定字节生成命令见手册 §4.2）",
+    "input": {
+      "method": "POST",
+      "path": "/listing/imports",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-listing-import-part",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "listing.import.v1",
+          "payload": {
+            "source": "excel",
+            "workOrderId": "__WORK_ORDER_ID__",
+            "kind": "part",
+            "excel": {
+              "kind": "xlsx-bytes",
+              "base64": "__XLSX_BASE64__"
+            }
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

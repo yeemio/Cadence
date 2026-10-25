@@ -1,0 +1,48 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-purchase-order-submit",
+    "description": "03-listing §7 对账点 2「订单收货数量×单价金额汇总口径一致」：purchase.order.submit.v1 建单+提交（e2e-live-db 断言②形态，Wave-2 缺陷活库闭合锚点）。自含场景",
+    "input": {
+      "method": "POST",
+      "path": "/purchase/orders",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-purchase-order-submit",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "purchase.order.submit.v1",
+          "payload": {
+            "supplierRef": "SUP-M2REC-01",
+            "supplierName": "对账供应商一厂",
+            "promisedAt": "2026-12-01",
+            "lines": [
+              {
+                "itemId": "item-m2rec-01",
+                "quantity": 20,
+                "unitPriceMinor": 12500
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

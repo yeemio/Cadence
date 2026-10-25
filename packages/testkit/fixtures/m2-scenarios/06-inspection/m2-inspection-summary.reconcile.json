@@ -1,0 +1,26 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-inspection-summary",
+    "description": "06-inspection §7 对账点 1 汇总事实：GET /inspection/summary（工作台 KPI：待检/合格率/未闭环）。计数与比率精确比对（half-up 商，从严无容差）。自含场景",
+    "input": {
+      "method": "GET",
+      "path": "/inspection/summary",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-inventory-stock-view",
+    "description": "07-inventory §7 对账点 1 读侧：GET /inventory/stock 实时库存·可用量口径（?itemId= 过滤；levels 数组无序化——行序非合同）。自含场景",
+    "input": {
+      "method": "GET",
+      "path": "/inventory/stock",
+      "query": {
+        "itemId": "item-m2rec-01"
+      },
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision",
+      "supersedes",
+      "**.supersedes"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "arrays": {
+      "levels": {
+        "match": "unordered"
+      }
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

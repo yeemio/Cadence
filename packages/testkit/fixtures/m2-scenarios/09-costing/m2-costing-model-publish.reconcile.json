@@ -1,0 +1,48 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-costing-model-publish",
+    "description": "09-costing §3 口径版本：costing.model.publish.v1（载荷形态=e2e-live-db 断言⑤；工种五词映射 machining/assembly/electrical/aftercare/misc，v1.1 词汇冻结；金额量纲=分）。自含场景",
+    "input": {
+      "method": "POST",
+      "path": "/costing/models",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-costing-model-publish",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "costing.model.publish.v1",
+          "payload": {
+            "code": "m2reconcile",
+            "name": "对账口径v1",
+            "hourlyRates": {
+              "machining": 6000,
+              "assembly": 5000,
+              "electrical": 6500,
+              "aftercare": 5500,
+              "misc": 4000
+            },
+            "status": "active"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

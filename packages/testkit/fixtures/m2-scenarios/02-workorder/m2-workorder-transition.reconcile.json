@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-workorder-transition",
+    "description": "02-workorder §7 对账点 2「九态合法迁移集合行为等价」：transition（not_started→in_progress 主干迁移）。链式场景——录制前替换 __WORK_ORDER_ID__ 与 __EXPECTED_REVISION__（准备链见手册 §4.2）",
+    "input": {
+      "method": "POST",
+      "path": "/workorder/work-orders/__WORK_ORDER_ID__/transitions",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-workorder-transition",
+        "expectedRevision": "__EXPECTED_REVISION__",
+        "command": {
+          "kind": "workorder.transition.v1",
+          "payload": {
+            "targetState": "in_progress"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

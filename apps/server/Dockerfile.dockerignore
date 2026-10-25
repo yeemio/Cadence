@@ -1,0 +1,29 @@
+# server 镜像构建上下文裁剪（M4 正式线）。
+#
+# 形态取舍（写明）：两镜像共享仓根 build context（pnpm workspace install 需要
+# 全仓清单与 lockfile）。context 为仓根时 Docker 的裁剪文件按 BuildKit 语义取
+# <Dockerfile>.dockerignore（即本文件），普通 apps/server/.dockerignore 不生效；
+# 本文件存在即整体替换根 .dockerignore，故共享裁剪项在此完整重申。
+# 额外裁剪：web 应用源码对 server 镜像是纯负载（--filter @smes/server... 不触达
+# 其源码）；apps/web/package.json 保留——pnpm 工作区图与 --frozen-lockfile 校验
+# 需要全工作区清单在场。
+**/node_modules
+**/dist
+.git
+.github
+deploy
+architecture
+scripts
+.env
+**/.env
+**/*.md
+.dep-cruiser.cjs
+.dep-cruiser.selftest.cjs
+apps/web/src
+apps/web/tests
+apps/web/public
+apps/web/login
+apps/web/login.html
+apps/web/index.html
+apps/web/vite.config.ts
+apps/web/components.json

@@ -1,0 +1,28 @@
+{
+  "name": "@smes/integration-scan",
+  "version": "0.1.0",
+  "private": true,
+  "description": "三档扫码降级链：浏览器摄像头（html5-qrcode 懒加载）/ IM JS-SDK 桥 / 外设扫码枪键盘串入。端口 + 纯降级决策 + 串入解析，纯域可测。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*",
+    "html5-qrcode": "^2.3.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

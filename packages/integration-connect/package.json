@@ -1,0 +1,8 @@
+{
+  "name": "@smes/integration-connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "/connect/v1 只读连接器（OwlCodaE 消费证据标准账）",
+  "type": "module",
+  "main": "./src/index.ts","dependencies": { "@smes/business-core": "workspace:*", "@smes/application": "workspace:*" }
+}

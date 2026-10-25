@@ -1,0 +1,57 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-dispatch-create-outsourcing",
+    "description": "04-dispatch §7 对账点 2「外协单计价=工序单价×(1+利润率) 口径一致」：dispatch.create.v1 kind=outsourcing 含已定价外协行（e2e-live-db 口径 93 造数 c 形态；5×30000 分=成本锚）。链式场景——录制前替换 __WORK_ORDER_ID__",
+    "input": {
+      "method": "POST",
+      "path": "/dispatch/orders",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-dispatch-create-outsourcing",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "dispatch.create.v1",
+          "payload": {
+            "workOrderId": "__WORK_ORDER_ID__",
+            "kind": "outsourcing",
+            "quantity": 5,
+            "lines": [
+              {
+                "processCode": "OP-M2REC-OS",
+                "drawingNo": "DWG-M2REC-OS-01",
+                "supplierRef": "SUP-M2REC-OS-01",
+                "supplierName": "对账外协一厂",
+                "quantity": 5,
+                "unitPriceMinor": 30000,
+                "promisedAt": "2026-12-01T00:00:00.000Z",
+                "sourceListingLineId": null
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

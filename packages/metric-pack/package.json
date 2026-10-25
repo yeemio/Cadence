@@ -1,0 +1,29 @@
+{
+  "name": "@smes/metric-pack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "报表口径专业包（M3，m3-drafts/04-metric-pack.md）：6 张口径的 MetricDefinition 形状化 + MetricPack 装载/版本化；引擎=engine-reporting（复用不重造）。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*",
+    "@smes/engine-reporting": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

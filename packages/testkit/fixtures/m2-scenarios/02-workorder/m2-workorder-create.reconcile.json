@@ -1,0 +1,41 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-workorder-create",
+    "description": "02-workorder §7 Done-then #1：workorder.create.v1 建令（同时触发四类清单骨架创建，WorkOrderCreated→listing 消费）；载荷形态=e2e-live-db 断言③（含计划交付/包材到货日期）。自含场景",
+    "input": {
+      "method": "POST",
+      "path": "/workorder/work-orders",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-workorder-create",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "workorder.create.v1",
+          "payload": {
+            "projectName": "M2对账-工作令-01",
+            "plannedDeliveryAt": "2026-12-31T00:00:00.000Z",
+            "packagingArrivalAt": "2026-12-20T00:00:00.000Z"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

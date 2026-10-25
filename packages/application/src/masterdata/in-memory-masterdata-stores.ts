@@ -1,0 +1,382 @@
+/**
+ * InMemoryItemStore / InMemoryResourceStore —— 基础数据端口先行实现（M1 增量 4-I）。
+ *
+ * 重启即失；PG 实现在 business-store（`./masterdata` 子路径）。与
+ * InMemoryUserStore 同一形态：无 DATABASE_URL / 未注入存储时组合根回落到
+ * 这里，保证零 DB boot 语义完整（模块可装配、端点可用）。
+ *
+ * id 策略与 PG 行对齐：应用侧权威生成时间有序 id（uuid 包 v7 的简化内联——
+ * 不引依赖，用 crypto.randomUUID 前缀 + 计数器即可满足内存形态的
+ * 唯一性；真实持久化路径的 uuidv7 在 business-store）。
+ */
+import { randomUUID } from 'node:crypto';
+import { TenantId } from '@smes/business-core';
+import { MasterdataConflictError } from './masterdata-errors.js';
+import type {
+  CreateCustomerInput,
+  CreateItemInput,
+  CreateResourceInput,
+  CreateSupplierInput,
+  CreateUnitInput,
+  CustomerMaster,
+  CustomerStore,
+  ItemMaster,
+  ItemStore,
+  ResourceMaster,
+  ResourceStore,
+  SupplierMaster,
+  SupplierStore,
+  UnitMaster,
+  UnitStore,
+  UpdateCustomerInput,
+  UpdateItemInput,
+  UpdateResourceInput,
+  UpdateSupplierInput,
+  UpdateUnitInput,
+} from './masterdata-stores.js';
+
+let memoryCounter = 0;
+
+/** 内存形态 id：非 uuid 也可（端口合同只要求租户内唯一、创建后稳定）。 */
+function nextMemoryId(): string {
+  memoryCounter += 1;
+  return `md-${randomUUID()}-${memoryCounter.toString(36)}`;
+}
+
+interface ItemRow {
+  readonly tenant: string;
+  readonly id: string;
+  readonly code: string;
+  name: string;
+  spec: string | null;
+  unit: string | null;
+  category: string | null;
+  active: boolean;
+}
+
+export class InMemoryItemStore implements ItemStore {
+  private readonly items = new Map<string, ItemRow>(); // key: `${tenant}|${id}`
+
+  async create(input: CreateItemInput): Promise<ItemMaster> {
+    const conflict = [...this.items.values()].find(
+      (row) => row.tenant === input.tenant && row.code === input.code,
+    );
+    if (conflict !== undefined) {
+      throw new MasterdataConflictError(
+        `物品 code '${input.code}' 在租户 '${input.tenant}' 内已存在`,
+      );
+    }
+    const row: ItemRow = {
+      tenant: input.tenant,
+      id: nextMemoryId(),
+      code: input.code,
+      name: input.name,
+      spec: input.spec ?? null,
+      unit: input.unit ?? null,
+      category: input.category ?? null,
+      active: input.active ?? true,
+    };
+    this.items.set(`${row.tenant}|${row.id}`, row);
+    return toMaster(row);
+  }
+
+  async list(tenant: TenantId): Promise<readonly ItemMaster[]> {
+    return [...this.items.values()]
+      .filter((row) => row.tenant === tenant)
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(toMaster);
+  }
+
+  async find(tenant: TenantId, id: string): Promise<ItemMaster | null> {
+    const row = this.items.get(`${tenant}|${id}`);
+    return row === undefined ? null : toMaster(row);
+  }
+
+  async update(tenant: TenantId, id: string, input: UpdateItemInput): Promise<ItemMaster | null> {
+    const row = this.items.get(`${tenant}|${id}`);
+    if (row === undefined) return null;
+    if (input.name !== undefined) row.name = input.name;
+    if (input.spec !== undefined) row.spec = input.spec;
+    if (input.unit !== undefined) row.unit = input.unit;
+    if (input.category !== undefined) row.category = input.category;
+    if (input.active !== undefined) row.active = input.active;
+    return toMaster(row);
+  }
+}
+
+interface ResourceRow {
+  readonly tenant: string;
+  readonly id: string;
+  readonly code: string;
+  name: string;
+  type: string | null;
+  active: boolean;
+}
+
+export class InMemoryResourceStore implements ResourceStore {
+  private readonly resources = new Map<string, ResourceRow>(); // key: `${tenant}|${id}`
+
+  async create(input: CreateResourceInput): Promise<ResourceMaster> {
+    const conflict = [...this.resources.values()].find(
+      (row) => row.tenant === input.tenant && row.code === input.code,
+    );
+    if (conflict !== undefined) {
+      throw new MasterdataConflictError(
+        `资源 code '${input.code}' 在租户 '${input.tenant}' 内已存在`,
+      );
+    }
+    const row: ResourceRow = {
+      tenant: input.tenant,
+      id: nextMemoryId(),
+      code: input.code,
+      name: input.name,
+      type: input.type ?? null,
+      active: input.active ?? true,
+    };
+    this.resources.set(`${row.tenant}|${row.id}`, row);
+    return toResourceMaster(row);
+  }
+
+  async list(tenant: TenantId): Promise<readonly ResourceMaster[]> {
+    return [...this.resources.values()]
+      .filter((row) => row.tenant === tenant)
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(toResourceMaster);
+  }
+
+  async find(tenant: TenantId, id: string): Promise<ResourceMaster | null> {
+    const row = this.resources.get(`${tenant}|${id}`);
+    return row === undefined ? null : toResourceMaster(row);
+  }
+
+  async update(
+    tenant: TenantId,
+    id: string,
+    input: UpdateResourceInput,
+  ): Promise<ResourceMaster | null> {
+    const row = this.resources.get(`${tenant}|${id}`);
+    if (row === undefined) return null;
+    if (input.name !== undefined) row.name = input.name;
+    if (input.type !== undefined) row.type = input.type;
+    if (input.active !== undefined) row.active = input.active;
+    return toResourceMaster(row);
+  }
+}
+
+function toMaster(row: ItemRow): ItemMaster {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenant),
+    code: row.code,
+    name: row.name,
+    spec: row.spec,
+    unit: row.unit,
+    category: row.category,
+    active: row.active,
+  };
+}
+
+function toResourceMaster(row: ResourceRow): ResourceMaster {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenant),
+    code: row.code,
+    name: row.name,
+    type: row.type,
+    active: row.active,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 客户/供应商/计量单位（S1 backfill：0920 #8/#9/#100）——同 InMemoryItemStore 形态。
+// ---------------------------------------------------------------------------
+
+interface CustomerRow {
+  readonly tenant: string;
+  readonly id: string;
+  readonly code: string;
+  name: string;
+  contact: string | null;
+  active: boolean;
+}
+
+export class InMemoryCustomerStore implements CustomerStore {
+  private readonly customers = new Map<string, CustomerRow>(); // key: `${tenant}|${id}`
+
+  async create(input: CreateCustomerInput): Promise<CustomerMaster> {
+    const conflict = [...this.customers.values()].find(
+      (row) => row.tenant === input.tenant && row.code === input.code,
+    );
+    if (conflict !== undefined) {
+      throw new MasterdataConflictError(
+        `客户 code '${input.code}' 在租户 '${input.tenant}' 内已存在`,
+      );
+    }
+    const row: CustomerRow = {
+      tenant: input.tenant,
+      id: nextMemoryId(),
+      code: input.code,
+      name: input.name,
+      contact: input.contact ?? null,
+      active: input.active ?? true,
+    };
+    this.customers.set(`${row.tenant}|${row.id}`, row);
+    return toCustomerMaster(row);
+  }
+
+  async list(tenant: TenantId): Promise<readonly CustomerMaster[]> {
+    return [...this.customers.values()]
+      .filter((row) => row.tenant === tenant)
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(toCustomerMaster);
+  }
+
+  async find(tenant: TenantId, id: string): Promise<CustomerMaster | null> {
+    const row = this.customers.get(`${tenant}|${id}`);
+    return row === undefined ? null : toCustomerMaster(row);
+  }
+
+  async update(tenant: TenantId, id: string, input: UpdateCustomerInput): Promise<CustomerMaster | null> {
+    const row = this.customers.get(`${tenant}|${id}`);
+    if (row === undefined) return null;
+    if (input.name !== undefined) row.name = input.name;
+    if (input.contact !== undefined) row.contact = input.contact;
+    if (input.active !== undefined) row.active = input.active;
+    return toCustomerMaster(row);
+  }
+}
+
+interface SupplierRow {
+  readonly tenant: string;
+  readonly id: string;
+  readonly code: string;
+  name: string;
+  active: boolean;
+}
+
+export class InMemorySupplierStore implements SupplierStore {
+  private readonly suppliers = new Map<string, SupplierRow>(); // key: `${tenant}|${id}`
+
+  async create(input: CreateSupplierInput): Promise<SupplierMaster> {
+    const conflict = [...this.suppliers.values()].find(
+      (row) => row.tenant === input.tenant && row.code === input.code,
+    );
+    if (conflict !== undefined) {
+      throw new MasterdataConflictError(
+        `供应商 code '${input.code}' 在租户 '${input.tenant}' 内已存在`,
+      );
+    }
+    const row: SupplierRow = {
+      tenant: input.tenant,
+      id: nextMemoryId(),
+      code: input.code,
+      name: input.name,
+      active: input.active ?? true,
+    };
+    this.suppliers.set(`${row.tenant}|${row.id}`, row);
+    return toSupplierMaster(row);
+  }
+
+  async list(tenant: TenantId): Promise<readonly SupplierMaster[]> {
+    return [...this.suppliers.values()]
+      .filter((row) => row.tenant === tenant)
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(toSupplierMaster);
+  }
+
+  async find(tenant: TenantId, id: string): Promise<SupplierMaster | null> {
+    const row = this.suppliers.get(`${tenant}|${id}`);
+    return row === undefined ? null : toSupplierMaster(row);
+  }
+
+  async update(tenant: TenantId, id: string, input: UpdateSupplierInput): Promise<SupplierMaster | null> {
+    const row = this.suppliers.get(`${tenant}|${id}`);
+    if (row === undefined) return null;
+    if (input.name !== undefined) row.name = input.name;
+    if (input.active !== undefined) row.active = input.active;
+    return toSupplierMaster(row);
+  }
+}
+
+interface UnitRow {
+  readonly tenant: string;
+  readonly id: string;
+  readonly code: string;
+  name: string;
+  symbol: string | null;
+}
+
+export class InMemoryUnitStore implements UnitStore {
+  private readonly units = new Map<string, UnitRow>(); // key: `${tenant}|${id}`
+
+  async create(input: CreateUnitInput): Promise<UnitMaster> {
+    const conflict = [...this.units.values()].find(
+      (row) => row.tenant === input.tenant && row.code === input.code,
+    );
+    if (conflict !== undefined) {
+      throw new MasterdataConflictError(
+        `计量单位 code '${input.code}' 在租户 '${input.tenant}' 内已存在`,
+      );
+    }
+    const row: UnitRow = {
+      tenant: input.tenant,
+      id: nextMemoryId(),
+      code: input.code,
+      name: input.name,
+      symbol: input.symbol ?? null,
+    };
+    this.units.set(`${row.tenant}|${row.id}`, row);
+    return toUnitMaster(row);
+  }
+
+  async list(tenant: TenantId): Promise<readonly UnitMaster[]> {
+    return [...this.units.values()]
+      .filter((row) => row.tenant === tenant)
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(toUnitMaster);
+  }
+
+  async find(tenant: TenantId, id: string): Promise<UnitMaster | null> {
+    const row = this.units.get(`${tenant}|${id}`);
+    return row === undefined ? null : toUnitMaster(row);
+  }
+
+  async update(tenant: TenantId, id: string, input: UpdateUnitInput): Promise<UnitMaster | null> {
+    const row = this.units.get(`${tenant}|${id}`);
+    if (row === undefined) return null;
+    if (input.name !== undefined) row.name = input.name;
+    if (input.symbol !== undefined) row.symbol = input.symbol;
+    return toUnitMaster(row);
+  }
+}
+
+function toCustomerMaster(row: CustomerRow): CustomerMaster {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenant),
+    code: row.code,
+    name: row.name,
+    contact: row.contact,
+    active: row.active,
+  };
+}
+
+function toSupplierMaster(row: SupplierRow): SupplierMaster {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenant),
+    code: row.code,
+    name: row.name,
+    active: row.active,
+  };
+}
+
+function toUnitMaster(row: UnitRow): UnitMaster {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenant),
+    code: row.code,
+    name: row.name,
+    symbol: row.symbol,
+  };
+}

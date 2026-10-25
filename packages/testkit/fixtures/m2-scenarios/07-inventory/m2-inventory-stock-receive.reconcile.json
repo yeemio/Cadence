@@ -1,0 +1,47 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-inventory-stock-receive",
+    "description": "07-inventory §7 对账点 1「可用量=总量−预占 逐物料一致」入账侧：stock.receive.v1 kind=production 完工入库（载荷形态=application 库存测试；库位缺省落默认库位）。链式场景——录制前替换 __WAREHOUSE_ID__ 与 __WORK_ORDER_ID__",
+    "input": {
+      "method": "POST",
+      "path": "/inventory/stock/receipts",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-inventory-stock-receive",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "stock.receive.v1",
+          "payload": {
+            "kind": "production",
+            "itemId": "item-m2rec-01",
+            "warehouseId": "__WAREHOUSE_ID__",
+            "quantity": 10,
+            "workOrderId": "__WORK_ORDER_ID__"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

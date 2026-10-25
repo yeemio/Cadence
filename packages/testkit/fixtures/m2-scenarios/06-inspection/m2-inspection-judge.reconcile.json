@@ -1,0 +1,45 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-inspection-judge",
+    "description": "06-inspection §3 检验记录：inspection.judge.v1 合格/不合格数量（e2e-live-db 口径 93 造数 c 形态；judgedAt 物化回厂时点）。链式场景——录制前替换 __INSPECTION_ID__ 与 __EXPECTED_REVISION__（质检单须 pending）",
+    "input": {
+      "method": "POST",
+      "path": "/inspection/orders/__INSPECTION_ID__/judgment",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-inspection-judge",
+        "expectedRevision": "__EXPECTED_REVISION__",
+        "command": {
+          "kind": "inspection.judge.v1",
+          "payload": {
+            "passedQty": 5,
+            "failedQty": 0,
+            "remark": null
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

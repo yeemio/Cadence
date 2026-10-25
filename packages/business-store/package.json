@@ -1,0 +1,105 @@
+{
+  "name": "@smes/business-store",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PostgreSQL 16 + Prisma 存储基座：证据标准公共列、append-only 业务事件表、Outbox、多租户贯通、组织配置表（users/roles/policies）与 PolicyStore PG 适配（ADR-0003 #5 / ADR-0005 / contracts/evidence-columns.v1.md）。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./org": {
+      "types": "./dist/org/index.d.ts",
+      "default": "./dist/org/index.js"
+    },
+    "./masterdata": {
+      "types": "./dist/masterdata/index.d.ts",
+      "default": "./dist/masterdata/index.js"
+    },
+    "./workbench": {
+      "types": "./dist/workbench/index.d.ts",
+      "default": "./dist/workbench/index.js"
+    },
+    "./approval": {
+      "types": "./dist/approval/index.d.ts",
+      "default": "./dist/approval/index.js"
+    },
+    "./baseline": {
+      "types": "./dist/baseline/index.d.ts",
+      "default": "./dist/baseline/index.js"
+    },
+    "./workorder": {
+      "types": "./dist/workorder/index.d.ts",
+      "default": "./dist/workorder/index.js"
+    },
+    "./inspection": {
+      "types": "./dist/inspection/index.d.ts",
+      "default": "./dist/inspection/index.js"
+    },
+    "./listing": {
+      "types": "./dist/listing/index.d.ts",
+      "default": "./dist/listing/index.js"
+    },
+    "./dispatch": {
+      "types": "./dist/dispatch/index.d.ts",
+      "default": "./dist/dispatch/index.js"
+    },
+    "./inventory": {
+      "types": "./dist/inventory/index.d.ts",
+      "default": "./dist/inventory/index.js"
+    },
+    "./reporting": {
+      "types": "./dist/reporting/index.d.ts",
+      "default": "./dist/reporting/index.js"
+    },
+    "./hours": {
+      "types": "./dist/hours/index.d.ts",
+      "default": "./dist/hours/index.js"
+    },
+    "./costing": {
+      "types": "./dist/costing/index.d.ts",
+      "default": "./dist/costing/index.js"
+    },
+    "./payroll": {
+      "types": "./dist/payroll/index.d.ts",
+      "default": "./dist/payroll/index.js"
+    },
+    "./metric-pack": {
+      "types": "./dist/metric-pack/index.d.ts",
+      "default": "./dist/metric-pack/index.js"
+    },
+    "./drawing": {
+      "types": "./dist/drawing/index.d.ts",
+      "default": "./dist/drawing/index.js"
+    },
+    "./maintenance": {
+      "types": "./dist/maintenance/index.d.ts",
+      "default": "./dist/maintenance/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json",
+    "build": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot",
+    "prisma:validate": "DATABASE_URL='postgresql://validate:validate@127.0.0.1:5432/validate' prisma validate --schema prisma/schema.prisma",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
+    "db:seed": "node prisma/seed.mjs",
+    "db:e2e": "node scripts/e2e-write-read.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@smes/application": "workspace:*",
+    "@smes/business-core": "workspace:*",
+    "@smes/engine-flow": "workspace:*",
+    "uuid": "^14.0.3"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

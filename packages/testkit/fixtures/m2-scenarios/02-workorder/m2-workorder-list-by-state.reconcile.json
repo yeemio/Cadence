@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-workorder-list-by-state",
+    "description": "02-workorder §7 对账点 1「同集合工作令的状态分布计数与活系统口径一致」——状态筛选器读侧（?state=not_started，九态词汇见 workorder-config：not_started 起）；ADR-0010：状态集配置分离，词汇对照入映射表",
+    "input": {
+      "method": "GET",
+      "path": "/workorder/work-orders",
+      "query": {
+        "state": "not_started"
+      },
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision",
+      "supersedes",
+      "**.supersedes"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "arrays": {
+      "orders": {
+        "match": "unordered"
+      }
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

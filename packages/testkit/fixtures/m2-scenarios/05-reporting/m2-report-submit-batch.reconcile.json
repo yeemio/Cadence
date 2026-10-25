@@ -1,0 +1,49 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-report-submit-batch",
+    "description": "05-reporting §3 批量申报（上限 50，v1.1 实施裁定）：report.submit-batch.v1（载荷形态=application 报工测试：lines 数组；单行批量起步，扩行在同口径下追加）。链式场景——录制前替换 __DISPATCH_ID__（两处）",
+    "input": {
+      "method": "POST",
+      "path": "/reports/batch",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-report-submit-batch",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "report.submit-batch.v1",
+          "payload": {
+            "lines": [
+              {
+                "dispatchId": "__DISPATCH_ID__",
+                "doneQty": 4,
+                "laborMinutes": 120
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

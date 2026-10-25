@@ -1,0 +1,41 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "auth-login",
+    "description": "POST /auth/login 形状校验：token/expiresAt 是随机值与时间敏感值，忽略其值只断言形状；其余字段（user/admin/permissions）精确比对",
+    "input": {
+      "method": "POST",
+      "path": "/auth/login",
+      "body": {
+        "username": "admin",
+        "password": "demo-password"
+      }
+    }
+  },
+  "reference": {
+    "status": 201,
+    "body": {
+      "user": {
+        "id": "user-seed-admin",
+        "tenant": "default",
+        "username": "admin",
+        "displayName": "种子管理员",
+        "active": true
+      },
+      "admin": true,
+      "permissions": []
+    },
+    "recordedAt": "2026-10-24T19:12:04.442Z",
+    "recordedFrom": "http://127.0.0.1:55497"
+  },
+  "compare": {
+    "ignore": [
+      "token",
+      "expiresAt"
+    ],
+    "shape": {
+      "token": "string",
+      "expiresAt": "string"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-costing-rebuild",
+    "description": "09-costing §7 对账点「同口径下材料+工时换算+外协三分类总额与活系统一致；重算幂等」：costing.rebuild.v1 工作令×口径重算（e2e 形态：2h×6000 分=12000 工时成本锚；R6 工时条目存 hours 金额化在口径层）。链式场景——录制前替换 __WORK_ORDER_ID__",
+    "input": {
+      "method": "POST",
+      "path": "/costing/rebuild",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-costing-rebuild",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "costing.rebuild.v1",
+          "payload": {
+            "workOrderId": "__WORK_ORDER_ID__"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@smes/maintenance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "维保专业包（M3，m3-drafts/02-maintenance.md v1.0）：版本化维保计划（设备×周期×点检判据+保养动作）/ 维保任务状态机（scheduled→executing→done/cancelled，engine-flow 配置承载）/ 到期扫描（due-scan 信封命令）/ 点检·保养·维修三态 append-only 记录 / 故障联动经 baseline Outbox 事件（组合根粘合，零 import）。零框架业务类，不注册进组合根。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*",
+    "@smes/engine-flow": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

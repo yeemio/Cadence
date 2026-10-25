@@ -1,0 +1,6 @@
+# 构建上下文裁剪（server/web 镜像共享仓根 context）：
+# 依赖与产物一律在镜像内生成（可复现、与宿主平台无关）；.git/.github 不入镜像。
+**/node_modules
+**/dist
+.git
+.github

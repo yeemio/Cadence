@@ -1,0 +1,49 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-baseline-routing-define",
+    "description": "01-baseline §7 对账点 2「同图号工艺路线的工序序列行为等价」——建链侧：routing.define 首版（drawingNo=固定业务键 DWG-M2REC-01，steps 位置即工序顺序，seq 按位置回填）。自含场景；读侧见 m2-baseline-routing-query",
+    "input": {
+      "method": "POST",
+      "path": "/baseline/routings/commands",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-baseline-routing-define",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "baseline.routing.define.v1",
+          "payload": {
+            "drawingNo": "DWG-M2REC-01",
+            "steps": [
+              {
+                "processCode": "OP-10",
+                "remark": "粗车"
+              },
+              {
+                "processCode": "OP-20",
+                "remark": null
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

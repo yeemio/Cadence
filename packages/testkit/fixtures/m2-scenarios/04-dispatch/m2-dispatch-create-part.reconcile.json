@@ -1,0 +1,47 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-dispatch-create-part",
+    "description": "04-dispatch §3 六类创建（零件单带图号×工序×工艺属性随单）：dispatch.create.v1 kind=part（e2e-live-db 断言④形态）。链式场景——录制前替换 __WORK_ORDER_ID__",
+    "input": {
+      "method": "POST",
+      "path": "/dispatch/orders",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-dispatch-create-part",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "dispatch.create.v1",
+          "payload": {
+            "workOrderId": "__WORK_ORDER_ID__",
+            "kind": "part",
+            "drawingNo": "DWG-M2REC-01",
+            "operationCode": "OP-10",
+            "quantity": 10
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

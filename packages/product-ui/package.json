@@ -1,0 +1,20 @@
+{
+  "name": "@smes/product-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "React 视图模型（shadcn/ui 之下）：应用注册表 manifest 形状、菜单 RBAC 过滤纯函数、refine 无头 authProvider 形状与 mock。UI 装配在 apps/web。",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@refinedev/core": "^5.0.12",
+    "@smes/business-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

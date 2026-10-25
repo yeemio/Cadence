@@ -1,0 +1,2029 @@
+// Cadence business-store —— PostgreSQL 存储基座（M1 增量 2-A；3-D 增组织配置三表）
+//
+// 依据：
+//   - architecture/contracts/evidence-columns.v1.md（证据标准公共列）
+//   - ADR-0003 #5（append-only 账本：事件表 + Outbox）
+//   - ADR-0005（双形态多租户：全表 tenant_id；RLS 在 M4 落地）
+//   - ADR-0010（领域内核通用词汇；audit_status 合法值由 M2 领域规格定义，故为 String）
+//   - M1 增量 3-D：users / roles / policies——组织配置表，普通 CRUD（非事实表）
+//
+// 证据公共列复用模式：Prisma 无 mixin——证据列以"约定字段块"在每个事实模型重复，
+// 漂移由 tests/schema-conformance.test.ts 机器校验（漏列/改型即红）。
+// 新增事实表 = 照抄证据字段块 + 领域键列，业务载荷列等 M2 领域规格产出后再增补。
+//
+// id 生成策略：PG 无内建 uuidv7——统一在应用侧生成（src/ids/uuidv7.ts，uuid 包 v7），
+// @default(uuid(7)) 是 Prisma Client 侧兜底（漏传 id 时仍得时间有序 id）。
+//
+// append-only 纪律（双层防线，取舍见本包 README）：
+//   1. 应用层写门 asAppendOnly()（src/append-only/）——仓储拿不到 update/delete；
+//   2. DB 触发器（migrations/ 内手写）拒绝事实表与事件表的 UPDATE/DELETE。
+//      Outbox 例外：投递记账必须可 UPDATE（attempts / delivered_at）。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// 示例业务事实表：工作令记录（ADR-0010 通用词汇）。
+/// 证据公共列完整落地；业务载荷列由 M2 领域规格增补（清洁室：不预造字段）。
+/// append-only：修正 = 新行 supersedes 指向前任，objectVersion +1。
+model WorkOrderRecord {
+  id            String  @id @default(uuid(7)) @db.Uuid
+  tenantId      String  @map("tenant_id")
+  workOrderId   String  @map("work_order_id") @db.Uuid
+  objectVersion Int     @default(1) @map("object_version")
+  auditStatus   String  @map("audit_status")
+  provenance    Json?   @map("provenance")
+  supersedes    String? @db.Uuid @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  /// 修正链（同租户内自引用：fields 含 tenantId，防跨租户 supersedes）
+  predecessor WorkOrderRecord?  @relation("SupersedesChain", fields: [supersedes, tenantId], references: [id, tenantId])
+  successors  WorkOrderRecord[] @relation("SupersedesChain")
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, workOrderId])
+  @@map("work_order_records")
+}
+
+/// append-only 业务事件表：载荷即 business-core BusinessEvent 形状
+/// （eventId 为自然主键——幂等：同一事件只允许落一次）。
+/// aggregate 三列是 EventAggregateRef 的扁平化（可索引、可按聚合查询）。
+/// UPDATE/DELETE 被迁移内触发器拒绝。
+model BusinessEventRecord {
+  eventId           String    @id @map("event_id")
+  tenantId          String    @map("tenant_id")
+  eventType         String    @db.VarChar(128) @map("event_type")
+  aggregateId       String    @map("aggregate_id")
+  aggregateType     String    @map("aggregate_type")
+  aggregateRevision Int       @map("aggregate_revision")
+  occurredAt        DateTime  @db.Timestamptz(6) @map("occurred_at")
+  businessTime      DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime     DateTime? @db.Timestamptz(6) @map("available_time")
+  provenance        Json?     @map("provenance")
+  payload           Json      @map("payload")
+
+  outboxEntries OutboxRecord[]
+
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, aggregateId, aggregateRevision])
+  @@map("event_records")
+}
+
+/// Outbox 投递记账（OutboxRecord 形状 + tenant_id——ADR-0005 全表纪律）。
+/// 唯一不设 append-only 触发器的表：投递器必须能 UPDATE attempts/delivered_at。
+model OutboxRecord {
+  eventId       String    @id @map("event_id")
+  tenantId      String    @map("tenant_id")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  attempts      Int       @default(0) @map("attempts")
+  lastAttemptAt DateTime? @db.Timestamptz(6) @map("last_attempt_at")
+  nextAttemptAt DateTime? @db.Timestamptz(6) @map("next_attempt_at")
+  deliveredAt   DateTime? @db.Timestamptz(6) @map("delivered_at")
+
+  event BusinessEventRecord @relation(fields: [eventId], references: [eventId])
+
+  @@index([deliveredAt, nextAttemptAt])
+  @@map("outbox_records")
+}
+
+// ---------------------------------------------------------------------------
+// 组织/用户/角色管理（M1 增量 3-D）。配置数据非业务事实：普通 CRUD 表，
+// 不套证据公共列、不套 append-only/supersedes（取舍见包 README"组织配置表"节）。
+// 词汇纪律（ADR-0010）：users / roles / policies / tenant 全部通用词。
+// ---------------------------------------------------------------------------
+
+/// 用户元数据（组织管理）。id 文本主键 + uuid(7) 兜底默认：
+/// 种子与演示身份可用稳定非 uuid id（如 user-demo-admin，与 dev 身份头
+/// 同形）；运行期创建走应用侧 uuidv7 权威生成（同本包 id 策略）。
+/// password_hash（M1 收尾波-③）：scrypt 自述格式串，可空——组织端点创建的
+/// 用户默认未设口令（不能登录），种子为演示身份设默认口令。
+model UserRecord {
+  id           String  @id @default(uuid(7))
+  tenantId     String  @map("tenant_id")
+  username     String
+  displayName  String  @map("display_name")
+  active       Boolean @default(true)
+  passwordHash String? @map("password_hash")
+
+  @@unique([tenantId, username])
+  @@map("users")
+}
+
+/// 会话行（M1 收尾波-③ 真实认证）。token_digest = sha256(token)——**明文
+/// token 不落库**（拖库不可冒用）。轻量运营状态（撤销 = UPDATE revoked_at），
+/// 非业务事实：不套证据公共列、不设 append-only 触发器（同 todos 取舍）。
+/// refresh_expires_at 是续期窗口上界（首签 +7d，绝对上限不随续期滑动）。
+/// user_id 不设外键——同 policies 取舍：端口合同的用户是通用字符串 id，
+/// 停用撤销按 (tenant_id, user_id) 索引扫，不做级联。
+model SessionRecord {
+  id               String    @id @default(uuid(7))
+  tenantId         String    @map("tenant_id")
+  userId           String    @map("user_id")
+  tokenDigest      String    @unique @map("token_digest")
+  createdAt        DateTime  @db.Timestamptz(6) @map("created_at")
+  expiresAt        DateTime  @db.Timestamptz(6) @map("expires_at")
+  refreshExpiresAt DateTime  @db.Timestamptz(6) @map("refresh_expires_at")
+  revokedAt        DateTime? @db.Timestamptz(6) @map("revoked_at")
+
+  @@index([tenantId, userId])
+  @@map("sessions")
+}
+
+/// 角色元数据（RBAC 角色名 = PolicyRule.role 段形状，application 侧 roleName() 校验）。
+/// 角色-权限与用户-角色绑定不在本表——存 policies（PolicyStore 事实源）。
+model RoleRecord {
+  id          String @id @default(uuid(7))
+  tenantId    String @map("tenant_id")
+  name        String
+  displayName String @map("display_name")
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+/// casbin 策略行（PolicyStore 端口的 PG 持久化，M1 增量 3-D）。
+/// rule_key 自然主键 = 规则规范键（与 application 内存实现的 Map 键同形状，
+/// 见 src/org/policy-mapping.ts）：append 幂等靠 PK 冲突跳过（skipDuplicates），
+/// remove 按键精确删除。不设 users/roles 外键——端口合同的用户/角色是通用
+/// 字符串 id（dev 策略钩子与 mock 身份不受组织表外键约束），组织管理端点
+/// 在用例层自行校验存在性（404）。
+model PolicyRecord {
+  ruleKey   String  @id @map("rule_key")
+  tenantId  String  @map("tenant_id")
+  kind      String
+  userId    String? @map("user_id")
+  role      String?
+  resource  String?
+  action    String?
+
+  @@index([tenantId])
+  @@map("policies")
+}
+
+// ---------------------------------------------------------------------------
+// 基础数据（M1 增量 4-I）。与组织配置表同取舍：主数据是**配置数据非业务
+// 事实**——普通 CRUD 表，不套证据公共列、不套 append-only/supersedes；
+// 词汇纪律（ADR-0010 判定三问）：items / resources / category / spec 全
+// 跨行业通用词，行业语义只进数据行不进代码。
+// ---------------------------------------------------------------------------
+
+/// 物品主数据（通用"物"概念：原料/半成品/成品/辅料……分类由 category 自由描述）。
+/// 租户内 code 唯一；无 delete——停用走 active=false（M2 事务表将引用，避免悬挂）。
+model ItemRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  spec      String?
+  unit      String?
+  category  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, code])
+  @@map("items")
+}
+
+/// 资源主数据（通用"产能资源"概念：设备/工位/人员组……类型由 type 自由描述）。
+model ResourceRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  type      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, code])
+  @@map("resources")
+}
+
+// ---------------------------------------------------------------------------
+// 工作台待办（M1 增量 4-I）。轻量运营状态（open→done 单向迁移），非业务
+// 事实——同上不套证据列/append-only。数据级过滤合同：一切读操作按
+// (tenant_id, assignee_id) 双键收口（application 端口合同）。
+// ---------------------------------------------------------------------------
+
+/// 待办行（TodoItem 端口的 PG 持久化；source=来源模块码，refType/refId=可选业务指向）。
+model TodoRecord {
+  id         String    @id @default(uuid(7))
+  tenantId   String    @map("tenant_id")
+  assigneeId String    @map("assignee_id")
+  title      String
+  source     String
+  refType    String?   @map("ref_type")
+  refId      String?   @map("ref_id")
+  status     String    @default("open")
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  dueAt      DateTime? @db.Timestamptz(6) @map("due_at")
+
+  @@index([tenantId, assigneeId, status])
+  @@map("todos")
+}
+
+// ---------------------------------------------------------------------------
+// 审批（M1 收尾波-①；application/approval 端口 + engine-flow 记录/事件端口的
+// PG 实现）。三表分工：
+//   approval_cases   案件行 = 事件账本的**投影**（state/object_version 随迁移
+//                    UPDATE）——运营状态非事实表，同 todos 取舍：不套证据列、
+//                    不设 append-only 触发器；
+//   approval_records 决策记录账本（append-only，触发器拒 UPDATE/DELETE）；
+//   approval_events  迁移事件账本（append-only；seq = 大单调游标，映射
+//                    engine ApprovalEventCursor；(aggregate_id, aggregate_revision)
+//                    唯一 = DB 级乐观锁：并发对同一版本提交两个迁移，必有一个被拒）。
+// engine 端口不带租户参数——租户经案件行解析（聚合锚定 = 案件，见适配层注释）。
+// 词汇纪律（ADR-0010）：case/approval/decision/subject 全通用词。
+// ---------------------------------------------------------------------------
+
+/// 审批案件行（ApprovalCaseStore 端口的 PG 持久化）。
+model ApprovalCaseRecord {
+  id            String   @id @default(uuid(7))
+  tenantId      String   @map("tenant_id")
+  flowConfigId  String   @map("flow_config_id")
+  state         String
+  objectVersion Int      @default(1) @map("object_version")
+  subjectType   String   @map("subject_type")
+  subjectId     String   @map("subject_id")
+  submitterId   String   @map("submitter_id")
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, createdAt])
+  @@map("approval_cases")
+}
+
+/// 审批决策记录行（engine-flow ApprovalRecordStore 端口的 PG 持久化；append-only）。
+model ApprovalDecisionRecord {
+  id            String   @id @default(uuid(7))
+  tenantId      String   @map("tenant_id")
+  aggregateId   String   @map("aggregate_id")
+  aggregateType String   @map("aggregate_type")
+  reviewerId    String   @map("reviewer_id")
+  decision      String
+  reason        String
+  evidence      Json
+  objectVersion Int      @map("object_version")
+  decidedAt     DateTime @db.Timestamptz(6) @map("decided_at")
+
+  @@index([tenantId, aggregateId])
+  @@map("approval_records")
+}
+
+/// 审批迁移事件行（engine-flow ApprovalEventStore 端口的 PG 持久化；append-only）。
+model ApprovalEventRecord {
+  seq               BigInt   @id @default(autoincrement()) @db.BigInt
+  eventId           String   @unique @map("event_id")
+  tenantId          String   @map("tenant_id")
+  eventType         String   @db.VarChar(128) @map("event_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateType     String   @map("aggregate_type")
+  aggregateRevision Int      @map("aggregate_revision")
+  occurredAt        DateTime @db.Timestamptz(6) @map("occurred_at")
+  payload           Json     @map("payload")
+
+  @@unique([aggregateId, aggregateRevision])
+  @@index([tenantId, aggregateId, seq])
+  @@map("approval_events")
+}
+
+// ---------------------------------------------------------------------------
+// baseline 技术准备（M2-W2 P1 子集：工序/设备/外协计价规则/物料校验运行）。
+// 四对象是**版本化主数据**（合同 01-baseline.md §2：draft→active→superseded，
+// 新版本 supersedes 旧版）：完整证据公共列 + supersedes 自引用修正链 +
+// append-only 触发器（对齐 work_order_records 体例）——版本不可变、修正只加行。
+// (tenant_id, code, object_version) 唯一 = 并发同版本写入竞态防线；
+// (tenant_id, supersedes) 唯一 = 链线性（一行至多被取代一次）。
+// baseline_command_operations 是命令幂等账本（smes.command.v1 不变量 3）：
+// 运营表，同 outbox 一类不套证据列/触发器。
+// ---------------------------------------------------------------------------
+
+/// 工序库版本行（ProcessDefRow 端口的 PG 持久化；append-only）。
+model ProcessDefRecord {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  tenantId      String    @map("tenant_id")
+  code          String
+  name          String
+  category      String?
+  description   String?
+  /// 写入态 draft/active（superseded 为推导态，不落库——见 application 侧机制注释）
+  status        String    @default("active")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @db.Uuid @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  predecessor ProcessDefRecord?  @relation("SupersedesChain", fields: [supersedes, tenantId], references: [id, tenantId])
+  successors  ProcessDefRecord[] @relation("SupersedesChain")
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, supersedes])
+  @@unique([tenantId, code, objectVersion])
+  @@index([tenantId, code])
+  @@map("process_defs")
+}
+
+/// 设备台账版本行（EquipmentRow 端口的 PG 持久化；append-only）。
+model EquipmentRecord {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  tenantId      String    @map("tenant_id")
+  code          String
+  name          String
+  type          String?
+  location      String?
+  status        String    @default("active")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @db.Uuid @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  predecessor EquipmentRecord?  @relation("SupersedesChain", fields: [supersedes, tenantId], references: [id, tenantId])
+  successors  EquipmentRecord[] @relation("SupersedesChain")
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, supersedes])
+  @@unique([tenantId, code, objectVersion])
+  @@index([tenantId, code])
+  @@map("equipment_records")
+}
+
+/// 外协计价规则版本行（OutsourcingPriceRuleRow 端口的 PG 持久化；append-only；
+/// 单价分 + 利润率万分比整数——取价整数精确，见 application/outsourcing-price.ts）。
+model OutsourcingPriceRuleRecord {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  tenantId        String    @map("tenant_id")
+  code            String
+  name            String?
+  /// 计价工序业务码（引用 process_defs.code；跨模块引用走业务码不落外键）
+  processCode     String    @map("process_code")
+  unitPriceMinor  Int       @map("unit_price_minor")
+  marginPermyriad Int       @map("margin_permyriad")
+  status          String    @default("active")
+  objectVersion   Int       @default(1) @map("object_version")
+  auditStatus     String    @map("audit_status")
+  provenance      Json?     @map("provenance")
+  supersedes      String?   @db.Uuid @map("supersedes")
+  businessTime    DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime   DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  predecessor OutsourcingPriceRuleRecord?  @relation("SupersedesChain", fields: [supersedes, tenantId], references: [id, tenantId])
+  successors  OutsourcingPriceRuleRecord[] @relation("SupersedesChain")
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, supersedes])
+  @@unique([tenantId, code, objectVersion])
+  @@index([tenantId, processCode])
+  @@map("outsourcing_price_rules")
+}
+
+/// 物料校验运行行（MaterialValidationRunRow 端口的 PG 持久化；执行事实：
+/// 单行落账无修正链，supersedes 恒 null——证据公共列完整性保留；append-only）。
+/// summary/lines 为 JSONB 载荷（判定汇总与逐行判定，形状见 application 侧）。
+model MaterialValidationRunRecord {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  tenantId      String    @map("tenant_id")
+  issuedBy      String    @map("issued_by")
+  summary       Json      @map("summary")
+  lines         Json
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @db.Uuid @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([id, tenantId])
+  @@index([tenantId, createdAt])
+  @@map("material_validation_runs")
+}
+
+/// 命令幂等账本（smes.command.v1 不变量 3：operationId 已落账拒绝重复执行）。
+/// 运营表非业务事实：不套证据公共列、不设 append-only 触发器（同 outbox 取舍）。
+model BaselineOperationRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  operationId String   @map("operation_id")
+  commandKind String   @map("command_kind")
+  claimedAt   DateTime @default(now()) @db.Timestamptz(6) @map("claimed_at")
+
+  @@unique([tenantId, operationId])
+  @@map("baseline_command_operations")
+}
+
+// ---------------------------------------------------------------------------
+// baseline P2/P3 件（M2-W7）：工艺路线（routings，版本化主数据——业务键 code =
+// 图号，steps 为 JSONB 工序序列）+ 额定工时（standard_times，版本化主数据——
+// 工时量纲秒整数）+ 故障单（fault_reports，投影行——state 随 ASSIGN/RESOLVE/
+// REJECT 迁移 UPDATE，体例同 inspections，不套证据公共列）+ 故障状态机事件账本
+// （fault_events，append-only——engine-flow ApprovalEventStore 的 PG 持久化，
+// (aggregate_id, aggregate_revision) 唯一 = DB 级乐观锁，同 inspection_events）。
+// 故障命令幂等复用 baseline_command_operations（同模块同一账本，不另建表）。
+// ---------------------------------------------------------------------------
+
+/// 工艺路线版本行（RoutingRow 端口的 PG 持久化；append-only；code = 图号）。
+model RoutingRecord {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  tenantId      String    @map("tenant_id")
+  code          String
+  name          String?
+  /// 工序序列（[{seq, processCode, remark}]；非空、seq 严格递增——载荷层守门）
+  steps         Json
+  status        String    @default("active")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @db.Uuid @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  predecessor RoutingRecord?  @relation("SupersedesChain", fields: [supersedes, tenantId], references: [id, tenantId])
+  successors  RoutingRecord[] @relation("SupersedesChain")
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, supersedes])
+  @@unique([tenantId, code, objectVersion])
+  @@index([tenantId, code])
+  @@map("routings")
+}
+
+/// 额定工时版本行（StandardTimeRow 端口的 PG 持久化；append-only；秒整数精确）。
+model StandardTimeRecord {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  tenantId           String    @map("tenant_id")
+  code               String
+  /// 对标维度：process=按工序 / product=按产品（图号）
+  scope              String
+  /// 对标目标业务码（工序码或产品图号；业务码引用不落外键）
+  targetCode         String    @map("target_code")
+  /// 每件标准工时（秒）
+  standardSeconds    Int       @map("standard_seconds")
+  /// 每批/每任务预备工时额度（秒）
+  preparationSeconds Int       @map("preparation_seconds")
+  status             String    @default("active")
+  objectVersion      Int       @default(1) @map("object_version")
+  auditStatus        String    @map("audit_status")
+  provenance         Json?     @map("provenance")
+  supersedes         String?   @db.Uuid @map("supersedes")
+  businessTime       DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime      DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  predecessor StandardTimeRecord?  @relation("SupersedesChain", fields: [supersedes, tenantId], references: [id, tenantId])
+  successors  StandardTimeRecord[] @relation("SupersedesChain")
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, supersedes])
+  @@unique([tenantId, code, objectVersion])
+  @@index([tenantId, scope, targetCode])
+  @@map("standard_times")
+}
+
+/// 故障单投影行（FaultReport 端口的 PG 持久化；id = fr-<uuidv7> TEXT——应用侧
+/// 生成；state 随迁移 UPDATE，advance 走 object_version 条件更新，体例同
+/// inspections：不套证据公共列、不设 append-only 触发器）。
+model FaultReportRecord {
+  id               String    @id
+  tenantId         String    @map("tenant_id")
+  flowConfigId     String    @map("flow_config_id")
+  state            String
+  objectVersion    Int       @default(1) @map("object_version")
+  /// 故障设备业务码（引用 equipment_records.code；业务码挂接不落外键）
+  equipmentCode    String    @map("equipment_code")
+  description      String
+  reportedBy       String    @map("reported_by")
+  assignee         String?
+  assignedAt       DateTime? @db.Timestamptz(6) @map("assigned_at")
+  resolutionRemark String?   @map("resolution_remark")
+  resolvedBy       String?   @map("resolved_by")
+  resolvedAt       DateTime? @db.Timestamptz(6) @map("resolved_at")
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, createdAt])
+  @@map("fault_reports")
+}
+
+/// 故障状态机事件账本（engine-flow ApprovalEventStore 的 PG 持久化；append-only；
+/// (aggregate_id, aggregate_revision) 唯一 = DB 级乐观锁，同 inspection_events）。
+model FaultEventRecord {
+  seq               BigInt   @id @default(autoincrement()) @db.BigInt
+  eventId           String   @unique @map("event_id")
+  tenantId          String   @map("tenant_id")
+  eventType         String   @db.VarChar(128) @map("event_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateType     String   @map("aggregate_type")
+  aggregateRevision Int      @map("aggregate_revision")
+  occurredAt        DateTime @db.Timestamptz(6) @map("occurred_at")
+  payload           Json     @map("payload")
+
+  @@unique([aggregateId, aggregateRevision])
+  @@index([tenantId, aggregateId, seq])
+  @@map("fault_events")
+}
+
+// ---------------------------------------------------------------------------
+// workorder 工作令（M2-W1）。六表分工与 DDL 一一对应（头注见
+// migrations/20261025160000_workorder_module/migration.sql）：
+//   work_orders / parts_requests   投影行（运营状态，state 随迁移 UPDATE，advance
+//                                  走 object_version 条件更新）——同 approval_cases
+//                                  取舍：不套证据公共列、不设 append-only 触发器；
+//   workorder_events               状态机事件账本（append-only；work-order 与
+//                                  parts-request 两类聚合共用，aggregate_type 区分；
+//                                  (aggregate_id, aggregate_revision) 唯一 = DB 级
+//                                  乐观锁——同 approval_events）；
+//   work_order_attachments / kit_checks  业务事实（append-only 不可变，证据七公共
+//                                  列齐备）。注意 id/supersedes 为 **TEXT 非 uuid 列**：
+//                                  本模块 id 是带前缀的 uuidv7（wo-/att-/kc-/pr-/evt-，
+//                                  人读可辨聚合类型），非合法 uuid 字面量——证据字段块
+//                                  在 TEXT 口径落地（与迁移 DDL 一致；conformance 测试
+//                                  的 workorder 段按此口径断言，不入 @db.Uuid 榜单）；
+//   workorder_operations           命令幂等记账（PK = operation_key = 租户+operationId，
+//                                  应用侧拼键；运营表，同 outbox 取舍豁免触发器）。
+// 域事件（BusinessEvent 形状 + Outbox）不建新表：映射既有 event_records /
+// outbox_records（M1 已建——PG 适配见 src/workorder/pg-workorder-stores.ts）。
+// ---------------------------------------------------------------------------
+
+/// 工作令投影行（WorkOrderStore 端口的 PG 持久化）。
+model WorkOrderProjectionRecord {
+  id                 String    @id @default(uuid(7))
+  tenantId           String    @map("tenant_id")
+  flowConfigId       String    @map("flow_config_id")
+  state              String
+  objectVersion      Int       @default(1) @map("object_version")
+  customerRef        String?   @map("customer_ref")
+  projectName        String    @map("project_name")
+  salesRep           String?   @map("sales_rep")
+  manager            String?   @map("manager")
+  plannedDeliveryAt  DateTime? @db.Timestamptz(6) @map("planned_delivery_at")
+  packagingArrivalAt DateTime? @db.Timestamptz(6) @map("packaging_arrival_at")
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt          DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, manager])
+  @@map("work_orders")
+}
+
+/// 配件申请投影行（PartsRequestStore 端口的 PG 持久化）。
+model PartsRequestRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workOrderId   String    @map("work_order_id")
+  flowConfigId  String    @map("flow_config_id")
+  state         String
+  objectVersion Int       @default(2) @map("object_version")
+  itemId        String    @map("item_id")
+  quantity      Float
+  requester     String
+  remark        String?
+  shipmentRef   String?   @map("shipment_ref")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, workOrderId])
+  @@map("parts_requests")
+}
+
+/// 工作令迁移事件行（engine-flow ApprovalEventStore 端口的 PG 持久化；append-only；
+/// 两类聚合共用本表，aggregate_type 区分——形态同 approval_events）。
+model WorkorderEventRecord {
+  seq               BigInt   @id @default(autoincrement()) @db.BigInt
+  eventId           String   @unique @map("event_id")
+  tenantId          String   @map("tenant_id")
+  eventType         String   @db.VarChar(128) @map("event_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateType     String   @map("aggregate_type")
+  aggregateRevision Int      @map("aggregate_revision")
+  occurredAt        DateTime @db.Timestamptz(6) @map("occurred_at")
+  payload           Json     @map("payload")
+
+  @@unique([aggregateId, aggregateRevision])
+  @@index([tenantId, aggregateId, seq])
+  @@map("workorder_events")
+}
+
+/// 附件事实行（WorkOrderAttachmentStore 端口的 PG 持久化；append-only 不可变，
+/// 单行落账无修正链，supersedes 恒 null；id 为带前缀 uuidv7 的 TEXT，见节注）。
+model WorkOrderAttachmentRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workOrderId   String    @map("work_order_id")
+  name          String
+  kind          String
+  ref           String
+  attachedBy    String    @map("attached_by")
+  attachedAt    DateTime  @db.Timestamptz(6) @map("attached_at")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@index([tenantId, workOrderId])
+  @@map("work_order_attachments")
+}
+
+/// 齐套检查快照行（KitCheckStore 端口的 PG 持久化；不可变，每次刷新一条）。
+/// seq = 刷新序游标（bigserial）：latest 口径 = (refreshed_at DESC, seq DESC)——
+/// 同毫秒并列时毫秒时钟与 uuidv7 随机位都不可靠，插入序是唯一确定决胜。
+model KitCheckRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workOrderId   String    @map("work_order_id")
+  seq           BigInt    @default(autoincrement()) @db.BigInt
+  kinds         Json
+  gapLines      Json      @map("gap_lines")
+  complete      Boolean
+  refreshedBy   String    @map("refreshed_by")
+  refreshedAt   DateTime  @db.Timestamptz(6) @map("refreshed_at")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@index([tenantId, workOrderId, refreshedAt(sort: Desc), seq(sort: Desc)])
+  @@map("kit_checks")
+}
+
+/// 命令幂等记账行（WorkOrderOperationStore 端口的 PG 持久化）。
+/// operation_key 自然主键 = `${tenant_id}|${operation_id}`（应用侧拼键，租户内
+/// operationId 唯一的 PK 级防线）；运营表：不套证据公共列、不设触发器。
+model WorkorderOperationRecord {
+  operationKey  String   @id @map("operation_key")
+  tenantId      String   @map("tenant_id")
+  operationId   String   @map("operation_id")
+  command       String
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  occurredAt    DateTime @db.Timestamptz(6) @map("occurred_at")
+
+  @@index([tenantId])
+  @@map("workorder_operations")
+}
+
+// ---------------------------------------------------------------------------
+// inspection 四类质检（M2-W4，06-inspection.md v1.0）。四表分工（体例照抄
+// workorder 节，DDL 见 migrations/20261025190000_inspection_module）：
+//   inspections / nonconformities  投影行（运营状态，state 随判定/处置/闭环迁移
+//                                  UPDATE，advance 走 object_version 条件更新）
+//                                  ——同 approval_cases 取舍：不套证据公共列、
+//                                  不设 append-only 触发器；
+//   inspection_events              状态机事件账本（append-only；inspection-order
+//                                  与 nonconform 两类聚合共用，aggregate_type 区分；
+//                                  (aggregate_id, aggregate_revision) 唯一 = DB 级
+//                                  乐观锁——同 approval_events / workorder_events；
+//                                  判定迁移的决策记录随 payload 留痕=检验记录事实）；
+//   inspection_operations          命令幂等记账（PK = operation_key = 租户+
+//                                  operationId，应用侧拼键；运营表，同 outbox
+//                                  取舍豁免触发器）。
+// 域事件（BusinessEvent 形状 + Outbox）不建新表：复用既有 event_records /
+// outbox_records（M1 已建——PG 适配见 src/inspection/pg-inspection-stores.ts）。
+// id 为带前缀 uuidv7 的 TEXT（insp-/nc-，人读可辨聚合类型——同 workorder 节注，
+// 不入 @db.Uuid 榜单）；(tenant_id, source_type, source_ref_id) 唯一 = 来源幂等
+// 的 DB 级防线（Postgres 唯一索引对 NULL 不去重：手工建单多行合法）。
+// ---------------------------------------------------------------------------
+
+/// 质检单投影行（InspectionOrderStore 端口的 PG 持久化）。
+model InspectionOrderRecord {
+  id                String    @id @default(uuid(7))
+  tenantId          String    @map("tenant_id")
+  flowConfigId      String    @map("flow_config_id")
+  state             String
+  objectVersion     Int       @default(1) @map("object_version")
+  /// 四类：self_outsourced / nonstandard_purchase / standard_purchase / equipment_purchase。
+  kind              String
+  sourceType        String?   @map("source_type")
+  sourceRefId       String?   @map("source_ref_id")
+  itemId            String?   @map("item_id")
+  drawingNo         String?   @map("drawing_no")
+  quantity          Float
+  passedQty         Float?    @map("passed_qty")
+  failedQty         Float?    @map("failed_qty")
+  judgeRemark       String?   @map("judge_remark")
+  judgedBy          String?   @map("judged_by")
+  judgedAt          DateTime? @db.Timestamptz(6) @map("judged_at")
+  /// 闭环时限（failed 判定时定；超时点名锚点）。
+  closeDueAt        DateTime? @db.Timestamptz(6) @map("close_due_at")
+  overdueNotifiedAt DateTime? @db.Timestamptz(6) @map("overdue_notified_at")
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, sourceType, sourceRefId])
+  @@index([tenantId, kind, state])
+  @@index([tenantId, state])
+  @@index([tenantId, createdAt])
+  @@map("inspections")
+}
+
+/// 不合格处置投影行（NonconformStore 端口的 PG 持久化）。
+model NonconformRecord {
+  id             String    @id @default(uuid(7))
+  tenantId       String    @map("tenant_id")
+  inspectionId   String    @map("inspection_id")
+  flowConfigId   String    @map("flow_config_id")
+  state          String
+  objectVersion  Int       @default(1) @map("object_version")
+  itemId         String?   @map("item_id")
+  quantity       Float
+  /// 不合格原因（dispose 时必填留痕）。
+  reason         String?
+  /// 处置枚举：rework / concession / scrap（默认配置层，ADR-0010）。
+  disposal       String?
+  disposeRemark  String?   @map("dispose_remark")
+  disposedBy     String?   @map("disposed_by")
+  disposedAt     DateTime? @db.Timestamptz(6) @map("disposed_at")
+  closeRemark    String?   @map("close_remark")
+  closedBy       String?   @map("closed_by")
+  closedAt       DateTime? @db.Timestamptz(6) @map("closed_at")
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, inspectionId])
+  @@map("nonconformities")
+}
+
+/// 质检迁移事件行（engine-flow ApprovalEventStore 端口的 PG 持久化；append-only；
+/// 两类聚合共用本表，aggregate_type 区分——形态同 workorder_events）。
+model InspectionEventRecord {
+  seq               BigInt   @id @default(autoincrement()) @db.BigInt
+  eventId           String   @unique @map("event_id")
+  tenantId          String   @map("tenant_id")
+  eventType         String   @db.VarChar(128) @map("event_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateType     String   @map("aggregate_type")
+  aggregateRevision Int      @map("aggregate_revision")
+  occurredAt        DateTime @db.Timestamptz(6) @map("occurred_at")
+  payload           Json     @map("payload")
+
+  @@unique([aggregateId, aggregateRevision])
+  @@index([tenantId, aggregateId, seq])
+  @@map("inspection_events")
+}
+
+/// 命令幂等记账行（InspectionOperationStore 端口的 PG 持久化；运营表不套证据
+/// 公共列、不设触发器）。
+model InspectionOperationRecord {
+  operationKey  String   @id @map("operation_key")
+  tenantId      String   @map("tenant_id")
+  operationId   String   @map("operation_id")
+  command       String
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  occurredAt    DateTime @db.Timestamptz(6) @map("occurred_at")
+
+  @@index([tenantId])
+  @@map("inspection_operations")
+}
+
+// ---------------------------------------------------------------------------
+// listing 清单与采购（M2-W3）。八表分工与 workorder 六表同一取舍（头注见
+// migrations/20261025200000_listing_module/migration.sql）：
+//   listing_sheets / listing_lines / purchase_requests / purchase_orders /
+//   purchase_returns   投影行（运营状态，行级 object_version 乐观更新）——
+//                      不套证据公共列、不设 append-only 触发器；清单行为版本化
+//                      数据（校验状态字段 + object_version，非状态机）；
+//   gap_checks         缺口核查不可变快照（append-only，证据七公共列齐备；
+//                      id 为带前缀 uuidv7 的 TEXT，同 workorder 事实表口径）；
+//   listing_events     状态机事件账本（append-only；purchase-request /
+//                      purchase-order / purchase-return 三类聚合共用，
+//                      aggregate_type 区分；(aggregate_id, aggregate_revision)
+//                      唯一 = DB 级乐观锁）；
+//   listing_operations 命令幂等记账（PK = operation_key = 租户|operationId，
+//                      运营表豁免触发器）。
+// 域事件（BusinessEvent 形状 + Outbox）不建新表：映射既有 event_records /
+// outbox_records（PG 适配见 src/listing/pg-listing-stores.ts）。
+// ---------------------------------------------------------------------------
+
+/// 清单单据头投影行（ListingSheetStore 端口的 PG 持久化；(tenant, work_order_id, kind) 唯一）。
+model ListingSheetRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  workOrderId String   @map("work_order_id")
+  kind        String
+  name        String
+  createdAt   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, workOrderId, kind])
+  @@index([tenantId, workOrderId])
+  @@map("listing_sheets")
+}
+
+/// 清单行投影行（ListingLineStore 端口的 PG 持久化；行级乐观版本 + 校验状态字段）。
+model ListingLineRecord {
+  id                String    @id @default(uuid(7))
+  tenantId          String    @map("tenant_id")
+  sheetId           String    @map("sheet_id")
+  workOrderId       String    @map("work_order_id")
+  kind              String
+  lineNo            Int       @map("line_no")
+  drawingNo         String?   @map("drawing_no")
+  code              String?
+  name              String?
+  spec              String?
+  itemId            String?   @map("item_id")
+  requiredQty       Float     @map("required_qty")
+  neededBy          DateTime? @db.Timestamptz(6) @map("needed_by")
+  validationStatus  String    @map("validation_status")
+  candidateItemId   String?   @map("candidate_item_id")
+  candidateItemCode String?   @map("candidate_item_code")
+  similarity        Float     @default(0)
+  basis             String?
+  source            String
+  objectVersion     Int       @default(1) @map("object_version")
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, sheetId, lineNo])
+  @@index([tenantId, workOrderId])
+  @@index([tenantId, sheetId])
+  @@map("listing_lines")
+}
+
+/// 缺口核查快照行（GapCheckStore 端口的 PG 持久化；不可变，每次核查一条。
+/// seq = 核查序游标（bigserial）：latest 口径 = (checked_at DESC, seq DESC)——同毫秒
+/// 并列由插入序决胜，同 kit_checks 取舍）。
+model GapCheckRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workOrderId   String    @map("work_order_id")
+  seq           BigInt    @default(autoincrement()) @db.BigInt
+  kinds         Json
+  gapLines      Json      @map("gap_lines")
+  complete      Boolean
+  checkedBy     String    @map("checked_by")
+  checkedAt     DateTime  @db.Timestamptz(6) @map("checked_at")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@index([tenantId, workOrderId, checkedAt(sort: Desc), seq(sort: Desc)])
+  @@map("gap_checks")
+}
+
+/// 采购申请投影行（PurchaseRequestStore 端口的 PG 持久化；draft→approved→converted）。
+/// 来源锚点（source_type=gap 时 source_gap_check_id / source_listing_line_id 非空）。
+model PurchaseRequestRecord {
+  id                  String   @id @default(uuid(7))
+  tenantId            String   @map("tenant_id")
+  workOrderId         String?  @map("work_order_id")
+  kind                String
+  flowConfigId        String   @map("flow_config_id")
+  state               String
+  objectVersion       Int      @default(1) @map("object_version")
+  itemId              String   @map("item_id")
+  quantity            Float
+  requester           String
+  remark              String?
+  sourceType          String   @map("source_type")
+  sourceGapCheckId    String?  @map("source_gap_check_id")
+  sourceListingLineId String?  @map("source_listing_line_id")
+  purchaseOrderId     String?  @map("purchase_order_id")
+  createdAt           DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, workOrderId])
+  @@index([tenantId, purchaseOrderId])
+  @@map("purchase_requests")
+}
+
+/// 采购订单投影行（PurchaseOrderStore 端口的 PG 持久化；五态机，
+/// lines / request_ids 为 JSONB 载荷，形状见 application listing-stores）。
+model PurchaseOrderRecord {
+  id            String   @id @default(uuid(7))
+  tenantId      String   @map("tenant_id")
+  workOrderId   String?  @map("work_order_id")
+  flowConfigId  String   @map("flow_config_id")
+  state         String
+  objectVersion Int      @default(2) @map("object_version")
+  supplierRef   String?  @map("supplier_ref")
+  supplierName  String?  @map("supplier_name")
+  promisedAt    DateTime @db.Timestamptz(6) @map("promised_at")
+  lines         Json
+  requestIds    Json     @map("request_ids")
+  buyer         String?
+  remark        String?
+  receiptRef    String?  @map("receipt_ref")
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, workOrderId])
+  @@map("purchase_orders")
+}
+
+/// 退货单投影行（PurchaseReturnStore 端口的 PG 持久化；open→revoked）。
+model PurchaseReturnRecord {
+  id              String   @id @default(uuid(7))
+  tenantId        String   @map("tenant_id")
+  purchaseOrderId String   @map("purchase_order_id")
+  flowConfigId    String   @map("flow_config_id")
+  state           String
+  objectVersion   Int      @default(1) @map("object_version")
+  lines           Json
+  returnedBy      String   @map("returned_by")
+  remark          String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, purchaseOrderId])
+  @@map("purchase_returns")
+}
+
+/// listing 状态机迁移事件行（engine-flow ApprovalEventStore 端口的 PG 持久化；
+/// append-only；三类聚合共用本表，aggregate_type 区分——形态同 workorder_events）。
+model ListingEventRecord {
+  seq               BigInt   @id @default(autoincrement()) @db.BigInt
+  eventId           String   @unique @map("event_id")
+  tenantId          String   @map("tenant_id")
+  eventType         String   @db.VarChar(128) @map("event_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateType     String   @map("aggregate_type")
+  aggregateRevision Int      @map("aggregate_revision")
+  occurredAt        DateTime @db.Timestamptz(6) @map("occurred_at")
+  payload           Json     @map("payload")
+
+  @@unique([aggregateId, aggregateRevision])
+  @@index([tenantId, aggregateId, seq])
+  @@map("listing_events")
+}
+
+/// 命令幂等记账行（ListingOperationStore 端口的 PG 持久化；
+/// operation_key 自然主键 = `${tenant_id}|${operation_id}`，同 workorder_operations）。
+model ListingOperationRecord {
+  operationKey  String   @id @map("operation_key")
+  tenantId      String   @map("tenant_id")
+  operationId   String   @map("operation_id")
+  command       String
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  occurredAt    DateTime @db.Timestamptz(6) @map("occurred_at")
+
+  @@index([tenantId])
+  @@map("listing_operations")
+}
+
+// ---------------------------------------------------------------------------
+// dispatch 六类派工（M2-W6）。四表分工与 workorder/listing 同一取舍（头注见
+// migrations/20261025220000_dispatch_module/migration.sql）：
+//   dispatch_orders / outsourcing_lines  投影行（运营状态，行级 object_version
+//                                        乐观更新）——不套证据公共列、不设
+//                                        append-only 触发器；外协行为版本化数据
+//                                        （单价补录 + object_version，非状态机）；
+//   dispatch_events                      状态机事件账本（append-only；dispatch-order
+//                                        聚合专用；(aggregate_id, aggregate_revision)
+//                                        唯一 = DB 级乐观锁）；
+//   dispatch_operations                  命令幂等记账（PK = operation_key =
+//                                        租户|operationId，运营表豁免触发器）。
+// 域事件（BusinessEvent 形状 + Outbox）不建新表：映射既有 event_records /
+// outbox_records（PG 适配见 src/dispatch/pg-dispatch-stores.ts）。
+// ---------------------------------------------------------------------------
+
+/// 派工单投影行（DispatchOrderStore 端口的 PG 持久化；六类一体，
+/// 零件单带图号×工序×工艺属性快照——材料/尺寸随单）。
+model DispatchOrderRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workOrderId   String?   @map("work_order_id")
+  /// 六类：part / outsourcing / assembly / electrical / aftermarket / oddjob。
+  kind          String
+  flowConfigId  String    @map("flow_config_id")
+  state         String
+  objectVersion Int       @default(1) @map("object_version")
+  title         String
+  drawingNo     String?   @map("drawing_no")
+  operationCode String?   @map("operation_code")
+  material      String?
+  sizeSpec      String?   @map("size_spec")
+  quantity      Float
+  doneQty       Float     @default(0) @map("done_qty")
+  assignee      String?
+  dueAt         DateTime? @db.Timestamptz(6) @map("due_at")
+  remark        String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, kind, state])
+  @@index([tenantId, workOrderId])
+  @@index([tenantId, assignee])
+  @@map("dispatch_orders")
+}
+
+/// 外协明细投影行（OutsourcingLineStore 端口的 PG 持久化；供应商×工序×单价×
+/// 交期；单价可事后补录——backfillPrice 乐观更新 +1 版本）。
+model OutsourcingLineRecord {
+  id                  String    @id @default(uuid(7))
+  tenantId            String    @map("tenant_id")
+  dispatchId          String    @map("dispatch_id")
+  lineNo              Int       @map("line_no")
+  processCode         String    @map("process_code")
+  drawingNo           String?   @map("drawing_no")
+  supplierRef         String    @map("supplier_ref")
+  supplierName        String?   @map("supplier_name")
+  quantity            Float
+  unitPriceMinor      Int?      @map("unit_price_minor")
+  /// lookup=创建时实时取价 / manual=创建时人工给定 / backfill=事后补录；null=未定价。
+  priceSource         String?   @map("price_source")
+  marginPermyriad     Int?      @map("margin_permyriad")
+  promisedAt          DateTime? @db.Timestamptz(6) @map("promised_at")
+  sourceListingLineId String?   @map("source_listing_line_id")
+  objectVersion       Int       @default(1) @map("object_version")
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, dispatchId, lineNo])
+  @@index([tenantId, dispatchId])
+  @@index([tenantId, supplierRef])
+  @@map("outsourcing_lines")
+}
+
+/// dispatch 状态机迁移事件行（engine-flow ApprovalEventStore 端口的 PG 持久化；
+/// append-only；dispatch-order 聚合专用——形态同 workorder_events）。
+model DispatchEventRecord {
+  seq               BigInt   @id @default(autoincrement()) @db.BigInt
+  eventId           String   @unique @map("event_id")
+  tenantId          String   @map("tenant_id")
+  eventType         String   @db.VarChar(128) @map("event_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateType     String   @map("aggregate_type")
+  aggregateRevision Int      @map("aggregate_revision")
+  occurredAt        DateTime @db.Timestamptz(6) @map("occurred_at")
+  payload           Json     @map("payload")
+
+  @@unique([aggregateId, aggregateRevision])
+  @@index([tenantId, aggregateId, seq])
+  @@map("dispatch_events")
+}
+
+/// 命令幂等记账行（DispatchOperationStore 端口的 PG 持久化；
+/// operation_key 自然主键 = `${tenant_id}|${operation_id}`，同 listing_operations）。
+model DispatchOperationRecord {
+  operationKey  String   @id @map("operation_key")
+  tenantId      String   @map("tenant_id")
+  operationId   String   @map("operation_id")
+  command       String
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  occurredAt    DateTime @db.Timestamptz(6) @map("occurred_at")
+
+  @@index([tenantId])
+  @@map("dispatch_operations")
+}
+
+// ---------------------------------------------------------------------------
+// inventory 库存环节（M2-W5）。十一表分工与 workorder/listing 同一取舍（头注
+// 见 migrations/20261025220000_inventory_module/migration.sql）：
+//   warehouses / warehouse_locations       主数据投影（R4：仓库与库位归本
+//                                          模块；运营表，不套证据公共列）；
+//   stock_accounts                         库存账投影（物料×仓库：现存量+
+//                                          预占——可用量恒等式的两输入，
+//                                          条件更新守卫负库存策略）；
+//   stock_location_balances                库位余额投影（库位分布；FIFO 扣减序
+//                                          = created_at 升序）；
+//   stock_reservations                     预占投影（reserve/release/consume；
+//                                          (tenant, reservation_key) 唯一）；
+//   stocktakes / shipping_orders           状态机投影（盘点四态/发货三态；
+//                                          lines 为 JSONB 载荷，同 purchase_orders）；
+//   stock_movements                        出入库流水（append-only 业务事实，
+//                                          证据七公共列 + seq bigserial；
+//                                          (tenant, source_key) 唯一 = receiptKey/
+//                                          issueKey 幂等锚点）；
+//   release_facts                          放行事实登记账（inspection →
+//                                          inventory 直连通道落点；append-only，
+//                                          (tenant, inspection_id, phase) 幂等）；
+//   inventory_events                       状态机事件账本（append-only；
+//                                          stocktake / shipping-order 两类聚合共用，
+//                                          (aggregate_id, aggregate_revision) 唯一
+//                                          = DB 级乐观锁）；
+//   inventory_operations                   命令幂等记账（PK = operation_key =
+//                                          租户|operationId，运营表豁免触发器）。
+// 域事件（BusinessEvent 形状 + Outbox）不建新表：映射既有 event_records /
+// outbox_records（PG 适配见 src/inventory/pg-inventory-stores.ts）。
+// ---------------------------------------------------------------------------
+
+/// 仓库主数据行（WarehouseStore 端口的 PG 持久化；(tenant, code) 唯一）。
+model WarehouseRecord {
+  id                String   @id @default(uuid(7))
+  tenantId          String   @map("tenant_id")
+  code              String
+  name              String
+  defaultLocationId String   @map("default_location_id")
+  createdAt         DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, code])
+  @@map("warehouses")
+}
+
+/// 库位主数据行（WarehouseStore 端口的 PG 持久化；(tenant, 仓库, code) 唯一）。
+model WarehouseLocationRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  warehouseId String   @map("warehouse_id")
+  code        String
+  name        String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, warehouseId, code])
+  @@index([tenantId, warehouseId])
+  @@map("warehouse_locations")
+}
+
+/// 库存账投影行（StockAccountStore 端口的 PG 持久化；物料×仓库 维度，
+/// (tenant, item_id, warehouse_id) 唯一；qty_reserved 随预占/核销增减）。
+model StockAccountRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  itemId      String   @map("item_id")
+  warehouseId String   @map("warehouse_id")
+  qtyOnHand   Float    @default(0) @map("qty_on_hand")
+  qtyReserved Float    @default(0) @map("qty_reserved")
+  createdAt   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, itemId, warehouseId])
+  @@map("stock_accounts")
+}
+
+/// 库位余额投影行（StockLocationBalanceStore 端口的 PG 持久化；
+/// (tenant, 仓库, 库位, 物料) 唯一；恒等式 Σ库位余额 = 仓库现存量）。
+model StockLocationBalanceRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  warehouseId String   @map("warehouse_id")
+  locationId  String   @map("location_id")
+  itemId      String   @map("item_id")
+  qty         Float    @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, warehouseId, locationId, itemId])
+  @@index([tenantId, itemId])
+  @@map("stock_location_balances")
+}
+
+/// 出入库流水行（StockMovementStore 端口的 PG 持久化；append-only 事实，
+/// 证据七公共列 TEXT 口径（id 带前缀 uuidv7，同 kit_checks）；
+/// seq = bigserial 插入序（list 升序游标）；(tenant, source_key) 唯一 =
+/// receiptKey/issueKey 幂等锚点（可空——PG 多 NULL 共存）。
+model StockMovementRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  seq           BigInt    @default(autoincrement()) @db.BigInt
+  kind          String
+  itemId        String    @map("item_id")
+  warehouseId   String    @map("warehouse_id")
+  locationId    String?   @map("location_id")
+  quantity      Float
+  sourceRefType String?   @map("source_ref_type")
+  sourceRefId   String?   @map("source_ref_id")
+  sourceKey     String?   @map("source_key")
+  transferId    String?   @map("transfer_id")
+  workOrderId   String?   @map("work_order_id")
+  remark        String?
+  occurredAt    DateTime  @db.Timestamptz(6) @map("occurred_at")
+  recordedBy    String    @map("recorded_by")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@unique([tenantId, sourceKey])
+  @@index([tenantId, occurredAt(sort: Desc), seq(sort: Desc)])
+  @@index([tenantId, itemId, seq])
+  @@index([tenantId, warehouseId, seq])
+  @@map("stock_movements")
+}
+
+/// 预占投影行（StockReservationStore 端口的 PG 持久化；(tenant,
+/// reservation_key) 唯一；status = active/consumed/released；remaining 随
+/// 部分核销递减，减到 0 推终态）。
+model StockReservationRecord {
+  id             String   @id @default(uuid(7))
+  tenantId       String   @map("tenant_id")
+  reservationKey String   @map("reservation_key")
+  itemId         String   @map("item_id")
+  warehouseId    String   @map("warehouse_id")
+  quantity       Float
+  remaining      Float
+  status         String   @default("active")
+  refType        String   @map("ref_type")
+  refId          String   @map("ref_id")
+  createdAt      DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, reservationKey])
+  @@index([tenantId, status])
+  @@map("stock_reservations")
+}
+
+/// 盘点投影行（StocktakeStore 端口的 PG 持久化；四态机 draft→counting→
+/// reconciled→adjusted；lines 为 JSONB 载荷（开单快照 + 实盘回填），形状见
+/// application inventory-stores StocktakeLine）。
+model StocktakeRecord {
+  id            String   @id @default(uuid(7))
+  tenantId      String   @map("tenant_id")
+  warehouseId   String   @map("warehouse_id")
+  flowConfigId  String   @map("flow_config_id")
+  state         String
+  objectVersion Int      @default(1) @map("object_version")
+  lines         Json
+  openedBy      String   @map("opened_by")
+  approvedBy    String?  @map("approved_by")
+  remark        String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, warehouseId])
+  @@map("stocktakes")
+}
+
+/// 发货任务投影行（ShippingOrderStore 端口的 PG 持久化；三态机 draft→
+/// executing→shipped；lines 为 JSONB 载荷（发货行），物流/确认列 confirm 回填）。
+model ShippingOrderRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workOrderId   String?   @map("work_order_id")
+  flowConfigId  String    @map("flow_config_id")
+  state         String
+  objectVersion Int       @default(1) @map("object_version")
+  lines         Json
+  carrier       String?
+  trackingNo    String?   @map("tracking_no")
+  executedBy    String    @map("executed_by")
+  confirmedBy   String?   @map("confirmed_by")
+  confirmedAt   DateTime? @db.Timestamptz(6) @map("confirmed_at")
+  remark        String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, workOrderId])
+  @@map("shipping_orders")
+}
+
+/// inventory 状态机迁移事件行（engine-flow ApprovalEventStore 端口的 PG
+/// 持久化；append-only；stocktake / shipping-order 两类聚合共用，aggregate_type
+/// 区分——形态同 listing_events / workorder_events）。
+model InventoryEventRecord {
+  seq               BigInt   @id @default(autoincrement()) @db.BigInt
+  eventId           String   @unique @map("event_id")
+  tenantId          String   @map("tenant_id")
+  eventType         String   @db.VarChar(128) @map("event_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateType     String   @map("aggregate_type")
+  aggregateRevision Int      @map("aggregate_revision")
+  occurredAt        DateTime @db.Timestamptz(6) @map("occurred_at")
+  payload           Json     @map("payload")
+
+  @@unique([aggregateId, aggregateRevision])
+  @@index([tenantId, aggregateId, seq])
+  @@map("inventory_events")
+}
+
+/// 命令幂等记账行（InventoryOperationStore 端口的 PG 持久化；
+/// operation_key 自然主键 = `${tenant_id}|${operation_id}`，同 listing_operations）。
+model InventoryOperationRecord {
+  operationKey  String   @id @map("operation_key")
+  tenantId      String   @map("tenant_id")
+  operationId   String   @map("operation_id")
+  command       String
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  occurredAt    DateTime @db.Timestamptz(6) @map("occurred_at")
+
+  @@index([tenantId])
+  @@map("inventory_operations")
+}
+
+/// 放行事实登记行（ReleaseFactStore 端口的 PG 持久化；append-only 事实，
+/// 证据七公共列 TEXT 口径；(tenant, inspection_id, phase) 幂等——同轮重试
+/// 返回既有行，复检新 releasedAt 记新行、放行总量累加）。
+model ReleaseFactRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  inspectionId  String    @map("inspection_id")
+  phase         String
+  kind          String
+  itemId        String?   @map("item_id")
+  drawingNo     String?   @map("drawing_no")
+  quantity      Float
+  sourceType    String?   @map("source_type")
+  sourceRefId   String?   @map("source_ref_id")
+  releasedAt    DateTime  @db.Timestamptz(6) @map("released_at")
+  recordedAt    DateTime  @default(now()) @db.Timestamptz(6) @map("recorded_at")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@unique([tenantId, inspectionId, phase])
+  @@index([tenantId, inspectionId])
+  @@map("release_facts")
+}
+
+// ---------------------------------------------------------------------------
+// reporting 报工与核查环节（M2-W7）。四表分工与 workorder/listing/dispatch 同一
+// 取舍（头注见 migrations/20261026010000_reporting_module/migration.sql）：
+//   work_reports          报工单状态机投影（行级 object_version 乐观更新）——
+//                         按行为需求携带 supersedes（修正版链，05-reporting §2）
+//                         与 business_time（事后补录报工）两列，不套完整证据
+//                         七列（投影取舍同 dispatch_orders）；
+//   report_audits         核查留痕账（append-only：编辑/审核/撤销每次动作一行；
+//                         触发器禁 UPDATE/DELETE）；
+//   reporting_events      状态机事件账本（append-only；work-report 聚合专用；
+//                         (aggregate_id, aggregate_revision) 唯一 = DB 级乐观锁）；
+//   reporting_operations  命令幂等记账（PK = operation_key = 租户|operationId，
+//                         运营表豁免触发器）。
+// 域事件（BusinessEvent 形状 + Outbox）不建新表：映射既有 event_records /
+// outbox_records（PG 适配见 src/reporting/pg-reporting-stores.ts）。
+// ---------------------------------------------------------------------------
+
+/// 报工单投影行（WorkReportStore 端口的 PG 持久化；五类一体：零件/装配/电气/
+/// 售后/零工，挂派工单；完工数量 + 工时（整数分钟）+ 申报人；工艺属性随单快照）。
+model WorkReportRecord {
+  id             String    @id @default(uuid(7))
+  tenantId       String    @map("tenant_id")
+  dispatchId     String    @map("dispatch_id")
+  /// 五类：part / assembly / electrical / aftermarket / oddjob。
+  kind           String
+  flowConfigId   String    @map("flow_config_id")
+  state          String
+  objectVersion  Int       @default(1) @map("object_version")
+  doneQty        Float     @map("done_qty")
+  /// 工时（整数分钟——hours 归集同一量纲）。
+  laborMinutes   Int       @map("labor_minutes")
+  reporter       String
+  workOrderId    String?   @map("work_order_id")
+  drawingNo      String?   @map("drawing_no")
+  operationCode  String?   @map("operation_code")
+  /// 修正版链锚点：本单取代的原单 id（直报单为 null）——append-only 修正链。
+  supersedes     String?   @map("supersedes")
+  /// 业务时间（事后补录报工口径；缺省 = 申报时刻）。
+  businessTime   DateTime  @db.Timestamptz(6) @map("business_time")
+  verifiedBy     String?   @map("verified_by")
+  verifiedAt     DateTime? @db.Timestamptz(6) @map("verified_at")
+  revokedBy      String?   @map("revoked_by")
+  revokedAt      DateTime? @db.Timestamptz(6) @map("revoked_at")
+  revokeReason   String?   @map("revoke_reason")
+  remark         String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, state])
+  @@index([tenantId, kind, state])
+  @@index([tenantId, dispatchId])
+  @@index([tenantId, reporter])
+  @@index([tenantId, drawingNo])
+  @@index([tenantId, supersedes])
+  @@map("work_reports")
+}
+
+/// 核查留痕行（ReportAuditStore 端口的 PG 持久化；append-only：谁、何时、对哪
+/// 单、改了什么——edit 携带字段级前后镜像 JSONB，verify/revoke 为 null）。
+model ReportAuditRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  reportId  String   @map("report_id")
+  /// edit / verify / revoke。
+  action    String
+  actor     String
+  reason    String?
+  changes   Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([tenantId, reportId])
+  @@map("report_audits")
+}
+
+/// reporting 状态机迁移事件行（engine-flow ApprovalEventStore 端口的 PG 持久化；
+/// append-only；work-report 聚合专用——形态同 dispatch_events）。
+model ReportingEventRecord {
+  seq               BigInt   @id @default(autoincrement()) @db.BigInt
+  eventId           String   @unique @map("event_id")
+  tenantId          String   @map("tenant_id")
+  eventType         String   @db.VarChar(128) @map("event_type")
+  aggregateId       String   @map("aggregate_id")
+  aggregateType     String   @map("aggregate_type")
+  aggregateRevision Int      @map("aggregate_revision")
+  occurredAt        DateTime @db.Timestamptz(6) @map("occurred_at")
+  payload           Json     @map("payload")
+
+  @@unique([aggregateId, aggregateRevision])
+  @@index([tenantId, aggregateId, seq])
+  @@map("reporting_events")
+}
+
+/// 命令幂等记账行（ReportOperationStore 端口的 PG 持久化；
+/// operation_key 自然主键 = `${tenant_id}|${operation_id}`，同 dispatch_operations）。
+model ReportingOperationRecord {
+  operationKey  String   @id @map("operation_key")
+  tenantId      String   @map("tenant_id")
+  operationId   String   @map("operation_id")
+  command       String
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  occurredAt    DateTime @db.Timestamptz(6) @map("occurred_at")
+
+  @@index([tenantId])
+  @@map("reporting_operations")
+}
+
+// ============================================================================
+// hours 模块（M2-W6，08-hours.md v1.0）——工时账：条目 append-only 事实 +
+// 月度归集可重算快照 + 幂等记账运营表。域事件不建新表（落既有
+// event_records / outbox_records，见 pg-hours-stores）。
+// ============================================================================
+
+/// 工时账目行（LaborEntryStore 端口的 PG 持久化；append-only 事实，证据七
+/// 公列 TEXT 口径——id 为带前缀 uuidv7，同 stock_movements；(tenant,
+/// source_key) 唯一 = 报工联动幂等锚点；撤销/修正追加 reverse 条目不改进
+/// 原行）。
+model LaborEntryRecord {
+  id             String    @id @default(uuid(7))
+  tenantId       String    @map("tenant_id")
+  seq            BigInt    @default(autoincrement()) @db.BigInt
+  workerId       String    @map("worker_id")
+  workDate       String    @map("work_date")
+  trade          String
+  processCode    String?   @map("process_code")
+  hours          Float
+  outputQty      Float?    @map("output_qty")
+  direction      String
+  sourceReportId String    @map("source_report_id")
+  reverses       String?
+  workOrderId    String?   @map("work_order_id")
+  drawingNo      String?   @map("drawing_no")
+  dispatchId     String?   @map("dispatch_id")
+  sourceKey      String    @map("source_key")
+  remark         String?
+  occurredAt     DateTime  @db.Timestamptz(6) @map("occurred_at")
+  recordedBy     String    @map("recorded_by")
+  objectVersion  Int       @default(1) @map("object_version")
+  auditStatus    String    @map("audit_status")
+  provenance     Json?     @map("provenance")
+  supersedes     String?   @map("supersedes")
+  businessTime   DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime  DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@unique([tenantId, sourceKey])
+  @@index([tenantId, workerId, workDate])
+  @@index([tenantId, workOrderId])
+  @@index([tenantId, sourceReportId])
+  @@map("labor_entries")
+}
+
+/// 月度归集快照行（LaborLedgerMonthStore 端口的 PG 持久化；可重算快照——
+/// 人×月×工种一版一行，supersedes 自引用链；重算幂等 = 值未变不追加新行）。
+model LaborLedgerMonthRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workerId      String    @map("worker_id")
+  month         String
+  trade         String
+  totalHours    Float     @map("total_hours")
+  outputQty     Float     @map("output_qty")
+  entryCount    Int       @map("entry_count")
+  firstWorkDate String?   @map("first_work_date")
+  lastWorkDate  String?   @map("last_work_date")
+  rebuiltBy     String    @map("rebuilt_by")
+  rebuiltAt     DateTime  @db.Timestamptz(6) @map("rebuilt_at")
+  objectVersion Int       @default(1) @map("object_version")
+  supersedes    String?   @map("supersedes")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, workerId, month, trade, objectVersion])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, workerId, month])
+  @@map("labor_ledger_months")
+}
+
+/// 命令幂等记账行（HoursOperationStore 端口的 PG 持久化；运营表不套证据
+/// 公共列；(tenant, operationId) 唯一——联动派生 operationId 同走本表，
+/// 形态同 baseline_command_operations）。
+model HoursOperationRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  operationId String   @map("operation_id")
+  commandKind String   @map("command_kind")
+
+  @@unique([tenantId, operationId])
+  @@map("hours_operations")
+}
+
+// ============================================================================
+// costing 模块（M2-W6，09-costing.md v1.0）——成本账：条目 append-only 事实 +
+// 口径版本化主数据 + 快照可重算 + 幂等记账运营表。域事件不建新表（落既有
+// event_records / outbox_records，见 pg-costing-stores）。
+// ============================================================================
+
+/// 成本条目行（CostEntryStore 端口的 PG 持久化；append-only 事实，证据七
+/// 公共列 TEXT 口径；(tenant, source_key) 唯一 = 来源单据幂等锚点；来源重
+/// 定价追加 delta 条目（deltaOf 指回基准），净额 = Σ 同基准条目）。
+model CostEntryRecord {
+  id           String    @id @default(uuid(7))
+  tenantId     String    @map("tenant_id")
+  seq          BigInt    @default(autoincrement()) @db.BigInt
+  workOrderId  String    @map("work_order_id")
+  category     String
+  amountMinor  Int?      @map("amount_minor")
+  quantity     Float?
+  trade        String?
+  sourceType   String    @map("source_type")
+  sourceRefId  String    @map("source_ref_id")
+  sourceKey    String    @map("source_key")
+  deltaOf      String?   @map("delta_of")
+  workDate     String?   @map("work_date")
+  remark       String?
+  occurredAt   DateTime  @db.Timestamptz(6) @map("occurred_at")
+  recordedBy   String    @map("recorded_by")
+  objectVersion Int      @default(1) @map("object_version")
+  auditStatus  String    @map("audit_status")
+  provenance   Json?     @map("provenance")
+  supersedes   String?   @map("supersedes")
+  businessTime DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@unique([tenantId, sourceKey])
+  @@index([tenantId, workOrderId])
+  @@index([tenantId, category])
+  @@map("cost_entries")
+}
+
+/// 口径版本行（CostingModelStore 端口的 PG 持久化；版本化主数据——形态同
+/// process_defs：(tenant, code, objectVersion) 与 (tenant, supersedes) 唯一；
+/// definition JSONB = 类别映射/时薪表/分摊规则声明段；口径变更不改历史快照）。
+model CostingModelRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  code          String
+  name          String?
+  definition    Json
+  status        String    @default("active")
+  objectVersion Int       @default(1) @map("object_version")
+  supersedes    String?   @map("supersedes")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, code, objectVersion])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, code])
+  @@map("costing_models")
+}
+
+/// 成本快照行（CostSnapshotStore 端口的 PG 持久化；工作令×口径 的重算结果，
+/// 可重算快照——supersedes 链，重算幂等 = 值未变不追加新行；totals JSONB =
+/// 三分类合计 + 工时量基础）。
+model CostSnapshotRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  workOrderId   String    @map("work_order_id")
+  modelCode     String    @map("model_code")
+  modelVersion  Int       @map("model_version")
+  totals        Json
+  rebuiltBy     String    @map("rebuilt_by")
+  rebuiltAt     DateTime  @db.Timestamptz(6) @map("rebuilt_at")
+  objectVersion Int       @default(1) @map("object_version")
+  supersedes    String?   @map("supersedes")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, workOrderId, modelCode, modelVersion, objectVersion])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, workOrderId])
+  @@map("cost_snapshots")
+}
+
+/// 命令幂等记账行（CostingOperationStore 端口的 PG 持久化；运营表，形态同
+/// hours_operations）。
+model CostingOperationRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  operationId String   @map("operation_id")
+  commandKind String   @map("command_kind")
+
+  @@unique([tenantId, operationId])
+  @@map("costing_operations")
+}
+
+// ============================================================================
+// payroll 模块（M3，m3-drafts/01-payroll.md v1.0）——薪酬账：计薪规则版本化
+// 主数据 + 人×月核算批次快照 + append-only 薪酬记录事实 + 幂等记账运营表。
+// 域事件不建新表（落既有 event_records / outbox_records，见 pg-payroll-stores）。
+// ============================================================================
+
+/// 计薪规则版本行（PayrollRuleStore 端口的 PG 持久化；版本化主数据——形态同
+/// costing_models：(tenant, rule_id, object_version) 与 (tenant, supersedes) 唯一；
+/// rule_id = kebab 业务身份跨版本稳定；scope JSONB = personId/laborKind/projectId
+/// 适用面（86 人员时薪 = personId 规则）；量纲 rate_minor=分/小时整数、
+/// coefficient 乘数缺省 1）。
+model PayrollRuleRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  ruleId        String    @map("rule_id")
+  name          String?
+  basis         String    @default("hours")
+  rateMinor     Int       @map("rate_minor")
+  coefficient   Float     @default(1)
+  scope         Json
+  objectVersion Int       @default(1) @map("object_version")
+  supersedes    String?   @map("supersedes")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, ruleId, objectVersion])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, ruleId])
+  @@map("payroll_rules")
+}
+
+/// 核算批次快照行（PayRunStore 端口的 PG 持久化；人×月一版一行，supersedes 链
+/// 线性不变量；rule_versions JSONB = 本批次规则版本集（历史按当时版本可复算）；
+/// 量纲 total_quantity=小时不取整、total_amount_minor=分整数）。
+model PayRunRecord {
+  id               String    @id @default(uuid(7))
+  tenantId         String    @map("tenant_id")
+  personId         String    @map("person_id")
+  periodKey        String    @map("period_key")
+  periodKind       String    @default("month") @map("period_kind")
+  ruleVersions     Json      @map("rule_versions")
+  totalQuantity    Float     @map("total_quantity")
+  totalAmountMinor Int       @map("total_amount_minor")
+  lineCount        Int       @map("line_count")
+  computedBy       String    @map("computed_by")
+  computedAt       DateTime  @db.Timestamptz(6) @map("computed_at")
+  objectVersion    Int       @default(1) @map("object_version")
+  supersedes       String?   @map("supersedes")
+  auditStatus      String    @map("audit_status")
+  provenance       Json?     @map("provenance")
+  businessTime     DateTime? @db.Timestamptz(6) @map("business_time")
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, periodKey, personId, objectVersion])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, periodKey])
+  @@index([tenantId, personId])
+  @@map("pay_runs")
+}
+
+/// 薪酬记录行（EarningsRecordStore 端口的 PG 持久化；append-only 核算产出事实，
+/// 证据七公共列 TEXT 口径 + seq 游标；(tenant, source_key) 唯一 = 核算行幂等
+/// 锚点；重算逐条重写新行不改原行（costing delta 先例）；source_refs JSONB =
+/// 来源工时账目 id 集（下钻 hours LaborEntry）；量纲 quantity=小时、
+/// rate_minor=分/小时、amount_minor=分整数 half-up）。
+model EarningsRecordRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  seq           BigInt    @default(autoincrement()) @db.BigInt
+  personId      String    @map("person_id")
+  periodKey     String    @map("period_key")
+  ruleId        String    @map("rule_id")
+  ruleVersion   Int       @map("rule_version")
+  basis         String
+  laborKind     String    @map("labor_kind")
+  quantity      Float
+  rateMinor     Int       @map("rate_minor")
+  coefficient   Float
+  amountMinor   Int       @map("amount_minor")
+  payRunId      String    @map("pay_run_id")
+  sourceRefs    Json      @map("source_refs")
+  sourceKey     String    @map("source_key")
+  occurredAt    DateTime  @db.Timestamptz(6) @map("occurred_at")
+  recordedBy    String    @map("recorded_by")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@unique([tenantId, sourceKey])
+  @@index([tenantId, periodKey, personId])
+  @@index([tenantId, payRunId])
+  @@map("earnings_records")
+}
+
+/// 命令幂等记账行（PayrollOperationStore 端口的 PG 持久化；运营表，形态同
+/// hours_operations / costing_operations）。
+model PayrollOperationRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  operationId String   @map("operation_id")
+  commandKind String   @map("command_kind")
+
+  @@unique([tenantId, operationId])
+  @@map("payroll_operations")
+}
+
+// ============================================================================
+// metric-pack 模块（M3，m3-drafts/04-metric-pack.md v1.0）——报表口径售卖层：
+// 装载记录 append-only 事实 + 幂等记账运营表。域事件不建新表（落既有
+// event_records / outbox_records，见 pg-metric-pack-stores）。
+// ============================================================================
+
+/// 口径包装载记录行（MetricPackActivationStore 端口的 PG 持久化；append-only
+/// 配置装载事实：(tenant, pack_id, pack_version) 与 (tenant, supersedes) 唯一
+/// ——装载链线性不变量；pack JSONB = 经引擎 defineMetricPack 校验冻结的完整包
+/// 定义快照（升级=新记录 supersedes 前任，历史包按自身快照只读可复算）；
+/// metric_refs JSONB = 包内 metricId@version 清单位投影）。
+model MetricPackActivationRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  packId        String    @map("pack_id")
+  packVersion   Int       @map("pack_version")
+  title         String
+  pack          Json
+  metricRefs    Json      @map("metric_refs")
+  activatedBy   String    @map("activated_by")
+  activatedAt   DateTime  @db.Timestamptz(6) @map("activated_at")
+  objectVersion Int       @default(1) @map("object_version")
+  supersedes    String?   @map("supersedes")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, packId, packVersion])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, packId])
+  @@map("metric_pack_activations")
+}
+
+/// 命令幂等记账行（MetricPackOperationStore 端口的 PG 持久化；运营表，形态同
+/// payroll_operations / hours_operations）。
+model MetricPackOperationRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  operationId String   @map("operation_id")
+  commandKind String   @map("command_kind")
+
+  @@unique([tenantId, operationId])
+  @@map("metric_pack_operations")
+}
+
+// ============================================================================
+// drawing 模块（M3，m3-drafts/03-drawing.md v1.0）——图纸域：版本化修订链
+// append-only + 发布联动通知事实 + 查看留痕审计事实 + 幂等记账运营表。
+// 域事件不建新表（落既有 event_records / outbox_records，见 pg-drawing-stores）。
+// ============================================================================
+
+/// 图纸修订行（DrawingRevisionStore 端口的 PG 持久化；版本化文档 append-only
+/// 链：(tenant, drawing_id, version) 与 (tenant, supersedes) 唯一；version=
+/// 链尾+1（服务层推导，客户端不传）；drawing_id = 图号 opaque 锚（编码规则=
+/// 数据约定）；classification = 保密等级数据值（两级值集默认配置，R-M3-6）；
+/// supersedes = 前任**行 id**（证据列口径）；supersedes_version = version−1
+/// 由链连续性派生（映射器计算，不落列）；file_ref = 内容指针——查看必过门禁
+/// 必留痕（服务层不变量，本表不做行级过滤）。
+model DrawingRevisionRecord {
+  id             String    @id @default(uuid(7))
+  tenantId       String    @map("tenant_id")
+  drawingId      String    @map("drawing_id")
+  version        Int
+  fileRef        String    @map("file_ref")
+  changeNote     String    @map("change_note")
+  classification String
+  changedBy      String    @map("changed_by")
+  changedAt      DateTime  @db.Timestamptz(6) @map("changed_at")
+  objectVersion  Int       @default(1) @map("object_version")
+  supersedes     String?   @map("supersedes")
+  auditStatus    String    @map("audit_status")
+  provenance     Json?     @map("provenance")
+  businessTime   DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime  DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, drawingId, version])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, drawingId])
+  @@map("drawing_revisions")
+}
+
+/// 变更通知行（DrawingChangeNoticePort 的 PG 持久化；发布联动事实：from→to+
+/// changeNote+发布时点，首发 from=0；(tenant, drawing_id, to_version) 唯一 =
+/// 联动幂等锚点；消费方轮询/对账走 sinceVersion 游标——"我引用的 v3 是否已有
+/// 更新"；终端 append-only 事实，supersedes 恒空）。
+model DrawingChangeNoticeRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  drawingId     String    @map("drawing_id")
+  fromVersion   Int       @map("from_version")
+  toVersion     Int       @map("to_version")
+  changeNote    String    @map("change_note")
+  publishedAt   DateTime  @db.Timestamptz(6) @map("published_at")
+  objectVersion Int       @default(1) @map("object_version")
+  supersedes    String?   @map("supersedes")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, drawingId, toVersion])
+  @@index([tenantId, drawingId])
+  @@map("drawing_change_notices")
+}
+
+/// 查看留痕行（DrawingViewTrailStore 端口的 PG 持久化；append-only 审计事实：
+/// 每次查看一行——谁/何时/哪修订/当时保密等级快照，seq bigserial 游标；
+/// 保密审计最低门槛（合同 §2 两不变量之"必留痕"）；终端事实无业务唯一键、
+/// supersedes 恒空）。
+model DrawingViewTrailRecord {
+  id             String    @id @default(uuid(7))
+  tenantId       String    @map("tenant_id")
+  seq            BigInt    @default(autoincrement()) @db.BigInt
+  drawingId      String    @map("drawing_id")
+  version        Int
+  viewedBy       String    @map("viewed_by")
+  viewedAt       DateTime  @db.Timestamptz(6) @map("viewed_at")
+  classification String
+  objectVersion  Int       @default(1) @map("object_version")
+  supersedes     String?   @map("supersedes")
+  auditStatus    String    @map("audit_status")
+  provenance     Json?     @map("provenance")
+  businessTime   DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime  DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([tenantId, drawingId])
+  @@index([tenantId, viewedBy])
+  @@map("drawing_view_trails")
+}
+
+/// 命令幂等记账行（DrawingOperationStore 端口的 PG 持久化；运营表，形态同
+/// payroll_operations / metric_pack_operations）。
+model DrawingOperationRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  operationId String   @map("operation_id")
+  commandKind String   @map("command_kind")
+
+  @@unique([tenantId, operationId])
+  @@map("drawing_operations")
+}
+
+// ============================================================================
+// maintenance 模块（M3，m3-drafts/02-maintenance.md v1.0）——维保执行域：计划
+// 版本化主数据 + 任务状态机投影行 + 三态记录 append-only 事实 + 幂等记账运营表。
+// 域事件不建新表（落既有 event_records / outbox_records，见 pg-maintenance-stores）。
+// ============================================================================
+
+/// 维保计划版本行（MaintenancePlanStore 端口的 PG 持久化；版本化主数据——形态同
+/// payroll_rules：(tenant, plan_id, object_version) 与 (tenant, supersedes) 唯一；
+/// plan_id = kebab 业务身份跨版本稳定；cycle JSONB = daily / interval-days；
+/// checkpoints JSONB = 点检判据清单（判据是数据不是枚举）；upkeep_actions JSONB =
+/// 保养动作清单——修订=发新版本，历史记录溯源旧版可解释）。
+model MaintenancePlanRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  planId        String    @map("plan_id")
+  name          String?
+  resourceRef   String    @map("resource_ref")
+  cycle         Json
+  checkpoints   Json
+  upkeepActions Json      @map("upkeep_actions")
+  objectVersion Int       @default(1) @map("object_version")
+  supersedes    String?   @map("supersedes")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, planId, objectVersion])
+  @@unique([tenantId, supersedes])
+  @@index([tenantId, planId])
+  @@index([tenantId, resourceRef])
+  @@map("maintenance_plans")
+}
+
+/// 维保任务投影行（MaintenanceTaskStore 端口的 PG 持久化；状态机投影——形态同
+/// fault_reports / inspections：state + object_version 随迁移条件更新（非事实表
+/// 不套证据公共列）；flow_config_id = engine-flow 配置换代防线；(tenant,
+/// source_key) 唯一 = plan-due 任务到期锚点 due:<planId>:<occurrenceKey>
+/// （due-scan 幂等去重 DB 防线；manual/fault 任务 source_key 空，PG 默认
+/// NULLS DISTINCT 不参与唯一约束）；G2：建单先落 scheduled@v1 投影）。
+model MaintenanceTaskRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  flowConfigId  String    @map("flow_config_id")
+  source        String
+  kind          String
+  resourceRef   String    @map("resource_ref")
+  faultRef      String?   @map("fault_ref")
+  planId        String?   @map("plan_id")
+  planVersion   Int?      @map("plan_version")
+  dueKey        String?   @map("due_key")
+  dueAt         DateTime? @db.Timestamptz(6) @map("due_at")
+  assignee      String?
+  state         String
+  objectVersion Int       @default(1) @map("object_version")
+  createdBy     String    @map("created_by")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  startedAt     DateTime? @db.Timestamptz(6) @map("started_at")
+  completedAt   DateTime? @db.Timestamptz(6) @map("completed_at")
+  cancelledAt   DateTime? @db.Timestamptz(6) @map("cancelled_at")
+  cancelReason  String?   @map("cancel_reason")
+  sourceKey     String?   @map("source_key")
+
+  @@unique([tenantId, sourceKey])
+  @@index([tenantId, state])
+  @@index([tenantId, resourceRef])
+  @@index([tenantId, assignee])
+  @@index([tenantId, planId])
+  @@map("maintenance_tasks")
+}
+
+/// 三态记录行（MaintenanceActivityStore 端口的 PG 持久化；append-only 执行留痕
+/// 事实，kind 判别三态 checkpoint/upkeep/repair（草案形状保持）：checkpoint 落
+/// checkpoint_id+result；upkeep 落 actions_done JSONB；repair 落 fault_ref+
+/// restored；证据七公共列 TEXT 口径 + seq 游标；plan_version 快照 = 记录时点
+/// 计划当前版本（溯源旧版可解释）；修正走冲销/补录不改原行（触发器背书））。
+model MaintenanceActivityRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  seq           BigInt    @default(autoincrement()) @db.BigInt
+  kind          String
+  resourceRef   String    @map("resource_ref")
+  planId        String?   @map("plan_id")
+  planVersion   Int?      @map("plan_version")
+  taskId        String?   @map("task_id")
+  checkpointId  String?   @map("checkpoint_id")
+  result        String?
+  actionsDone   Json?     @map("actions_done")
+  faultRef      String?   @map("fault_ref")
+  restored      Boolean?
+  performedBy   String    @map("performed_by")
+  performedAt   DateTime  @db.Timestamptz(6) @map("performed_at")
+  note          String?
+  occurredAt    DateTime  @db.Timestamptz(6) @map("occurred_at")
+  recordedBy    String    @map("recorded_by")
+  objectVersion Int       @default(1) @map("object_version")
+  auditStatus   String    @map("audit_status")
+  provenance    Json?     @map("provenance")
+  supersedes    String?   @map("supersedes")
+  businessTime  DateTime? @db.Timestamptz(6) @map("business_time")
+  availableTime DateTime? @db.Timestamptz(6) @map("available_time")
+
+  @@index([tenantId, resourceRef, performedAt(sort: Desc), seq(sort: Desc)])
+  @@index([tenantId, taskId])
+  @@map("maintenance_activities")
+}
+
+/// 命令幂等记账行（MaintenanceOperationStore 端口的 PG 持久化；运营表，形态同
+/// payroll_operations / drawing_operations）。
+model MaintenanceOperationRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  operationId String   @map("operation_id")
+  commandKind String   @map("command_kind")
+
+  @@unique([tenantId, operationId])
+  @@map("maintenance_operations")
+}

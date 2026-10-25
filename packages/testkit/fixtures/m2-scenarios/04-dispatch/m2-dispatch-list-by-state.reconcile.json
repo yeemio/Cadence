@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-dispatch-list-by-state",
+    "description": "04-dispatch §7 对账点 1「六类单的状态筛选器集合与迁移合法集和活系统一致」——筛选器读侧（?state=draft，四态 draft/assigned/executing/done）。自含场景",
+    "input": {
+      "method": "GET",
+      "path": "/dispatch/orders",
+      "query": {
+        "state": "draft"
+      },
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision",
+      "supersedes",
+      "**.supersedes"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "arrays": {
+      "orders": {
+        "match": "unordered"
+      }
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

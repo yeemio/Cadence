@@ -1,0 +1,27 @@
+{
+  "name": "@smes/drawing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "图纸专业包（M3，m3-drafts/03-drawing.md v1.0）：版本化图纸修订链（append-only）/ 钉版引用（DrawingRef）/ drawing.publish.v1 发布命令 + 变更通知联动 / 查看留痕 + 两级保密门禁（公开/受限）/ 内存+PG 双实现（PG 经 @smes/business-store ./drawing 结构同形镜像）。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

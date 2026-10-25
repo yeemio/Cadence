@@ -1,0 +1,42 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-baseline-outsourcing-rule-set",
+    "description": "01-baseline §7 对账点 3「外协单取价=工序单价×(1+利润率) 数值一致」——规则定义侧：set 首版（unitPrice 十进制串 + marginPermyriad 万分比；取价纯函数 half-up 口径 1250×1500‰=1438 先例）。自含场景",
+    "input": {
+      "method": "POST",
+      "path": "/baseline/outsourcing-rules/commands",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-baseline-outsourcing-rule-set",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "baseline.outsourcing.rule.set.v1",
+          "payload": {
+            "code": "OPR-M2REC-01",
+            "processCode": "OP-M2REC-OS",
+            "unitPrice": "10.00",
+            "marginPermyriad": 5000
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

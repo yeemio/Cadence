@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-hours-my-month",
+    "description": "08-hours §7 Done-when #3「我的工时只含本人已审核」：GET /hours/my?month=（本人已审核口径；v1.1：hours 存储量纲=小时 minutesToHours 不取整）。自含场景",
+    "input": {
+      "method": "GET",
+      "path": "/hours/my",
+      "query": {
+        "month": "2026-10"
+      },
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision",
+      "supersedes",
+      "**.supersedes"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "arrays": {
+      "my": {
+        "match": "unordered"
+      }
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

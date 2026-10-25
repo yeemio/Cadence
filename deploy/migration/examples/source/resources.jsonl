@@ -1,0 +1,10 @@
+{"code":"RS-01","title":"一号工作站","kind":"station","onDuty":true,"since":"2026-01-05"}
+{"code":"RS-02","title":"二号工作站","kind":"station","onDuty":true,"since":"2026-01-05"}
+{"code":"RS-03","title":"检验位 A","kind":"inspection","onDuty":false,"since":"2026-01-10"}
+{"code":"RS-04","title":"装配线一","kind":"line","onDuty":true,"since":"2026-02-01"}
+{"code":"RS-05","title":"装配线二","kind":"line","onDuty":true,"since":"2026-02-01"}
+{"code":"RS-06","title":"维护组","kind":"team","onDuty":true,"since":null}
+{"code":"RS-07","title":"包装位","kind":"station","onDuty":true,"since":"2026-03-02"}
+{"code":"RS-08","title":"备料区","kind":"area","onDuty":true,"since":"2026-03-15"}
+{"code":"RS-09","title":"调试台","kind":"station","onDuty":false,"since":"2026-04-01"}
+{"code":"RS-10","title":"工具间","kind":"area","onDuty":true,"since":"2026-04-20"}

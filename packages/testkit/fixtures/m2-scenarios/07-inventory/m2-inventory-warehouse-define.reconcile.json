@@ -1,0 +1,50 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-inventory-warehouse-define",
+    "description": "07-inventory §3 仓库与库位主数据（裁决 R4）：warehouse.define.v1 建仓+库位（载荷形态=application 库存测试；首库位=默认库位）。自含场景",
+    "input": {
+      "method": "POST",
+      "path": "/inventory/warehouses",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-inventory-warehouse-define",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "warehouse.define.v1",
+          "payload": {
+            "code": "WH-M2REC-01",
+            "name": "对账主仓",
+            "locations": [
+              {
+                "code": "FG",
+                "name": "成品区"
+              },
+              {
+                "code": "RAW",
+                "name": "原料区"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

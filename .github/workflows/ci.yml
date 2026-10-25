@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+
+  # 对账门禁（ADR-0002 #3）：行为等价比对进 CI，不静默跳过。
+  # 独立 job 而非并入 verify 的理由：docker services 是 job 级资源，
+  # 并入会把 postgres 成本强加给每次 verify；独立 job 与 verify 并行，
+  # 只在对账所需的最小环境（postgres:16 + seed + server）上跑。
+  reconcile:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cadence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cadence
+      # dev 头身份回落（既有 e2e 同款测试通道；生产形态默认关，不影响生产行为）
+      SMES_DEV_AUTH: 'on'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build (含 prisma generate)
+        run: pnpm build
+      - name: Migrate and seed
+        run: |
+          pnpm --filter @smes/business-store exec prisma migrate deploy --schema prisma/schema.prisma
+          pnpm --filter @smes/business-store run db:seed
+      - name: Start server and reconcile
+        run: |
+          node apps/server/dist/main.js &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3000/health >/dev/null && break
+            sleep 1
+          done
+          pnpm reconcile --target-base-url http://127.0.0.1:3000 --max-age-days 30

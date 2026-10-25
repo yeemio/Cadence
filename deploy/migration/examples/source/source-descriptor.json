@@ -1,0 +1,31 @@
+{
+  "format": "smes.migration-source@1",
+  "datasets": [
+    {
+      "name": "items",
+      "file": "items.csv",
+      "format": "csv",
+      "columns": [
+        { "name": "code" },
+        { "name": "label" },
+        { "name": "uom" },
+        { "name": "price" },
+        { "name": "enabled" },
+        { "name": "listed" },
+        { "name": "note" }
+      ]
+    },
+    {
+      "name": "resources",
+      "file": "resources.jsonl",
+      "format": "jsonl",
+      "columns": [
+        { "name": "code" },
+        { "name": "title" },
+        { "name": "kind" },
+        { "name": "onDuty" },
+        { "name": "since" }
+      ]
+    }
+  ]
+}

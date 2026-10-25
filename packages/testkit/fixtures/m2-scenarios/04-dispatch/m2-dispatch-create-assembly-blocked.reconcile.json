@@ -1,0 +1,45 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-dispatch-create-assembly-blocked",
+    "description": "04-dispatch §7 对账点 3「齐套拦截行为等价（未齐套创建装配派工被拒）」——负行为场景：装配派工创建于未齐套工作令，期望 rejected（HTTP 4xx 或 body.status=rejected，首录定形后策略收紧）。链式场景——录制前替换 __WORK_ORDER_ID__",
+    "input": {
+      "method": "POST",
+      "path": "/dispatch/orders",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-dispatch-create-assembly-blocked",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "dispatch.create.v1",
+          "payload": {
+            "workOrderId": "__WORK_ORDER_ID__",
+            "kind": "assembly",
+            "quantity": 2
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

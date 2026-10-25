@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-hours-rebuild-month",
+    "description": "08-hours §7 对账点「重算不产生漂移」：hours.rebuild-month.v1 月×工种重算（幂等；断言面=rowsWritten/changed；载荷形态=application 工时测试 {month}）。自含场景（重放同 operationId 回首次结果，幂等口径见手册 §4.2）",
+    "input": {
+      "method": "POST",
+      "path": "/hours/rebuild-month",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-hours-rebuild-month",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "hours.rebuild-month.v1",
+          "payload": {
+            "month": "2026-10"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

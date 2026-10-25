@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Cadence placeholder icon">
+  <!--
+    M5 预研 SVG 占位图标：纯几何形状（圆 + 节拍斜杠——cadence=节拍），非任何
+    真实品牌资源。M5 正式线替换为产品图标（届时需补 PNG 192/512——部分浏览器
+    的安装横幅要求位图图标，SVG 仅为形状占位）。
+  -->
+  <rect width="512" height="512" rx="96" fill="#18181b" />
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#fafafa" stroke-width="28" />
+  <line x1="336" y1="128" x2="336" y2="384" stroke="#fafafa" stroke-width="28" stroke-linecap="round" />
+</svg>

@@ -1,0 +1,41 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-report-verify",
+    "description": "05-reporting §7 对账点「verified 工时实时进入工时账」触发侧：report.verify.v1（→hours 归集信号；下游断言面见 08-hours 场景组）。链式场景——录制前替换 __REPORT_ID__ 与 __EXPECTED_REVISION__（报工单须 reported 态）",
+    "input": {
+      "method": "POST",
+      "path": "/reports/__REPORT_ID__/verify",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-report-verify",
+        "expectedRevision": "__EXPECTED_REVISION__",
+        "command": {
+          "kind": "report.verify.v1",
+          "payload": {}
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

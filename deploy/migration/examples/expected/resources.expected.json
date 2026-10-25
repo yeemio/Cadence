@@ -1,0 +1,17 @@
+{
+  "dataset": "resources",
+  "businessKey": ["code"],
+  "note": "源侧期望：resources 迁移后的目标状态（10 个唯一业务键，JSONL 原生类型经映射转换）。id 同 items 省略。",
+  "rows": [
+    { "tenant": "tenant-alpha", "code": "RS-01", "name": "一号工作站", "type": "station", "active": true, "commissionedAt": "2026-01-05T00:00:00.000Z" },
+    { "tenant": "tenant-alpha", "code": "RS-02", "name": "二号工作站", "type": "station", "active": true, "commissionedAt": "2026-01-05T00:00:00.000Z" },
+    { "tenant": "tenant-alpha", "code": "RS-03", "name": "检验位 A", "type": "inspection", "active": false, "commissionedAt": "2026-01-10T00:00:00.000Z" },
+    { "tenant": "tenant-alpha", "code": "RS-04", "name": "装配线一", "type": "line", "active": true, "commissionedAt": "2026-02-01T00:00:00.000Z" },
+    { "tenant": "tenant-alpha", "code": "RS-05", "name": "装配线二", "type": "line", "active": true, "commissionedAt": "2026-02-01T00:00:00.000Z" },
+    { "tenant": "tenant-alpha", "code": "RS-06", "name": "维护组", "type": "team", "active": true, "commissionedAt": null },
+    { "tenant": "tenant-alpha", "code": "RS-07", "name": "包装位", "type": "station", "active": true, "commissionedAt": "2026-03-02T00:00:00.000Z" },
+    { "tenant": "tenant-alpha", "code": "RS-08", "name": "备料区", "type": "area", "active": true, "commissionedAt": "2026-03-15T00:00:00.000Z" },
+    { "tenant": "tenant-alpha", "code": "RS-09", "name": "调试台", "type": "station", "active": false, "commissionedAt": "2026-04-01T00:00:00.000Z" },
+    { "tenant": "tenant-alpha", "code": "RS-10", "name": "工具间", "type": "area", "active": true, "commissionedAt": "2026-04-20T00:00:00.000Z" }
+  ]
+}

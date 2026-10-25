@@ -1,0 +1,28 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-hours-month-summary",
+    "description": "08-hours §7 对账点「人×工种汇总=该月 verified 报工净额（含撤销冲销）与活系统一致」：GET /hours/months/:month/summary（实时净额）。计数/工时数精确比对。自含场景",
+    "input": {
+      "method": "GET",
+      "path": "/hours/months/2026-10/summary",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion"
+    ],
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

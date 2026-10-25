@@ -1,0 +1,40 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-report-mine",
+    "description": "05-reporting §7 对账点 4「仅本人数据权限边界行为一致」：GET /reports/mine 我的报工（本人双键）。自含场景（空集亦为合法观察：边界断言=不含他人单）",
+    "input": {
+      "method": "GET",
+      "path": "/reports/mine",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision",
+      "supersedes",
+      "**.supersedes"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "arrays": {
+      "reports": {
+        "match": "unordered"
+      }
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

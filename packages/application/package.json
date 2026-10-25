@@ -1,0 +1,38 @@
+{
+  "name": "@smes/application",
+  "version": "0.1.0",
+  "private": true,
+  "description": "按九循环环节分模块的应用层：core 必装基础层 + 环节模块按需启停（ADR-0004）。装配元数据仅依赖 @nestjs/common peer——装配纪律见 apps/server/README.md。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*",
+    "@smes/engine-flow": "workspace:*",
+    "@smes/engine-reporting": "workspace:*",
+    "casbin": "^5.51.1"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "rxjs": "^7.1.0"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@types/node": "^24.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

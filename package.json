@@ -1,0 +1,27 @@
+{
+  "name": "cadence",
+  "version": "0.1.0",
+  "private": true,
+  "description": "S-mes 重构（代号 Cadence）——机加工 MES 清洁室重建 monorepo。宪法：architecture/decisions/",
+  "type": "module",
+  "packageManager": "pnpm@11.28.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "build": "pnpm -r --if-present run build",
+    "test": "pnpm -r --if-present run test",
+    "boundary": "depcruise packages apps --config .dep-cruiser.cjs",
+    "boundary:selftest": "node scripts/boundary-selftest.mjs",
+    "reconcile": "pnpm --filter @smes/testkit run reconcile",
+    "reconcile:record": "pnpm --filter @smes/testkit run reconcile:record",
+    "verify:rls": "node deploy/scripts/rls-proof.mjs",
+    "verify": "pnpm typecheck && pnpm build && pnpm boundary && pnpm boundary:selftest && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "dependency-cruiser": "^16.0.0",
+    "typescript": "^5.6.0"
+  }
+}

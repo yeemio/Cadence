@@ -1,0 +1,41 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-listing-gap-check",
+    "description": "03-listing §7 Done-when #2「缺口核查给出可发起采购的缺口行」：gap.check.v1 核查动作+快照（载荷空对象；缺口行=需求 vs 可用量）。链式场景——前置=清单导入后（准备链见手册 §4.2）",
+    "input": {
+      "method": "POST",
+      "path": "/listing/work-orders/__WORK_ORDER_ID__/gap-checks",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-listing-gap-check",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "gap.check.v1",
+          "payload": {}
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

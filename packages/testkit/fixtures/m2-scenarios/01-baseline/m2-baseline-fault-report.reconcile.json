@@ -1,0 +1,41 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-baseline-fault-report",
+    "description": "01-baseline §7 Done-when #4「设备故障上报后维修人员收到 IM 待办并闭环」——fault.report 上报即派修（open→assigned）；本场景断言命令结果面（列表/推送联动面见活系统映射表）。自含场景",
+    "input": {
+      "method": "POST",
+      "path": "/baseline/fault-reports/commands",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-baseline-fault-report",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "baseline.fault.report.v1",
+          "payload": {
+            "equipmentCode": "EQ-M2REC-01",
+            "description": "对账-主轴异响停机待检",
+            "assignee": "user-seed-admin"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

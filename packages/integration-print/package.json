@@ -1,0 +1,30 @@
+{
+  "name": "@smes/integration-print",
+  "version": "0.1.0",
+  "private": true,
+  "description": "打印边缘包：文档打印端口（pdfmake，node 适配器真实可渲染）+ 标签命令端口（TSPL 纯字符串生成）。端口 + 纯构造器，纯域可测。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/application": "workspace:*",
+    "@smes/business-core": "workspace:*",
+    "pdfmake": "^0.3.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

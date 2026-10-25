@@ -1,0 +1,27 @@
+{
+  "name": "@smes/engine-reporting",
+  "version": "0.1.0",
+  "private": true,
+  "description": "口径驱动报表引擎：口径定义即数据（版本化口径包=可售卖单元），计算端口纯函数求值——不做通用 BI（无自由 SQL、无图表定义）。纯域，无框架、无存储、无 IO。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

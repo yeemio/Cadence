@@ -1,0 +1,20 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "health",
+    "description": "GET /health 精确比对（存活 + 租户读回，core 必装的运行时证据）",
+    "input": {
+      "method": "GET",
+      "path": "/health"
+    }
+  },
+  "reference": {
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "tenant": "default"
+    },
+    "recordedAt": "2026-10-24T19:12:04.446Z",
+    "recordedFrom": "http://127.0.0.1:55497"
+  }
+}

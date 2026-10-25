@@ -1,0 +1,31 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-baseline-routing-query",
+    "description": "01-baseline §7 对账点 2 读侧：GET /baseline/routings/:drawingNo 按图号查工序序列（steps 有序是合同语义，不无序化）。前置=先跑 m2-baseline-routing-define（业务键固定；重复 define 幂等口径见手册 §4.2）",
+    "input": {
+      "method": "GET",
+      "path": "/baseline/routings/DWG-M2REC-01",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

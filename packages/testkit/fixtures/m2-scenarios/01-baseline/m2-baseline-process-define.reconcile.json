@@ -1,0 +1,40 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-baseline-process-define",
+    "description": "01-baseline §7 Done-when「工艺员能维护工序库」+ 对账点工序库维护：process.define 首版落账（自含场景；提交体形状=testkit baseline-fixtures processDefineSubmission 族）",
+    "input": {
+      "method": "POST",
+      "path": "/baseline/processes/commands",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-baseline-process-define",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "baseline.process.define.v1",
+          "payload": {
+            "code": "OP-M2REC-90",
+            "name": "对账-镗孔"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-report-submit",
+    "description": "05-reporting §7 Done-when #1 五类报工：report.submit.v1 单人单工序（挂有效派工单；e2e-live-db 断言④形态；工时量纲=整数分钟 (0,44640]，v1.1 词汇冻结）。链式场景——录制前替换 __DISPATCH_ID__（派工单须已 assign）",
+    "input": {
+      "method": "POST",
+      "path": "/reports",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-report-submit",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "report.submit.v1",
+          "payload": {
+            "dispatchId": "__DISPATCH_ID__",
+            "doneQty": 10,
+            "laborMinutes": 90
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

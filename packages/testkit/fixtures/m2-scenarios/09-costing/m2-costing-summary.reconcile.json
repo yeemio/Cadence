@@ -1,0 +1,31 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-costing-summary",
+    "description": "09-costing §7 对账点读侧：GET /costing/work-orders/:id/summary 三分类汇总（金额可见性=敏感权限 costing:read，脱敏纪律见手册 §6）。链式场景——录制前替换 __WORK_ORDER_ID__（前置=rebuild 已跑）",
+    "input": {
+      "method": "GET",
+      "path": "/costing/work-orders/__WORK_ORDER_ID__/summary",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

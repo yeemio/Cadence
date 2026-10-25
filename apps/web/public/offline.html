@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>离线 · Cadence</title>
+    <!--
+      离线壳页（M5 预研）：导航请求 NetworkFirst 失败（无网络且运行时缓存无该页）
+      时由 Service Worker 经 precacheFallback 返回本页。纯静态无 JS——离线时
+      最小可用；恢复网络后点击链接回到主壳（此时 SW 已能走网络）。
+    -->
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        background: #fafafa;
+        color: #18181b;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background: #18181b; color: #fafafa; }
+        .card { border-color: #3f3f46 !important; background: #27272a !important; }
+      }
+      .card {
+        max-width: 24rem;
+        margin: 1rem;
+        padding: 1.75rem;
+        border: 1px solid #e4e4e7;
+        border-radius: 0.75rem;
+        background: #ffffff;
+      }
+      .card h1 { font-size: 1.125rem; margin: 0 0 0.5rem; }
+      .card p { font-size: 0.875rem; line-height: 1.6; margin: 0 0 1rem; color: #71717a; }
+      .card a {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        background: #18181b;
+        color: #fafafa;
+        text-decoration: none;
+        font-size: 0.875rem;
+      }
+      @media (prefers-color-scheme: dark) {
+        .card a { background: #fafafa; color: #18181b; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>当前离线</h1>
+      <p>网络不可用，且本页不在离线缓存中。已入队的操作会在恢复网络后重放；回到主壳可查看缓存内容。</p>
+      <a href="/">回到主壳</a>
+    </main>
+  </body>
+</html>

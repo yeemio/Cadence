@@ -1,0 +1,27 @@
+{
+  "name": "@smes/integration-im",
+  "version": "0.1.0",
+  "private": true,
+  "description": "企微/飞书 IM 双生态适配（IMessageChannel）：统一消息端口、注入式传输抽象（ImTransport）、JS-SDK 签名后端端口、回调验签纯函数——M1，零厂商 SDK 依赖。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

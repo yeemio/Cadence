@@ -1,0 +1,28 @@
+{
+  "format": "smes.migration-mapping@1",
+  "datasets": {
+    "items": {
+      "businessKey": ["code"],
+      "fields": [
+        { "to": "tenant", "constant": "tenant-alpha" },
+        { "to": "code", "from": "code", "type": "string", "required": true },
+        { "to": "name", "from": "label", "type": "string", "required": true },
+        { "to": "unit", "from": "uom", "type": "string", "default": "件" },
+        { "to": "unitPrice", "from": "price", "type": "number" },
+        { "to": "active", "from": "enabled", "type": "boolean", "default": true },
+        { "to": "listedAt", "from": "listed", "type": "date" }
+      ]
+    },
+    "resources": {
+      "businessKey": ["code"],
+      "fields": [
+        { "to": "tenant", "constant": "tenant-alpha" },
+        { "to": "code", "from": "code", "type": "string", "required": true },
+        { "to": "name", "from": "title", "type": "string", "required": true },
+        { "to": "type", "from": "kind", "type": "string" },
+        { "to": "active", "from": "onDuty", "type": "boolean" },
+        { "to": "commissionedAt", "from": "since", "type": "date" }
+      ]
+    }
+  }
+}

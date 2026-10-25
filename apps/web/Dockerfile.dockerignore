@@ -1,0 +1,22 @@
+# web 镜像构建上下文裁剪（M4 正式线）。
+#
+# 形态取舍（写明）：与 apps/server/Dockerfile.dockerignore 对称——context 为仓根
+# 时 BuildKit 取 <Dockerfile>.dockerignore（即本文件，整体替换根 .dockerignore，
+# 共享裁剪项完整重申）。server 应用源码对 web 镜像是纯负载（--filter @smes/web...
+# 构建闭包不含 server）；apps/server/package.json 保留——pnpm 工作区图与
+# --frozen-lockfile 校验需要全工作区清单在场。
+**/node_modules
+**/dist
+.git
+.github
+deploy
+architecture
+scripts
+.env
+**/.env
+**/*.md
+.dep-cruiser.cjs
+.dep-cruiser.selftest.cjs
+apps/server/src
+apps/server/tests
+apps/server/scripts

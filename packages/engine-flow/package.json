@@ -1,0 +1,28 @@
+{
+  "name": "@smes/engine-flow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "审批流配置引擎：XState 之上的配置驱动状态机工厂 + 审批记录/事件（ADR-0010 状态集配置分离首个落地）。纯域，无框架、无存储、无 IO。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*",
+    "xstate": "^5.33.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

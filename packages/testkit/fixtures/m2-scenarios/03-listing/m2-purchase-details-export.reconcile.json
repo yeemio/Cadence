@@ -1,0 +1,23 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-purchase-details-export",
+    "description": "03-listing §7 对账点 3「Excel 导出的表头别名与错误行提示行为等价」导出侧：GET /purchase/details/export（e2e 实证 kind=xlsx-base64）。字节级两侧不可比（xlsx 含生成时间）——本场景比对面=kind/结构形状；表头/行数结构对账在活系统阶段走解析辅助（手册 §5.d）。自含场景",
+    "input": {
+      "method": "GET",
+      "path": "/purchase/details/export",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "base64"
+    ],
+    "shape": {
+      "base64": "string"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-report-revoke",
+    "description": "05-reporting §7 对账点 2「撤销后重报的净额口径一致」：report.revoke.v1（revoked 终态旁支→hours 冲销信号；载荷形态=cross-module-wiring 冲销验证用例）。链式场景——录制前替换 __REPORT_ID__ 与 __EXPECTED_REVISION__",
+    "input": {
+      "method": "POST",
+      "path": "/reports/__REPORT_ID__/revoke",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-report-revoke",
+        "expectedRevision": "__EXPECTED_REVISION__",
+        "command": {
+          "kind": "report.revoke.v1",
+          "payload": {
+            "reason": "对账-撤销冲销验证"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "m2-inventory-stocktake-open",
+    "description": "07-inventory §3 盘点（v1.1 实施裁定：盘点双口径=调账 movement 实盘−当前账面 / 审计差异=实盘−开单快照）：stocktake.open.v1 开单进盘点（载荷形态=application 盘点测试）。链式场景——录制前替换 __WAREHOUSE_ID__",
+    "input": {
+      "method": "POST",
+      "path": "/inventory/stocktakes",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      },
+      "body": {
+        "operationId": "m2rec-inventory-stocktake-open",
+        "expectedRevision": "initial",
+        "command": {
+          "kind": "stocktake.open.v1",
+          "payload": {
+            "warehouseId": "__WAREHOUSE_ID__"
+          }
+        }
+      }
+    }
+  },
+  "reference": null,
+  "compare": {
+    "ignore": [
+      "id",
+      "**.id",
+      "provenance",
+      "**.provenance",
+      "objectVersion",
+      "**.objectVersion",
+      "newRevision",
+      "**.newRevision"
+    ],
+    "shape": {
+      "**.id": "string"
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

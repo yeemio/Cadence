@@ -1,0 +1,40 @@
+{
+  "format": "smes.reconcile-fixture@1",
+  "scenario": {
+    "name": "workbench-summary",
+    "description": "GET /workbench/summary 数值容差 + 无序数组 + 时间戳容差（dev 头身份，需 SMES_DEV_AUTH=on）",
+    "input": {
+      "method": "GET",
+      "path": "/workbench/summary",
+      "headers": {
+        "x-smes-user": "user-seed-admin"
+      }
+    }
+  },
+  "reference": {
+    "status": 200,
+    "body": {
+      "user": "user-seed-admin",
+      "openTotal": 0,
+      "bySource": []
+    },
+    "recordedAt": "2026-10-24T19:12:04.450Z",
+    "recordedFrom": "http://127.0.0.1:55497"
+  },
+  "compare": {
+    "tolerance": {
+      "numeric": {
+        "relative": 0.001
+      }
+    },
+    "arrays": {
+      "bySource": {
+        "match": "unordered",
+        "key": "source"
+      }
+    },
+    "timestamps": {
+      "toleranceMs": 60000
+    }
+  }
+}

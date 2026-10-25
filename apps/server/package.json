@@ -1,0 +1,42 @@
+{
+  "name": "@smes/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NestJS 组合根（ADR-0001/0004）：应用注册表按 MODULES_ENABLED 装配模块；组合根独占 @nestjs/core 与平台适配器，业务包不进容器。",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "pnpm run build && pnpm run start",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --reporter=dot",
+    "org:e2e": "node scripts/e2e-org.mjs",
+    "mdwb:e2e": "node scripts/e2e-masterdata-workbench.mjs",
+    "approval:e2e": "node scripts/e2e-approval.mjs",
+    "auth:e2e": "node scripts/e2e-auth.mjs",
+    "smoke:live-db": "node scripts/e2e-live-db.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@smes/application": "workspace:*",
+    "@smes/business-core": "workspace:*",
+    "@smes/business-store": "workspace:*",
+    "@smes/drawing": "workspace:*",
+    "@smes/engine-flow": "workspace:*",
+    "@smes/integration-im": "workspace:*",
+    "@smes/integration-print": "workspace:*",
+    "@smes/maintenance": "workspace:*",
+    "@smes/metric-pack": "workspace:*",
+    "@smes/payroll": "workspace:*",
+    "exceljs": "^4.4.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

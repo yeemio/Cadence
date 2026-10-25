@@ -1,0 +1,27 @@
+{
+  "name": "@smes/payroll",
+  "version": "0.1.0",
+  "private": true,
+  "description": "薪酬专业包（M3 实施，m3-drafts/01-payroll.md v1.0）：版本化计薪规则 / 人×月核算批次（幂等重算 supersedes）/ append-only 薪酬记录 / 工时事实源端口 / 导出端口。零框架业务类，注册进组合根归总控（激活开关语义见 src/index.ts 文件头）。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot"
+  },
+  "dependencies": {
+    "@smes/business-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

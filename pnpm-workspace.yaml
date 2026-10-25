@@ -1,0 +1,13 @@
+packages:
+  - packages/*
+  - apps/*
+
+# 构建脚本豁免（均不需要 postinstall：esbuild 二进制经 optionalDependencies 分发；
+# prisma 引擎由 business-store 脚本显式 prisma generate 生成）。
+# 注意：pnpm 11.28.5 下独立 install 仍因 ERR_PNPM_IGNORED_BUILDS 退出码 1（verify 链不受影响）；
+# 首次 push 启用 CI 前须跑一次 pnpm approve-builds 生成裁决（见 architecture/status.md 已知事项）
+ignoredBuiltDependencies:
+  - esbuild
+  - prisma
+  - "@prisma/client"
+  - "@prisma/engines"

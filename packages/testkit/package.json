@@ -1,0 +1,37 @@
+{
+  "name": "@smes/testkit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "对账测试工具（ADR-0002 #3 行为等价的机器化身）：场景/目标适配器/参考源/比对器/报告 + 录制-回放夹具 + CLI。不受依赖铁律限制；零运行时依赖（node 内置 fetch）。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --reporter=dot",
+    "reconcile": "node dist/cli/run.js",
+    "reconcile:record": "node dist/cli/record.js"
+  },
+  "devDependencies": {
+    "@smes/application": "workspace:*",
+    "@smes/business-core": "workspace:*",
+    "@smes/business-store": "workspace:*",
+    "@smes/engine-flow": "workspace:*",
+    "@smes/engine-reporting": "workspace:*",
+    "@smes/integration-connect": "workspace:*",
+    "@smes/integration-im": "workspace:*",
+    "@smes/integration-print": "workspace:*",
+    "@smes/integration-scan": "workspace:*",
+    "@smes/product-ui": "workspace:*",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

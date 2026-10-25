@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": ".",
+    "paths": {
+      "@smes/application": ["../../packages/application/src/index.ts"],
+      "@smes/business-core": ["../../packages/business-core/src/index.ts"]
+    }
+  },
+  "include": ["src", "tests"]
+}
