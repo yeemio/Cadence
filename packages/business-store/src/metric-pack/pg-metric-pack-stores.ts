@@ -27,6 +27,7 @@
  * （组合根按请求租户绑定实例——引擎 MetricSource 端口不带租户参数）。
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { TenantId, defineId, type BusinessEvent } from '@smes/business-core';
 import { fromBusinessEventRow, toBusinessEventRow } from '../events/event-row.js';
 import { initialOutboxRow } from '../events/outbox-row.js';
@@ -636,9 +637,11 @@ export function connectMetricPackStore(options: MetricPackStoreOptions = {}): Me
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const activationStore = new PgMetricPackActivationStore(prisma);
-  const eventStore = new PgMetricPackDomainEventStore(prisma);
-  const operationStore = new PgMetricPackOperationLedger(prisma);
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const activationStore = new PgMetricPackActivationStore(client);
+  const eventStore = new PgMetricPackDomainEventStore(client);
+  const operationStore = new PgMetricPackOperationLedger(client);
   return {
     activationStore,
     eventStore,
@@ -649,7 +652,7 @@ export function connectMetricPackStore(options: MetricPackStoreOptions = {}): Me
       operations: operationStore,
     },
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }
@@ -672,17 +675,19 @@ export function connectMetricSourceBundle(
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
     sources: {
-      'workorder-attachment-facts': new PgWorkOrderAttachmentMetricSource(prisma, tenant),
-      'workorder-delivery-facts': new PgWorkOrderDeliveryMetricSource(prisma, tenant),
-      'outsourcing-delivery-facts': new PgOutsourcingDeliveryMetricSource(prisma, tenant),
-      'purchase-overdue-facts': new PgPurchaseOverdueMetricSource(prisma, tenant),
-      'purchase-amount-facts': new PgPurchaseAmountMetricSource(prisma, tenant),
-      'costing-entry-facts': new PgCostingEntryMetricSource(prisma, tenant),
+      'workorder-attachment-facts': new PgWorkOrderAttachmentMetricSource(client, tenant),
+      'workorder-delivery-facts': new PgWorkOrderDeliveryMetricSource(client, tenant),
+      'outsourcing-delivery-facts': new PgOutsourcingDeliveryMetricSource(client, tenant),
+      'purchase-overdue-facts': new PgPurchaseOverdueMetricSource(client, tenant),
+      'purchase-amount-facts': new PgPurchaseAmountMetricSource(client, tenant),
+      'costing-entry-facts': new PgCostingEntryMetricSource(client, tenant),
     },
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

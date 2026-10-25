@@ -105,10 +105,11 @@ RUN set -eux \
   && node --input-type=module -e "import('reflect-metadata').then(()=>import('/repo/packages/application/dist/index.js')).catch((e)=>{ console.error(e); process.exit(1); })"
 
 EXPOSE 3000
-# healthcheck Host 取舍（写明）：saas 形态（SMES_TENANTS 非空）fail-closed 对域外
-# Host 一律 500——liveness 探针不得依赖租户路由，故探针 Host = 首个已知租户 +
-# SMES_DOMAIN；单机回落 127.0.0.1（与既有行为相同）。node http 而非 fetch：
-# fetch 规范禁改 Host 头（静默忽略，探针会误报）。compose 级同名定义覆盖此处。
+# healthcheck（M4 收尾波·双写去重）：探针逻辑单份在 apps/server/src/
+# healthcheck-probe.ts（随 dist 构建；Host 推导取舍见该文件头——saas 形态
+# 首个已知租户+SMES_DOMAIN、单机回落 127.0.0.1；node http 而非 fetch：
+# fetch 规范禁改 Host 头，静默忽略会误报）。compose 侧 server 服务不定义
+# healthcheck，缺省继承本镜像定义（同一份）。
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=12 \
-  CMD ["node", "-e", "const http=require('http');const t=(process.env.SMES_TENANTS||'').split(',').map(s=>s.trim()).filter(Boolean)[0];const h=t?t+'.'+(process.env.SMES_DOMAIN||''):'127.0.0.1';http.get({host:'127.0.0.1',port:3000,path:'/health',headers:{Host:h}},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+  CMD ["node", "apps/server/dist/healthcheck-probe.js"]
 CMD ["node", "apps/server/dist/main.js"]

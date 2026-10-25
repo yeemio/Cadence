@@ -35,6 +35,7 @@
  * outbox_records——跨模块共享的投递记账由单例投递器统一扫（与 workorder 口径一致）。
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import {
   EventId,
   TenantId,
@@ -1132,19 +1133,21 @@ export function connectListingStore(options: ListingStoreOptions = {}): ListingS
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    sheetStore: new PgListingSheetStore(prisma),
-    lineStore: new PgListingLineStore(prisma),
-    gapStore: new PgGapCheckStore(prisma),
-    requestStore: new PgPurchaseRequestStore(prisma),
-    orderStore: new PgPurchaseOrderStore(prisma),
-    returnStore: new PgPurchaseReturnStore(prisma),
-    operationStore: new PgListingOperationStore(prisma),
-    domainEventStore: new PgListingDomainEventStore(prisma),
-    machineEventStore: new PgListingMachineEventStore(prisma),
-    processMaterialStore: new PgProcessMaterialLinkStore(prisma),
+    sheetStore: new PgListingSheetStore(client),
+    lineStore: new PgListingLineStore(client),
+    gapStore: new PgGapCheckStore(client),
+    requestStore: new PgPurchaseRequestStore(client),
+    orderStore: new PgPurchaseOrderStore(client),
+    returnStore: new PgPurchaseReturnStore(client),
+    operationStore: new PgListingOperationStore(client),
+    domainEventStore: new PgListingDomainEventStore(client),
+    machineEventStore: new PgListingMachineEventStore(client),
+    processMaterialStore: new PgProcessMaterialLinkStore(client),
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

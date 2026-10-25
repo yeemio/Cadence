@@ -16,6 +16,7 @@
  *    operationId) 唯一，P2002 = 已落账 → claim false）
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { TenantId, type BusinessEvent } from '@smes/business-core';
 import {
   HoursConflictError,
@@ -392,11 +393,13 @@ export function connectHoursStore(options: HoursStoreOptions = {}): HoursStoreHa
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   const stores: HoursStores = {
-    entries: new PgLaborEntryStore(prisma),
-    months: new PgLaborLedgerMonthStore(prisma),
-    events: new PgHoursDomainEventStore(prisma),
-    operations: new PgHoursOperationLedger(prisma),
+    entries: new PgLaborEntryStore(client),
+    months: new PgLaborLedgerMonthStore(client),
+    events: new PgHoursDomainEventStore(client),
+    operations: new PgHoursOperationLedger(client),
   };
   return {
     entryStore: stores.entries,
@@ -405,7 +408,7 @@ export function connectHoursStore(options: HoursStoreOptions = {}): HoursStoreHa
     operationStore: stores.operations,
     stores,
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

@@ -84,9 +84,10 @@ services:
       # DATABASE_URL 用受限 app 用户（合同口径）：RLS 就位后是行级隔离的安全
       # 边界（deploy/README 威胁模型限定句）。
       DATABASE_URL: postgresql://app_user:${POSTGRES_APP_PASSWORD:-app_user_dev_change_me}@pg:5432/cadence
-      # RLS session 接线（M4 正式线）：连接工厂扩展逐操作 SET 事务级变量；
-      # org / masterdata / workbench / approval 四家已接线（ESCALATION-1 已
-      # 裁定执行），其余 14 家 connect* 工厂待后续泳道（superuser 形态不受影响）。
+      # RLS session 接线（M4 收尾波 ESCALATION-2）：连接工厂扩展逐操作 SET
+      # 事务级变量；全部 18 家 connect* 工厂已接线（先例四家 org/masterdata/
+      # workbench/approval + 其余十四家各领域 pg-*-stores）。事务/raw 入口的
+      # 原子性边界见 business-store src/rls-session.ts 已知边界节。
       SMES_RLS_SESSION: "on"
       # 双形态开关：single-node（缺省）| saas——server 侧 main.ts 消费：
       # saas → hostBasedTenantResolver（SMES_DOMAIN 基域 + SMES_TENANTS 已知
@@ -100,27 +101,12 @@ services:
     ports:
       - "${SERVER_PORT:-3000}:3000"
     restart: unless-stopped
-    # 生产要素（M4 初版）：显式 compose 级 healthcheck（覆盖镜像内同名定义，
-    # 语义相同——web 的 depends_on service_healthy 据此门控）。Host 取舍（写明）：
-    # saas 形态 fail-closed 对域外 Host 一律 500，liveness 探针不得依赖租户路由，
-    # 故 saas（SMES_TENANTS 非空）时探针 Host = 首个已知租户 + SMES_DOMAIN；
-    # 单机回落 127.0.0.1（与既有行为逐位相同）。用 node http 而非 fetch——
-    # fetch 规范禁改 Host 头（静默忽略，探针会误报）。
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - >-
-          const http=require('http');
-          const t=(process.env.SMES_TENANTS||'').split(',').map(s=>s.trim()).filter(Boolean)[0];
-          const h=t ? t+'.'+(process.env.SMES_DOMAIN||'') : '127.0.0.1';
-          http.get({host:'127.0.0.1',port:3000,path:'/health',headers:{Host:h}},
-          r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 10s
+    # 生产要素（M4 收尾波·双写去重）：server 不定义 compose 级 healthcheck——
+    # 缺省继承镜像内 HEALTHCHECK（探针脚本 apps/server/dist/healthcheck-probe.js
+    # 单份；Host 推导取舍见 apps/server/src/healthcheck-probe.ts 文件头：saas
+    # 形态首个已知租户+SMES_DOMAIN、单机回落 127.0.0.1）。web 的 depends_on
+    # service_healthy 据该镜像级 healthcheck 门控（compose 语义：服务级未
+    # 覆盖即用镜像定义）。
 
   web:
     build:

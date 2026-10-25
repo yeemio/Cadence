@@ -30,6 +30,7 @@
  * 参数，与内存实现合同一致；联动验证按 eventId 过滤消费）。
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { EventId, TenantId, UserId, WorkOrderId, type BusinessEvent, type OutboxRecord } from '@smes/business-core';
 import {
   makeApprovalEvent,
@@ -746,16 +747,18 @@ export function connectWorkOrderStore(options: WorkOrderStoreOptions = {}): Work
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    orderStore: new PgWorkOrderStore(prisma),
-    attachmentStore: new PgWorkOrderAttachmentStore(prisma),
-    partsStore: new PgPartsRequestStore(prisma),
-    kitStore: new PgKitCheckStore(prisma),
-    operationStore: new PgWorkOrderOperationStore(prisma),
-    domainEventStore: new PgWorkOrderDomainEventStore(prisma),
-    machineEventStore: new PgWorkOrderMachineEventStore(prisma),
+    orderStore: new PgWorkOrderStore(client),
+    attachmentStore: new PgWorkOrderAttachmentStore(client),
+    partsStore: new PgPartsRequestStore(client),
+    kitStore: new PgKitCheckStore(client),
+    operationStore: new PgWorkOrderOperationStore(client),
+    domainEventStore: new PgWorkOrderDomainEventStore(client),
+    machineEventStore: new PgWorkOrderMachineEventStore(client),
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

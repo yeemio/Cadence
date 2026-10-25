@@ -32,6 +32,7 @@
  * 参数，与内存实现合同一致；联动验证按 eventId 过滤消费）。
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import {
   EventId,
   InspectionId,
@@ -653,14 +654,16 @@ export function connectInspectionStore(options: InspectionStoreOptions = {}): In
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    orderStore: new PgInspectionOrderStore(prisma),
-    nonconformStore: new PgNonconformStore(prisma),
-    operationStore: new PgInspectionOperationStore(prisma),
-    domainEventStore: new PgInspectionDomainEventStore(prisma),
-    machineEventStore: new PgInspectionMachineEventStore(prisma),
+    orderStore: new PgInspectionOrderStore(client),
+    nonconformStore: new PgNonconformStore(client),
+    operationStore: new PgInspectionOperationStore(client),
+    domainEventStore: new PgInspectionDomainEventStore(client),
+    machineEventStore: new PgInspectionMachineEventStore(client),
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

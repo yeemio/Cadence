@@ -50,6 +50,7 @@ import {
 } from '@smes/application';
 import { fromBusinessEventRow, toBusinessEventRow } from '../events/event-row.js';
 import { initialOutboxRow, toOutboxRecord } from '../events/outbox-row.js';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { uuidv7 } from '../ids/uuidv7.js';
 
 // ---- 小工具（同 listing 体例） ----
@@ -668,15 +669,18 @@ export function connectIssueStore(options: IssueStoreOptions = {}): IssueStoreHa
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（并入 lane/m4-final 时补齐，与 dispatch/listing 工厂同体例）：
+  // 门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    taskStore: new PgIssueTaskStore(prisma),
-    taskLineStore: new PgIssueTaskLineStore(prisma),
-    recordStore: new PgIssueRecordStore(prisma),
-    expressStore: new PgIssueExpressStore(prisma),
-    operationStore: new PgIssueOperationStore(prisma),
-    domainEventStore: new PgIssueDomainEventStore(prisma),
+    taskStore: new PgIssueTaskStore(client),
+    taskLineStore: new PgIssueTaskLineStore(client),
+    recordStore: new PgIssueRecordStore(client),
+    expressStore: new PgIssueExpressStore(client),
+    operationStore: new PgIssueOperationStore(client),
+    domainEventStore: new PgIssueDomainEventStore(client),
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

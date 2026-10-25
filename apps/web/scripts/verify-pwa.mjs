@@ -49,11 +49,22 @@ assert(existsSync(manifestPath), 'dist/manifest.webmanifest 存在');
 if (existsSync(manifestPath)) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   assert(manifest.name === 'Cadence' && manifest.short_name === 'Cadence', `manifest name/short_name = ${manifest.name}/${manifest.short_name}`);
-  assert(manifest.start_url === '/' && manifest.display === 'standalone', `manifest start_url=${manifest.start_url} display=${manifest.display}`);
+  assert(manifest.start_url === '/m' && manifest.display === 'standalone', `manifest start_url=${manifest.start_url} display=${manifest.display}`);
+  const iconSrcs = (manifest.icons ?? []).map((i) => `${i.src}[${i.purpose ?? ''}]`);
   assert(
-    Array.isArray(manifest.icons) && manifest.icons.some((icon) => icon.src.includes('icon.svg')),
-    `manifest icons 含 SVG 图标（${manifest.icons?.map((i) => i.src).join(',')}）`,
+    Array.isArray(manifest.icons)
+      && manifest.icons.some((icon) => icon.src.endsWith('icon-192.png'))
+      && manifest.icons.some((icon) => icon.src.endsWith('icon-512.png')),
+    `manifest icons 含 PNG 192/512（${iconSrcs.join(',')}）`,
   );
+  assert(
+    manifest.icons.some((icon) => icon.purpose === 'maskable' && icon.src.endsWith('.png')),
+    'manifest icons 含 maskable PNG（Android 自适应）',
+  );
+  // 图标实化（M5 收尾波）：位图文件真实存在于产物（非仅清单声明）
+  for (const icon of ['icon-192.png', 'icon-512.png', 'icon-maskable-192.png', 'icon-maskable-512.png', 'apple-touch-icon.png']) {
+    assert(existsSync(resolve(DIST, 'icons', icon)), `dist/icons/${icon} 存在（generate-icons.mjs 产物）`);
+  }
 }
 
 // 2) SW + precache
@@ -65,8 +76,20 @@ assert(workboxFiles.length > 0, `workbox runtime chunk 存在（${workboxFiles.j
 // precache 清单（sw.js 内联注入的数组字面量）
 assert(/"url":"offline\.html"/.test(sw) || /offline\.html/.test(sw), 'precache 清单含 offline.html（离线壳页）');
 assert(/icons\/icon\.svg/.test(sw), 'precache 清单含 icons/icon.svg');
+assert(/icons\/icon-512\.png/.test(sw) && /icons\/icon-maskable-512\.png/.test(sw), 'precache 清单含 PNG 图标（512 any + maskable）');
 assert(/index\.html/.test(sw) && /login\.html/.test(sw), 'precache 清单含双入口 html（主壳 + 登录）');
 assert(/precacheAndRoute/.test(sw), 'sw.js 注册 precacheAndRoute');
+// 单路不变量（M5 收尾波低危清理锚点）：precache 数组字面量零重复 URL——
+// 双路收录（globPatterns × 插件 includeManifestIcons/includeAssets 自动并路）
+// 同 revision 属良性但违背单路；异 revision 是 workbox conflicting-entries
+// 地雷（SW 安装失败）。重复在此即红，防配置漂移悄悄复活双路。
+{
+  const precacheBlock = sw.slice(sw.indexOf('precacheAndRoute('));
+  const urls = [...precacheBlock.matchAll(/url:\s*"([^"]+)"/g)].map((m) => m[1]);
+  assert(urls.length > 0, `precache 清单可解析（${urls.length} 条）`);
+  const dup = urls.filter((u, i) => urls.indexOf(u) !== i);
+  assert(dup.length === 0, `precache 清单零重复 URL（单路化；${urls.length} 条全唯一${dup.length ? `，重复：${dup.join(',')}` : ''}）`);
+}
 assert(/NetworkFirst/.test(sw) && /offline\.html/.test(sw), 'runtime 导航 NetworkFirst + precacheFallback offline.html 在产物内');
 assert(sw.includes('cadence-navigations-v1'), '导航运行时缓存名 cadence-navigations-v1 在产物内');
 

@@ -28,10 +28,12 @@ import { connectMenuConfigStore } from '@smes/business-store/menu-config';
 import { connectNotificationStore } from '@smes/business-store/notifications';
 import { connectApprovalConfigStore } from '@smes/business-store/approval-config';
 import { metricSourceSetOf } from '@smes/metric-pack';
-import { hostBasedTenantResolver, type TenantId } from '@smes/business-core';
+import { hostBasedTenantResolver, TenantResolutionError, type TenantId } from '@smes/business-core';
 import { buildAppModule, parseModulesEnabled } from './app-registry.js';
 import { bindCrossModuleWiring } from './cross-module-wiring.js';
 import { createIntegrationEdgeSinks } from './integration-edge-adapters.js';
+import { parseKnownTenants } from './healthcheck-probe.js';
+import { tenantResolutionErrorHandler } from './tenant-resolution-error.handler.js';
 import { ApprovalErrorFilter } from './approval-error.filter.js';
 import { AuthErrorFilter } from './auth-error.filter.js';
 import { BaselineErrorFilter } from './baseline-error.filter.js';
@@ -53,6 +55,17 @@ import { BackfillErrorFilter } from './backfill-error.filter.js';
 import { CapabilityErrorFilter } from './capability-error.filter.js';
 
 const DEFAULT_PORT = 3000;
+
+/**
+ * 租户中间件响应的结构子集（Express Response 的最小面）。组合根不直接依赖
+ * express 类型（Nest 底座可换 platform-fastify）——结构 typing 与中间件
+ * request: unknown 的既有取舍同向。
+ */
+interface TenantMiddlewareResponse {
+  statusCode: number;
+  setHeader(name: string, value: string): unknown;
+  end(body: string): unknown;
+}
 
 async function bootstrap(): Promise<void> {
   const enabled = parseModulesEnabled(process.env['MODULES_ENABLED']);
@@ -264,7 +277,8 @@ async function bootstrap(): Promise<void> {
   //     （对齐 parseModulesEnabled 的配置拼写错误不静默语义）。
   //   saas——hostBasedTenantResolver({domain, lookup})：`{tenant}.{SMES_DOMAIN}` →
   //     租户，域外/未知租户/缺 Host 抛 TenantResolutionError（fail-closed——SaaS
-  //     形态没有回落默认租户，回落即串租户；Express 将中间件同步异常转 500）。
+  //     形态没有回落默认租户，回落即串租户；下方中间件窄捕并映射 4xx，见其
+  //     注释块——M5 收尾波前曾落 Express 默认 500）。
   //     已知租户清单 = SMES_TENANTS 逗号静态列表（租户管理流程与异步查库 adapter
   //     属 M4 后续波，取舍见 business-core tenant-resolution.ts 文件头）。
   //   注入取舍（写明）：经 DI 单例 useResolver 装配，与 CoreModule.register
@@ -274,10 +288,8 @@ async function bootstrap(): Promise<void> {
   let rlsTenantPropagation = false;
   if (tenantMode === 'saas') {
     const domain = process.env['SMES_DOMAIN'] ?? '';
-    const knownTenants = (process.env['SMES_TENANTS'] ?? '')
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
+    // 已知租户解析与镜像内健康探针同源（双写去重：healthcheck-probe.ts 单份）。
+    const knownTenants = parseKnownTenants(process.env['SMES_TENANTS']);
     if (domain.length === 0) {
       throw new Error(
         'SMES_TENANT_MODE=saas 需要 SMES_DOMAIN（子域名解析基域）——缺省拒绝启动（fail-fast）',
@@ -298,21 +310,60 @@ async function bootstrap(): Promise<void> {
     );
   }
 
-  app.use((request: unknown, _response: unknown, next: () => void) => {
-    const tenant = tenantContext.resolve(request);
+  // 租户解析失败 → 4xx（M5 收尾波，替代 Express 默认 500；语义写明）：
+  // - 域内未知租户（reason 'unknown-tenant'）→ 404 Not Found：Host 属本域但
+  //   租户不存在——通配 DNS 下等价 NXDOMAIN，客户端/反代据此提示"租户不存在"。
+  // - 其余解析失败（'off-domain' 域外 Host / 'missing-host' 缺 Host /
+  //   'invalid-subdomain' 裸基础域或非单级子域）→ 421 Misdirected Request
+  //   （RFC 9110 §15.5.20）：请求被发到了无法为该 Host 产出响应的服务——
+  //   正是 vhost 走错的语义，客户端应改连正确的 origin。
+  // fail-closed 语义不变：任何解析失败都不回落默认租户、不进入下游处理链；
+  // 404/421 与 500 同样阻断请求，只是把"服务器配置错"与"客户端走错门"分开
+  // （500 会被监控当作服务故障误报）。reason 是结构化字段（business-core
+  // TenantResolutionError），不依赖 message 文本匹配。响应体仅含错误消息
+  // （消息内只有客户端自带的 Host 与非密的域配置），不回显任何租户数据。
+  const respondTenantResolutionFailure = (
+    response: TenantMiddlewareResponse,
+    error: TenantResolutionError,
+  ): void => {
+    const isUnknownTenant = error.reason === 'unknown-tenant';
+    const statusCode = isUnknownTenant ? 404 : 421;
+    response.statusCode = statusCode;
+    response.setHeader('Content-Type', 'application/json; charset=utf-8');
+    response.setHeader('Cache-Control', 'no-store');
+    response.end(`${JSON.stringify({ statusCode, error: isUnknownTenant ? 'Not Found' : 'Misdirected Request', message: error.message })}\n`);
+  };
+
+  app.use((request: unknown, response: unknown, next: () => void) => {
+    let tenant: TenantId;
+    try {
+      tenant = tenantContext.resolve(request);
+    } catch (error) {
+      // 仅窄捕租户解析错误（其余异常维持 Express 原生 500 路径，不吞意外错误）
+      if (error instanceof TenantResolutionError) {
+        respondTenantResolutionFailure(response as TenantMiddlewareResponse, error);
+        return;
+      }
+      throw error;
+    }
     // RLS 电流路径（saas 形态）：请求租户同步传入 business-store 侧 RLS 会话上下文
     // （rls-session 自持独立 TenantContext，ALS 跨实例不可见——不包裹则
     // withRlsTenantSession 读不到请求租户、回落 'default'，见 rls-session.ts 文件头
-    // 取舍）。同一异步链上已接线的连接工厂（org / masterdata / workbench /
-    // approval，ESCALATION-1 裁定）在操作事务内 SET app.current_tenant 生效；
-    // 其余 14 家 connect* 工厂未接 RLS session（ESCALATION-2，泳道后续，诚实缺口）。
-    // 缺省/单机形态不包裹（零行为变化：回落值与解析值同为 'default'）。
+    // 取舍）。同一异步链上已接线的连接工厂（M4 收尾波 ESCALATION-2 起**全部
+    // 18 家 connect\* 工厂**：先例四家 org / masterdata / workbench / approval +
+    // 其余十四家）在操作事务内 SET app.current_tenant 生效；事务/raw 边界
+    // （原子性取舍）见 rls-session.ts 已知边界节。缺省/单机形态不包裹
+    // （零行为变化：回落值与解析值同为 'default'）。
     if (rlsTenantPropagation) {
       runWithRlsTenant(tenant, () => tenantContext.run(tenant, () => next()));
     } else {
       tenantContext.run(tenant, () => next());
     }
   });
+
+  // 租户解析失败 → 421（Express 全局错误中间件形态：中间件层异常不进 Nest
+  // 异常过滤器——机制与状态码取舍见 tenant-resolution-error.handler.ts 文件头）。
+  app.use(tenantResolutionErrorHandler);
 
   const port = Number(process.env['PORT'] ?? DEFAULT_PORT);
   await app.listen(port);

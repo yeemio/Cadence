@@ -21,7 +21,7 @@ M4 正式线已接通：RLS session 变量接线（org / masterdata / workbench 
 | --- | --- | --- |
 | 启动 | `docker compose -f deploy/compose.yaml up` | `SMES_TENANT_MODE=saas SMES_DOMAIN=smes.example.com docker compose -f deploy/compose.yaml --profile saas up` |
 | 定价对应（ADR-0005） | 买断 246k，私有化部署 | 订阅 54k/年，托管 |
-| 租户解析 | `singleTenantResolver()` 恒 `'default'`（缺省不触碰解析器，零行为变化） | `hostBasedTenantResolver({domain, lookup})` 子域名 → 租户（**已接线**：`SMES_TENANT_MODE=saas` + `SMES_DOMAIN` + `SMES_TENANTS` 静态清单，未知/域外 Host fail-closed 500） |
+| 租户解析 | `singleTenantResolver()` 恒 `'default'`（缺省不触碰解析器，零行为变化） | `hostBasedTenantResolver({domain, lookup})` 子域名 → 租户（**已接线**：`SMES_TENANT_MODE=saas` + `SMES_DOMAIN` + `SMES_TENANTS` 静态清单，未知/域外 Host fail-closed 421） |
 | 入口 | web:8080 / server:3000 直连 | 叠加 proxy:80（nginx 透传 Host，子域 = 租户） |
 | DB 连接 | app_user（受限 DML，无 BYPASSRLS）+ `SMES_RLS_SESSION=on` | 同左 |
 | 行级隔离 | RLS 由 DB 强制（纵深防御；单机无第二租户） | RLS 是安全边界：未设变量 → 0 行/拒写；设变量 → 仅本租户 |
@@ -41,17 +41,21 @@ M4 正式线已接通：RLS session 变量接线（org / masterdata / workbench 
   形态下把每请求解析出的租户经 `runWithRlsTenant` 同点包进 store 侧 RLS 会话
   上下文（同一异步链），`withRlsTenantSession` 的操作事务内 SET 读到的即请求
   租户。后台任务仍需显式 `runWithRlsTenant` 包裹（不经 HTTP 中间件）。
-- **接线覆盖（ESCALATION-1 已裁定执行）**：PrismaClient 构造权分散在 18 个
-  `connect*` 工厂（各自 `new PrismaClient()`）——org / masterdata / workbench /
-  approval 四家已接线（M1 稳定目录，总控裁定泳道扩展）；其余 14 家（各领域
-  pg-*-stores，ESCALATION-2 注释已留）尚未接线，app_user+RLS 形态下被拒（5xx），
-  superuser 形态不受影响。实证：`deploy/scripts/rls-session-proof.mjs` 的接线
-  探针（workbench / masterdata 写端点 201 = SET 贯通）。
+- **接线覆盖（ESCALATION-2 收尾：18/18 全接线）**：PrismaClient 构造权分散在
+  18 个 `connect*` 工厂（各自 `new PrismaClient()`）——先例四家 org /
+  masterdata / workbench / approval（ESCALATION-1 裁定）+ M4 收尾波其余十四家
+  （各领域 pg-*-stores，含 metric-pack 六源 bundle）全部接线；装配一致性由
+  `packages/business-store/tests/rls-session-wiring.test.ts`（18 工厂 ×
+  on/off/缺省三态）锚定。已知边界（raw 入口不经钩子 / =on 时外层事务原子性
+  丢失）见 business-store `src/rls-session.ts` 已知边界节。实证：
+  `deploy/scripts/rls-session-proof.mjs` 的接线探针（workbench / masterdata /
+  baseline 写端点 201 = SET 贯通；baseline 为 14 家新接线代表）。
 - **实证**：`node deploy/scripts/rls-session-proof.mjs` —— 双对照：
   ① 不接线（缺省）+ app_user：/health 200 但 org 全端点 403（RLS fail-closed，
-  策略读 0 行 → 无权限身份）——app_user 全拒；
+  策略读 0 行 → 无权限身份）——app_user 全拒；baseline 写端点同 403（双对照
+  前提：实验组的 201 才可归因 SET 贯通）；
   ② 接线（SMES_RLS_SESSION=on）+ app_user：org 用户/角色 CRUD + 策略授予全过、
-  workbench / masterdata 接线探针 201、重启存活；最强证据 = 真实登录流（会话 `findByTokenDigest` 查询本身无租户条件，
+  workbench / masterdata / baseline 接线探针 201、重启存活；最强证据 = 真实登录流（会话 `findByTokenDigest` 查询本身无租户条件，
   仅当 SET 生效时 RLS 谓词放行——compose 栈内 Bearer 读回 200）。
   superuser 形态两环境 e2e 回归均绿（缺省零回归；接线开启对 superuser 无害）。
 
@@ -87,15 +91,19 @@ docker compose -f deploy/compose.yaml down -v --remove-orphans
   形态；裁剪 = 依赖产物（镜像内生成）+ `.git`/`deploy`/`architecture`/`scripts`
   + `.env`（口令不进镜像）+ 姊妹应用源码（`package.json` 保留：pnpm 工作区图
   与 `--frozen-lockfile` 校验需要全清单）。
-- **生产要素初版**（M4 正式线，compose 级）：server healthcheck = `/health`
-  200（web 的 `depends_on: service_healthy` 据此门控——实测 server 未健康 web
-  不起）；web healthcheck = 静态入口自证（不探 `/health`：反代路径会把 server
-  故障混入 web 自身判定）；`restart: unless-stopped`（pg/server/web/proxy；
-  migrate 一次性恒 `no`）；pg-data 具名卷（`down -v` 才删）。
-  healthcheck Host 取舍（写明）：saas 形态 fail-closed 对域外 Host 一律 500，
-  liveness 探针不得依赖租户路由——saas（SMES_TENANTS 非空）时探针 Host =
-  首个已知租户 + SMES_DOMAIN，单机回落 127.0.0.1；用 node http 而非 fetch
-  （fetch 规范禁改 Host 头，静默忽略会误报）。
+- **生产要素初版**（M4 正式线；M4 收尾波探针单份化）：server healthcheck =
+  `/health` 200，探针逻辑**单份**在 `apps/server/src/healthcheck-probe.ts`
+  （随 dist 构建，镜像 `HEALTHCHECK` 引 `apps/server/dist/healthcheck-probe.js`；
+  compose 侧 server 服务不定义 healthcheck，缺省继承镜像定义——同一份，无
+  双写）；web 的 `depends_on: service_healthy` 据此门控（实测 server 未健康
+  web 不起）；web healthcheck = 静态入口自证（不探 `/health`：反代路径会把
+  server 故障混入 web 自身判定）；`restart: unless-stopped`（pg/server/web/
+  proxy；migrate 一次性恒 `no`）；pg-data 具名卷（`down -v` 才删）。
+  healthcheck Host 取舍（写明）：saas 形态 fail-closed 对域外/未知租户 Host
+  一律 421（M4 收尾波：租户解析失败从 500 收敛为 421 Misdirected Request，
+  见下 SaaS profile 节），liveness 探针不得依赖租户路由——saas
+  （SMES_TENANTS 非空）时探针 Host = 首个已知租户 + SMES_DOMAIN，单机回落
+  127.0.0.1；用 node http 而非 fetch（fetch 规范禁改 Host 头，静默忽略会误报）。
 - **migrate 一次性服务**：superuser 侧 `prisma migrate deploy` + 迁移完成后
   `REVOKE INSERT, UPDATE, DELETE ON _prisma_migrations FROM app_user`（运行时
   凭据对迁移台账只读；迁移恒走 superuser——pg-init 时序：业务表晚于 initdb 由
@@ -118,19 +126,21 @@ SMES_TENANT_MODE=saas SMES_DOMAIN=smes.example.com SMES_TENANTS=tenant-a \
 # pg + migrate + server + web + proxy（proxy 仅 saas profile 起验）
 ```
 
-- **租户解析实证（M4 正式线，独立栈直连 server 端口实测，输出原样）**：
+- **租户解析实证（M4 正式线直连实测；M4 收尾波复测——解析失败从 500 收敛
+  为 421 Misdirected Request，输出原样）**：
 
 ```bash
 $ curl -H "Host: tenant-a.smes.example.com" .../health
 {"status":"ok","tenant":"tenant-a"} HTTP:200      # 子域 → 租户，请求级读回
 $ curl -H "Host: rogue.smes.example.com" .../health   # 域内未知租户
-HTTP:500                                          # fail-closed（不回落 default）
+HTTP:421  # fail-closed（不回落 default）；message: unknown tenant "rogue"
 $ curl -H "Host: evil.example.com" .../health     # 域外 Host
-HTTP:500
+HTTP:421  # message: host "evil.example.com" outside domain "smes.example.com"
 $ curl .../health                                 # 缺省 Host（127.0.0.1）
-HTTP:500
+HTTP:421  # 空值/缺省 Host 同落域外判定（node:http 直发实测；curl -H 'Host:'
+          # 的语义是删头，删头后 HTTP/1.1 缺 Host 属 400 协议层响应）
 $ curl -H "Host: a.b.smes.example.com" .../health # 多级子域
-HTTP:500
+HTTP:421  # message: ...is not a single subdomain of "smes.example.com"
 ```
 
 - **接线机制（main.ts 形态开关段）**：`SMES_TENANT_MODE` 缺省 `single-node`
@@ -148,13 +158,17 @@ HTTP:500
   透传头；server 侧解析行为以上面直连探针为准。真实 DNS 解析与 TLS 证书属
   部署期事项，不在本栈验证面。
 - **已知行为（写明）**：server 侧 fail-closed 已激活——域外/未知/多级子域
-  Host 在 server 侧 500（上表实测）；单 server 块 nginx 配置对未匹配
+  Host 在 server 侧 **421**（M4 收尾波：`TenantResolutionError` 经 Express
+  全局错误中间件 `tenantResolutionErrorHandler` 映射 421 Misdirected Request
+  ——机制与状态码取舍见 `apps/server/src/tenant-resolution-error.handler.ts`
+  文件头；上表实测）；单 server 块 nginx 配置对未匹配
   `server_name` 的 Host 落默认 server 透传，proxy 层有意保持哑透传（compose
   注释口径），域收口点在 server 侧。
 - **接缝（M4 后续）**：非默认租户的开通/种子流程（SMES_TENANTS 是静态清单；
   tenant-a 无种子用户 → 该租户下登录 401 属预期——数据面端到端待租户开通
-  流程）；`TenantResolutionError → 500` 的状态码映射（宜 404/400，Express
-  中间件层异常不进 Nest 异常过滤器，现由 ExceptionsHandler 转 500）。
+  流程）。~~TenantResolutionError → 500 的状态码映射~~（**M4 收尾波已闭合**：
+  Express 错误中间件映射 421，e2e 覆盖未知/域外/空/多级四形 + 非
+  TenantResolutionError 原样放行）。
 - **单机复验**：无 profile、无 env 直接 `up -d` 不回归——缺省插值
   `SMES_TENANT_MODE=single-node`、`SMES_DOMAIN` 空、proxy 服务不起，
   /health 与 web 均 200，`down -v` 零残留。

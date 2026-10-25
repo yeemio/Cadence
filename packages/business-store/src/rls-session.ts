@@ -2,8 +2,9 @@
  * RLS session 变量接线（ADR-0005 M4 正式线：租户贯通到数据库连接）。
  *
  * 物理位置（M4 正式线定案）：src/ 包顶层——本模块是跨环节通用基础设施
- * （ADR-0010 词汇：领域中立，不绑定单一环节域），非 org 域私有，由
- * org / masterdata / workbench / approval 四域连接工厂共用；
+ * （ADR-0010 词汇：领域中立，不绑定单一环节域），非 org 域私有；M4 收尾波
+ * （ESCALATION-2）起由**全部 18 个 connect\* 连接工厂**共用（先例四家
+ * org / masterdata / workbench / approval + 其余十四家各领域 pg-*-stores）；
  * ./org 子路径经 re-export 保持公共 API 不变（消费方零改动）。
  *
  * 机制（官方 API，零新运行时依赖）：
@@ -30,10 +31,11 @@
  *     （与 server 侧 fixedDefaultTenant 解析结果一致）；
  *   - server 中间件的 TenantContext 是 Nest DI 实例，其 ALS 为实例私有——
  *     AsyncLocalStorage 跨实例不可见（Node 语义，已实测），store 侧无法读到
- *     server 侧 run() 进入的请求租户。SaaS 形态接 hostBasedTenantResolver 时
- *     （server 侧改动，见 deploy/README M4 接缝）需同点把该实例传入本工厂
- *     （BusinessStoreOptions.tenantContext），或后台任务显式用下方
- *     runWithRlsTenant 包裹。
+ *     server 侧 run() 进入的请求租户。**SaaS 形态的桥接已接线（M4 正式线，
+ *     实际形态）**：apps/server/src/main.ts 租户中间件在 saas 形态把每请求解析
+ *     出的租户经下方 `runWithRlsTenant` 包进下游处理链（与 server 侧
+ *     tenantContext.run 复合同点）——钩子事务内 SET 读到的即请求租户。
+ *     后台任务/种子脚本不经 HTTP 中间件，仍需显式用 runWithRlsTenant 包裹。
  *   无租户上下文时（启动期/队列任务）的行为：不"跳过 SET"（合同建议项），
  *   而是按 TenantContext 公开 API 语义回落 'default'——application 的
  *   TenantContext 公开面无"区分有无 ALS store"的入口（current() 恒有值），
@@ -117,9 +119,21 @@ export async function rlsSessionOperation(
  * 句柄上重派（不经扩展链——不递归、不再嵌套）。返回值仍是 PrismaClient 形状
  * （$extends 结果为超集，向下转型安全：store 只消费标准模型委托面）。
  *
- * 已知边界（写明）：使用 `$transaction`（数组/交互式）或 `$executeRaw` 的仓储
- * 不在本扩展覆盖内（模型操作钩子不拦截 client 级入口；数组事务内逐操作再包
- * 事务会嵌套报错）。org 四 store 全部为普通模型操作（已核对），无此边界。
+ * 已知边界（写明；M4 收尾波 14 工厂接线时经容器实验实证标定）：
+ *   - **raw 入口不经钩子**：`$queryRaw` / `$executeRaw` 等 client 级入口不被
+ *     模型操作钩子拦截——无 SET。app_user 形态下读 0 行（fail-visible）、写被
+ *     RLS 拒（42501）。inventory 三处 $executeRaw 即此边界。
+ *   - **事务原子性丢失（=on 时）**：数组/交互式 `$transaction` 内的模型操作仍
+ *     被本钩子拦截，但被重派进钩子自开的新交互式事务——外层事务原子性不成立。
+ *     实验实证（app_user+RLS 容器）：交互式事务内 create 后抛错，该行已独立
+ *     提交未回滚；数组事务第二操作失败，第一操作已落库。接线前（无 SET）这些
+ *     操作在 app_user 形态下整个事务全拒——接线是净改善，但"失败整批回滚"的
+ *     语义在 =on 时变为"每操作独立提交"，涉事务操作失败可能留部分状态。
+ *     superuser 形态开 =on 同样丢原子性——门控只应在 app_user+RLS 形态开启。
+ *   - org / masterdata / workbench / approval 四域 store 全部为普通模型操作
+ *     （已核对，无上述边界）；其余 14 域存在 $transaction / $executeRaw 用法
+ *     （诚实缺口登记：后续波可评估"事务感知扩展"——数组事务前splice set_config
+ *     原语、交互式事务句柄上先 SET 同句柄重派——届时以容器实验复证原子性恢复）。
  */
 export function withRlsTenantSession(prisma: PrismaClient): PrismaClient {
   const client = prisma as unknown as {

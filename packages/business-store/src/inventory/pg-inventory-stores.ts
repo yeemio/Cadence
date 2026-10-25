@@ -41,6 +41,7 @@
  * outbox_records——跨模块共享的投递记账由单例投递器统一扫。
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import {
   EventId,
   TenantId,
@@ -1263,20 +1264,22 @@ export function connectInventoryStore(options: InventoryStoreOptions = {}): Inve
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    warehouseStore: new PgWarehouseStore(prisma),
-    accountStore: new PgStockAccountStore(prisma),
-    locationBalanceStore: new PgStockLocationBalanceStore(prisma),
-    movementStore: new PgStockMovementStore(prisma),
-    reservationStore: new PgStockReservationStore(prisma),
-    stocktakeStore: new PgStocktakeStore(prisma),
-    shippingStore: new PgShippingOrderStore(prisma),
-    releaseFactStore: new PgReleaseFactStore(prisma),
-    operationStore: new PgInventoryOperationStore(prisma),
-    domainEventStore: new PgInventoryDomainEventStore(prisma),
-    machineEventStore: new PgInventoryMachineEventStore(prisma),
+    warehouseStore: new PgWarehouseStore(client),
+    accountStore: new PgStockAccountStore(client),
+    locationBalanceStore: new PgStockLocationBalanceStore(client),
+    movementStore: new PgStockMovementStore(client),
+    reservationStore: new PgStockReservationStore(client),
+    stocktakeStore: new PgStocktakeStore(client),
+    shippingStore: new PgShippingOrderStore(client),
+    releaseFactStore: new PgReleaseFactStore(client),
+    operationStore: new PgInventoryOperationStore(client),
+    domainEventStore: new PgInventoryDomainEventStore(client),
+    machineEventStore: new PgInventoryMachineEventStore(client),
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }
