@@ -1,6 +1,17 @@
 # 状态快照
 
-更新：2026-10-26 深夜（**S3 波五线收口：端到端 ~93/109（85.3%）**——齐套拦截真实栈生效、移动 19 项全就绪、1257 测试全绿；剩余=能力子集 5 项+活系统对账+Owner 四决策）
+更新：2026-10-26 凌晨②（**总控收口完成：合并+全仓 verify exit 0+推送 GitHub（0b8566c）**；109/109 功能覆盖达成（M1 线终态矩阵）；U 波文档增量五模块全部验收 ACCEPT）
+
+## 总控收口（✅ 10-26 凌晨②，Owner /goal 授权"统筹合并+提交 GitHub 主线"）
+
+- **提交链**：`4abe16e`（S/T/U 三波全量：96 M+136 新文件——S1 后端 10 项/S2 桌面 61 页/S3-a 管理页/S3 移动 19+1/T 能力子集五项/T2 Playwright e2e/U 波五模块）→ `0b8566c`（并入 lane/m4-final：M4 部署期收尾+M5 收尾）
+- **合并冲突三处语义并集**（M2 线预检指南 + 实况扩展）：pg-baseline-stores orderBy 取分支数组形态（双侧各自独立修同缺陷）；pg-dispatch/pg-listing 工厂取分支 RLS client 包裹 + 保留 U5 aftercareClaimStore/U4 processMaterialStore 新行（改喂 client）；**补齐 U1 issue 工厂漏掉的 RLS session 包裹**（其余新模块 T1/U3 均有，U1 独漏——合并期发现并修）
+- **终验**：全仓 `pnpm verify` exit 0（server 54/testkit 77 末段亲见，全链无失败）；lane/m4-final+lane/m5-final 分支已删
+- **推送**：`git push origin main` 成功（127e353..0b8566c）；工作树零脏文件
+- **U 波（文档增量，Owner 全面解禁 73 份开发文档为需求输入）**：issue 发料链路（489 测，含一轮 REWORK 终裁）/ report-center 报表口径包 6 metric+下图统计 / attachment 文件管理（509 测，对象存储纯端口）/ process-material 原材料关联表（96 表）/ aftercare-claim 售后报销（98 表）——五域全 ACCEPT；接线（组合根注册+跨模块端口+exports 子路径+rls-proof 计数 bump 98）归下一波
+- **实施者身份登记**：U1 agent_17c268c9（返工同线）/U2 agent_225f94a2/U3 agent_2e9d0024/U4 agent_15f73203/U5 agent_5b5716e1（均 code-writer-pro GLM-5.3）；验收：47eba422/a41c11f6/0a9af908/f19c05d5/aaadf550（均 code-reviewer GLM-5.3 同族记账）
+- 总控账本：cadence-runkit-s3（cadence-s3-mobile-lane-20261025）全程 checkpoint 在案；协调账本 cadence-runkit 双线均已终局关闭
+
 
 ## S3 波（✅ 10-26 深夜，五线并行）
 
