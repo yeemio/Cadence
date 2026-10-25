@@ -76,4 +76,41 @@ describe('应用注册表（ADR-0004 feature flag 装配）', () => {
       controllersOf(buildAppModule(parseModulesEnabled(undefined), { devPolicyEndpoint: true })),
     ).toContain(DevPolicyController);
   });
+
+  it('S1 backfill：audit/standardreports 已注册但不进默认清单（激活价语义，同 M2/M3 环节模块口径）', () => {
+    expect(Object.hasOwn(MODULE_DEFINITIONS, 'audit')).toBe(true);
+    expect(Object.hasOwn(MODULE_DEFINITIONS, 'standardreports')).toBe(true);
+    expect(parseModulesEnabled(undefined)).not.toContain('audit');
+    expect(parseModulesEnabled(undefined)).not.toContain('standardreports');
+    expect(parseModulesEnabled('core,org,masterdata,audit,standardreports')).toEqual([
+      'core',
+      'org',
+      'masterdata',
+      'audit',
+      'standardreports',
+    ]);
+  });
+
+  it('S1 backfill：操作日志写拦截器随 audit 模块条件装配（未启用零开销，同 HoursIngestLinkInterceptor 先例）', async () => {
+    const { APP_INTERCEPTOR } = await import('@nestjs/core');
+    const { AuditWriteInterceptor } = await import('@smes/application');
+    const providersOf = (root: object): unknown[] =>
+      Reflect.getMetadata(MODULE_METADATA.PROVIDERS, root) as unknown[];
+    const hasAuditInterceptor = (providers: unknown[]): boolean =>
+      providers.some(
+        (p) =>
+          typeof p === 'object' &&
+          p !== null &&
+          (p as { provide?: unknown }).provide === APP_INTERCEPTOR &&
+          (p as { useClass?: unknown }).useClass === AuditWriteInterceptor,
+      );
+    expect(hasAuditInterceptor(providersOf(buildAppModule(parseModulesEnabled(undefined))))).toBe(
+      false,
+    );
+    expect(
+      hasAuditInterceptor(
+        providersOf(buildAppModule(['core', 'org', 'masterdata', 'audit'])),
+      ),
+    ).toBe(true);
+  });
 });

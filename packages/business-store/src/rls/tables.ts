@@ -104,10 +104,41 @@ export const RLS_TABLES: readonly RlsTableSpec[] = [
   tenantTable('drawing_view_trails'),
   tenantTable('drawing_operations'),
   // M3 maintenance 线（2026-10-26 落库；守恒测试触发补登 + 全量重放迁移 20261026110000；
-  // 模块建表迁移占计划槽位 070000（早于已落库的 drawing 080000——同波次计划
-  // 错峰口径，不影响全新库按名序应用；重放快照须取最新序守恒）
+  // 模块建表迁移占计划槽位 070000（早于已落库的 drawing 080000——按波次
+  // 计划错峰，不影响全新库按名序应用；重放快照须取最新序守恒）
   tenantTable('maintenance_plans'),
   tenantTable('maintenance_tasks'),
   tenantTable('maintenance_activities'),
   tenantTable('maintenance_operations'),
+  // S1 backfill 线（2026-10-26 落库：0920 #3/#7/#8/#9/#100/#103 六表；
+  // 守恒测试触发补登 + 全量重放迁移 20261026121000）
+  tenantTable('departments'),
+  tenantTable('positions'),
+  tenantTable('customers'),
+  tenantTable('suppliers'),
+  tenantTable('units'),
+  tenantTable('audit_logs'),
+  // T 波 S5 能力子集线（2026-10-26 落库：#98/99 菜单管理 / #102 审批配置 /
+  // #101 通知中心 三表；守恒测试触发补登 + 全量重放迁移 20261026131000）
+  tenantTable('menu_configs'),
+  tenantTable('approval_flow_configs'),
+  tenantTable('notifications'),
+  // U1 issue 发料链路线（2026-10-26 落库：A11 增量 发料任务/发料记录 五表；
+  // 守恒测试触发补登 + 全量重放迁移 20261026140100）
+  tenantTable('issue_tasks'),
+  tenantTable('issue_task_lines'),
+  tenantTable('issue_records'),
+  tenantTable('issue_expresses'),
+  tenantTable('issue_operations'),
+  // U3 attachment 附件中心线（2026-10-26 落库：A13 统一附件元数据单表；
+  // 守恒测试触发补登 + 全量重放迁移 20261026150100）
+  tenantTable('attachments'),
+  // U4 listing 工序×原材料关联线（2026-10-26 落库：S10 数据面单表；
+  // 守恒测试触发补登 + 全量重放迁移 20261026160100）
+  tenantTable('process_material_links'),
+  // U5 aftercare claim 售后报销线（2026-10-26 落库：A12 售后报销两表——报销单
+  // 投影 + 明细行；守恒测试触发补登 + 全量重放迁移 20261026161000——晚于 U4
+  // 兄弟线 160100 重放，快照含全量表集）
+  tenantTable('aftercare_claims'),
+  tenantTable('aftercare_claim_lines'),
 ];

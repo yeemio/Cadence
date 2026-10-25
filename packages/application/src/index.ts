@@ -322,6 +322,75 @@ export type {
   ListApprovalCasesFilter,
 } from './approval/approval-stores.js';
 
+// ---- menu-config：菜单管理（T 波 S5 #98/99，配置持久化 + 读实态定权限码） ----
+export { MenuConfigModule, MENU_CONFIG_STORE } from './menu-config/menu-config.module.js';
+export type { MenuConfigModuleOptions } from './menu-config/menu-config.module.js';
+export { MenuConfigService } from './menu-config/menu-config.service.js';
+export { InMemoryMenuConfigStore } from './menu-config/in-memory-menu-config-stores.js';
+export {
+  MenuConfigConflictError,
+  MenuConfigInputError,
+  MenuConfigNotFoundError,
+} from './menu-config/menu-config-errors.js';
+export { parseMenuConfigNodes } from './menu-config/menu-config-input.js';
+export type {
+  CreateMenuConfigPayload,
+  UpdateMenuConfigPayload,
+} from './menu-config/menu-config-input.js';
+export type {
+  CreateMenuConfigInput,
+  MenuConfig,
+  MenuConfigNode,
+  MenuConfigStore,
+  UpdateMenuConfigInput,
+} from './menu-config/menu-config-stores.js';
+
+// ---- approval-config：审批流配置（T 波 S5 #102，approval 域配置面） ----
+export {
+  ApprovalConfigModule,
+  APPROVAL_FLOW_CONFIG_STORE,
+} from './approval-config/approval-config.module.js';
+export type { ApprovalConfigModuleOptions } from './approval-config/approval-config.module.js';
+export { ApprovalConfigService } from './approval-config/approval-config.service.js';
+export { InMemoryApprovalFlowConfigStore } from './approval-config/in-memory-approval-config-stores.js';
+// T1 接线 #102：历史封顶常量（PG 适配器读改写 history 与本包内存实现同限）
+export { APPROVAL_CONFIG_HISTORY_LIMIT } from './approval-config/in-memory-approval-config-stores.js';
+export {
+  ApprovalConfigConflictError,
+  ApprovalConfigInputError,
+  ApprovalConfigNotFoundError,
+} from './approval-config/approval-config-errors.js';
+export { parseFlowConfig, parseFlowConfigIdParam } from './approval-config/approval-config-input.js';
+export type {
+  ApprovalFlowConfigRecord,
+  ApprovalFlowConfigStore,
+  ApprovalFlowConfigVersion,
+  CreateApprovalFlowConfigInput,
+  UpdateApprovalFlowConfigInput,
+} from './approval-config/approval-config-stores.js';
+
+// ---- notifications：站内通知中心（T 波 S5 #101，收件箱 + NotificationSource 端口） ----
+export { NotificationsModule, NOTIFICATION_STORE } from './notifications/notifications.module.js';
+export type { NotificationsModuleOptions } from './notifications/notifications.module.js';
+export { NotificationService } from './notifications/notifications.service.js';
+export { InMemoryNotificationStore } from './notifications/in-memory-notifications-stores.js';
+export {
+  NotificationInputError,
+  NotificationNotFoundError,
+} from './notifications/notifications-errors.js';
+export {
+  parseNotificationIdParam,
+  parsePublishNotificationInput,
+} from './notifications/notifications-input.js';
+export type { PublishNotificationPayload } from './notifications/notifications-input.js';
+export type {
+  Notification,
+  NotificationSource,
+  NotificationSourcePort,
+  NotificationStore,
+  PublishNotificationInput,
+} from './notifications/notifications-stores.js';
+
 // ---- baseline：技术准备环节 P1 子集（M2-W2：工序库/物料校验执行/外协计价/设备台账） ----
 export {
   BaselineModule,
@@ -1116,6 +1185,54 @@ export {
   PurchaseQueriesController,
 } from './listing/listing.controllers.js';
 
+// ---- listing 工序×原材料关联表（U4：S10 数据面，A5 项目成本 r11 取数源前置） ----
+export { LISTING_PROCESS_MATERIAL_STORE } from './listing/listing.module.js';
+export { ProcessMaterialsController } from './listing/process-material.controllers.js';
+export { ProcessMaterialService } from './listing/process-material.service.js';
+export type {
+  ProcessMaterialCommitted,
+  ProcessMaterialCommandResult,
+  ProcessMaterialServiceOptions,
+} from './listing/process-material.service.js';
+export {
+  PROCESS_MATERIAL_COMMAND_KINDS,
+  parseProcessMaterialEnvelopeBody,
+  parseProcessMaterialBodyForKind,
+  parseProcessMaterialReplacePayload,
+} from './listing/process-material-input.js';
+export type {
+  ProcessMaterialCommand,
+  ProcessMaterialCommandKind,
+  ProcessMaterialEnvelopeBody,
+  ProcessMaterialReplacePayload,
+  ProcessMaterialRowPayload,
+} from './listing/process-material-input.js';
+export {
+  PROCESS_MATERIAL_AGGREGATE_TYPE,
+  PROCESS_MATERIAL_EVENT_TYPES,
+  makeProcessMaterialReplacedEvent,
+} from './listing/process-material-events.js';
+export type {
+  ProcessMaterialEventProvenance,
+  ProcessMaterialReplacedPayload,
+} from './listing/process-material-events.js';
+export { newProcessMaterialLinkId } from './listing/process-material-ids.js';
+export {
+  CUT_SIZE_FORMS,
+  measureTypeOfCutSizeForm,
+  cutSizeUnitOfCutSizeForm,
+} from './listing/process-material-stores.js';
+export type {
+  CutSizeForm,
+  CutSizeUnit,
+  ProcessMaterialMeasureType,
+  ProcessMaterialLink,
+  ProcessMaterialRowInput,
+  ReplaceProcessMaterialSetInput,
+  ProcessMaterialLinkStore,
+} from './listing/process-material-stores.js';
+export { InMemoryProcessMaterialLinkStore } from './listing/in-memory-process-material-stores.js';
+
 // ---- dispatch：六类派工模块（M2-W6：零件/外协/装配/电气/售后/零工 + 外协链路） ----
 export {
   DispatchModule,
@@ -1267,6 +1384,83 @@ export {
   DispatchTasksController,
   OutsourcingController,
 } from './dispatch/dispatch.controllers.js';
+
+// ---- dispatch 售后报销（U5 A12 增量：报销记录挂售后派工单、仅审批通过后可填报、
+// 四类费用行、金额合计、幂等；aftercare-claim-* 族独立装配面，不动既有 dispatch 面） ----
+export {
+  AftercareClaimModule,
+  AFTERCARE_CLAIM_ORDER_STORE,
+  AFTERCARE_CLAIM_STORE,
+  AFTERCARE_CLAIM_OPERATION_STORE,
+  AFTERCARE_CLAIM_DOMAIN_EVENT_STORE,
+  AFTERCARE_CLAIM_REPORT_PORT,
+  AFTERCARE_CLAIM_SERVICE_OPTIONS,
+} from './dispatch/aftercare-claim.module.js';
+export type { AftercareClaimModuleOptions } from './dispatch/aftercare-claim.module.js';
+export { AftercareClaimService, toAftercareClaimView } from './dispatch/aftercare-claim.service.js';
+export type {
+  AftercareClaimCommitted,
+  AftercareClaimCommandResult,
+  AftercareClaimView,
+  AftercareClaimLineView,
+  AftercareClaimContext,
+  AftercareClaimServiceOptions,
+} from './dispatch/aftercare-claim.service.js';
+export {
+  AFTERCARE_CLAIM_COMMAND_KINDS,
+  parseAftercareClaimEnvelopeBody,
+  parseAftercareClaimBodyForKind,
+  parseAftercareClaimSavePayload,
+  parseAftercareClaimUpdatePayload,
+  MAX_AFTERCARE_FEE_MINOR,
+  MAX_AFTERCARE_CLAIM_TOTAL_MINOR,
+  MAX_AFTERCARE_CLAIM_LINES,
+} from './dispatch/aftercare-claim-input.js';
+export type {
+  AftercareClaimCommandKind,
+  AftercareClaimCommand,
+  AftercareClaimEnvelopeBody,
+  AftercareClaimSavePayload,
+  AftercareClaimUpdatePayload,
+  AftercareClaimPersonLinePayload,
+} from './dispatch/aftercare-claim-input.js';
+export {
+  AFTERCARE_CLAIM_AGGREGATE_TYPE,
+  AFTERCARE_CLAIM_EVENT_TYPES,
+  makeAftercareClaimFiledEvent,
+  makeAftercareClaimUpdatedEvent,
+} from './dispatch/aftercare-claim-events.js';
+export type {
+  AftercareClaimFiledPayload,
+  AftercareClaimUpdatedPayload,
+  AftercareClaimEventLine,
+} from './dispatch/aftercare-claim-events.js';
+export {
+  aftercareLineTotalMinor,
+  aftercareClaimTotalMinor,
+} from './dispatch/aftercare-claim-stores.js';
+export type {
+  AftercareClaim,
+  AftercareClaimLine,
+  AftercareClaimStore,
+  CreateAftercareClaimInput,
+  CreateAftercareClaimLineInput,
+  AftercareClaimFeeUpdate,
+} from './dispatch/aftercare-claim-stores.js';
+export { newAftercareClaimId, newAftercareClaimLineId } from './dispatch/aftercare-claim-ids.js';
+export {
+  EMPTY_AFTERCARE_REPORT_PORT,
+  createAftercareReportPort,
+  toAftercareApprovedLine,
+} from './dispatch/aftercare-claim-ports.js';
+export type {
+  AftercareApprovedReportLine,
+  AftercareApprovedReportPort,
+  AftercareReportSource,
+  AftercareReportSourceLike,
+} from './dispatch/aftercare-claim-ports.js';
+export { InMemoryAftercareClaimStore } from './dispatch/in-memory-aftercare-claim-stores.js';
+export { AftercareClaimController } from './dispatch/aftercare-claim.controllers.js';
 
 // ---- inventory：库存环节模块（M2-W5：收发存/预占恒等式/盘点/发货执行） ----
 export {
@@ -1861,3 +2055,223 @@ export {
 } from './costing/costing.controllers.js';
 export { CostingModule } from './costing/costing.module.js';
 export type { CostingModuleOptions } from './costing/costing.module.js';
+
+// ---- issue：发料任务/发料记录（U 波 A11 增量：发料链路；IssueMaterialPort 库存
+// 联动与 dispatch 触发钩子接线归合流） ----
+export {
+  ISSUE_LINE_KINDS,
+  ISSUE_DISPATCH_KINDS,
+  ISSUE_TASK_STATES,
+  ISSUE_TASK_STATE_ENTRIES,
+  ISSUE_RECORD_STATES,
+  ISSUE_RECORD_NO_PREFIX,
+  ISSUE_EXPRESS_MAX_IMAGES,
+  issueLineKindLabel,
+  issueDispatchKindLabel,
+  issueTaskStateLabel,
+  issueTaskNoPrefix,
+  participationKinds,
+  operableKinds,
+} from './issue/issue-config.js';
+export type {
+  IssueLineKind,
+  IssueDispatchKind,
+  IssueTaskState,
+  IssueRecordState,
+} from './issue/issue-config.js';
+export {
+  IssueInputError,
+  IssueNotFoundError,
+  IssueConflictError,
+  IssueStateError,
+} from './issue/issue-errors.js';
+export { uuidv7, newIssueTaskId, newIssueTaskLineId, newIssueRecordId, newIssueExpressId } from './issue/issue-ids.js';
+export {
+  ISSUE_TASK_AGGREGATE_TYPE,
+  ISSUE_RECORD_AGGREGATE_TYPE,
+  ISSUE_EVENT_TYPES,
+  makeIssueConfirmedEvent,
+  makeIssueRevokedEvent,
+} from './issue/issue-events.js';
+export type {
+  IssueConfirmedPayload,
+  IssueRevokedPayload,
+} from './issue/issue-events.js';
+export type {
+  IssueTask,
+  IssueTaskLine,
+  IssueRecord,
+  IssueRecordLineSnapshot,
+  IssueLocationAllocation,
+  IssueExpress,
+  IssueTriggerRef,
+  CreateIssueTaskInput,
+  AppendIssueTaskLineInput,
+  AppendIssueTaskLinesResult,
+  CreateIssueRecordInput,
+  CreateIssueExpressInput,
+  ListIssueTasksFilter,
+  ListIssueRecordsFilter,
+  RefreshIssueTaskSummaryInput,
+  IssueTaskStore,
+  IssueTaskLineStore,
+  IssueRecordStore,
+  IssueExpressStore,
+  IssueOperationRecord,
+  IssueOperationStore,
+  IssueDomainEventStore,
+} from './issue/issue-stores.js';
+export {
+  EMPTY_ISSUE_DEMAND_PORT,
+  NOOP_ISSUE_MATERIAL_PORT,
+} from './issue/issue-ports.js';
+export type {
+  IssueDemandLine,
+  IssueDemandSourcePort,
+  IssueStockAllocationCommand,
+  IssueStockAllocationReceipt,
+  IssueStockCommand,
+  IssueStockReceipt,
+  IssueMaterialPort,
+  IssueSyncTrigger,
+  IssueSyncReceipt,
+  IssueSyncPort,
+} from './issue/issue-ports.js';
+export {
+  ISSUE_COMMAND_KINDS,
+  parseIssueCommandEnvelopeBody,
+  parseIssueCommandBodyForKind,
+  parseIssueSyncPayload,
+  parseIssueConfirmPayload,
+  parseIssueRevokePayload,
+  parseIssueCleanupPayload,
+  parseIssueDetailQuery,
+  parseIssueIdParam,
+  parseIssueTaskStateFilter,
+  parseIssueRecordStateFilter,
+  parseOptionalFilterParam,
+} from './issue/issue-input.js';
+export type {
+  IssueCommandKind,
+  IssueCommand,
+  IssueEnvelopeBody,
+  IssueSyncPayload,
+  IssueConfirmLinePayload,
+  IssueExpressPayload,
+  IssueConfirmPayload,
+  IssueRevokePayload,
+  IssueCleanupPayload,
+  IssuePendingFilter,
+  IssueDetailQuery,
+} from './issue/issue-input.js';
+export {
+  InMemoryIssueTaskStore,
+  InMemoryIssueTaskLineStore,
+  InMemoryIssueRecordStore,
+  InMemoryIssueExpressStore,
+  InMemoryIssueOperationStore,
+  InMemoryIssueDomainEventStore,
+  createInMemoryIssueStores,
+} from './issue/in-memory-issue-stores.js';
+export {
+  IssueService,
+} from './issue/issue.service.js';
+export type {
+  IssueCommitted,
+  IssueCommandResult,
+  IssueLineQuantities,
+  IssueTaskLineView,
+  IssueDetailLineView,
+  IssueDetailView,
+  IssueServiceOptions,
+  IssueDetailQueryInput,
+} from './issue/issue.service.js';
+export {
+  IssueTasksController,
+  IssueRecordsController,
+} from './issue/issue.controllers.js';
+export {
+  IssueModule,
+  ISSUE_TASK_STORE,
+  ISSUE_TASK_LINE_STORE,
+  ISSUE_RECORD_STORE,
+  ISSUE_EXPRESS_STORE,
+  ISSUE_OPERATION_STORE,
+  ISSUE_DOMAIN_EVENT_STORE,
+  ISSUE_DEMAND_SOURCE,
+  ISSUE_MATERIAL,
+} from './issue/issue.module.js';
+export type { IssueModuleOptions } from './issue/issue.module.js';
+
+// ---- attachment：附件中心（U 波 A13 文件管理：统一附件元数据 + ObjectStoragePort） ----
+export {
+  AttachmentModule,
+  ATTACHMENT_STORE,
+  OBJECT_STORAGE,
+} from './attachment/attachment.module.js';
+export type { AttachmentModuleOptions } from './attachment/attachment.module.js';
+export {
+  AttachmentService,
+  DEFAULT_DOWNLOAD_TTL_SECONDS,
+} from './attachment/attachment.service.js';
+export type {
+  AttachmentServiceOptions,
+  AttachmentView,
+  DownloadReference,
+} from './attachment/attachment.service.js';
+export {
+  AttachmentInputError,
+  AttachmentNotFoundError,
+  AttachmentConflictError,
+  AttachmentStorageError,
+} from './attachment/attachment-errors.js';
+export {
+  parseUploadAttachmentInput,
+  parseSaveAttachmentInput,
+  parseSaveAttachmentBatchInput,
+  parseBizIdQuery,
+  parseRemoveIdsInput,
+  parseDownloadReferenceQuery,
+  parseAttachmentIdParam,
+  MAX_UPLOAD_BYTES,
+} from './attachment/attachment-input.js';
+export type {
+  UploadAttachmentPayload,
+  SaveAttachmentPayload,
+  DownloadReferenceQuery,
+} from './attachment/attachment-input.js';
+export type {
+  Attachment,
+  AttachmentBizType,
+  AttachmentStore,
+  SaveAttachmentInput,
+} from './attachment/attachment-stores.js';
+export { InMemoryAttachmentStore } from './attachment/in-memory-attachment-stores.js';
+// attachment id/对象键生成器（atc- 前缀族）不进 barrel——与 workorder 线
+// newAttachmentId（att- 前缀）撞名收敛；存储实现侧直接引模块内文件。
+export type {
+  ObjectStoragePort,
+  StoredObjectRef,
+  StorageTargetDescriptor,
+  PutObjectInput,
+  IssueReadReferenceOptions,
+  ObjectReadReference,
+  ResolvedReadReference,
+} from './attachment/attachment-ports.js';
+export {
+  InMemoryObjectStorage,
+  IN_MEMORY_STORAGE_KIND,
+} from './attachment/in-memory-object-storage.js';
+export type { InMemoryObjectStorageOptions } from './attachment/in-memory-object-storage.js';
+export {
+  LocalFileSystemObjectStorage,
+  LOCAL_FILE_STORAGE_KIND,
+} from './attachment/local-file-object-storage.js';
+export type { LocalFileSystemObjectStorageOptions } from './attachment/local-file-object-storage.js';
+export {
+  encodeReadReferenceToken,
+  verifyReadReferenceToken,
+  newReadReferenceSigningKey,
+} from './attachment/read-reference-tokens.js';
+export type { ReadReferenceClaims } from './attachment/read-reference-tokens.js';
+export { AttachmentController } from './attachment/attachment.controllers.js';

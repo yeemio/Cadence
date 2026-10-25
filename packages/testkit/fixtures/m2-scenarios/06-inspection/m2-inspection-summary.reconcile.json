@@ -11,7 +11,65 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 200,
+    "body": {
+      "pendingCount": 0,
+      "passedCount": 2,
+      "failedCount": 0,
+      "closedCount": 0,
+      "judgedCount": 2,
+      "passRate": 1,
+      "nonconformOpenCount": 0,
+      "nonconformClosedCount": 1,
+      "overdueCount": 0,
+      "byKind": [
+        {
+          "kind": "self_outsourced",
+          "pending": 0,
+          "passed": 2,
+          "failed": 0,
+          "closed": 0,
+          "judgedCount": 2,
+          "passRate": 1,
+          "nonconformOpen": 0
+        },
+        {
+          "kind": "nonstandard_purchase",
+          "pending": 0,
+          "passed": 0,
+          "failed": 0,
+          "closed": 0,
+          "judgedCount": 0,
+          "passRate": null,
+          "nonconformOpen": 0
+        },
+        {
+          "kind": "standard_purchase",
+          "pending": 0,
+          "passed": 0,
+          "failed": 0,
+          "closed": 0,
+          "judgedCount": 0,
+          "passRate": null,
+          "nonconformOpen": 0
+        },
+        {
+          "kind": "equipment_purchase",
+          "pending": 0,
+          "passed": 0,
+          "failed": 0,
+          "closed": 0,
+          "judgedCount": 0,
+          "passRate": null,
+          "nonconformOpen": 0
+        }
+      ],
+      "generatedAt": "2026-10-25T15:06:38.803Z"
+    },
+    "recordedAt": "2026-10-25T15:06:38.808Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

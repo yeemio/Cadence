@@ -1,0 +1,208 @@
+npm notice run @smes/testkit@0.1.0 npx
+npm notice run 'playwright' test -c e2e/playwright.config.ts
+03a683d4a8dc1f6c433171a815375dca1b3b385d898f31290508d49942d66857
+$ tsc -p tsconfig.build.json
+$ tsc -p tsconfig.build.json
+$ vite build
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 2486 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/manifest.webmanifest         0.34 kB
+dist/index.html                   0.70 kB │ gzip:   0.42 kB
+dist/login.html                   0.83 kB │ gzip:   0.56 kB
+dist/assets/index-9ly5cPmu.css   39.03 kB │ gzip:   7.46 kB
+dist/assets/login-Dt34yP1v.js     2.41 kB │ gzip:   1.21 kB
+dist/assets/index-BPbdenFf.js   206.51 kB │ gzip:  68.54 kB
+dist/assets/index-BoT6UUxY.js   375.14 kB │ gzip: 110.56 kB
+dist/assets/main-vI4XoB-2.js    516.20 kB │ gzip: 134.55 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.40s
+
+PWA v2.0.0
+mode      generateSW
+precache  13 entries (1117.05 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-17dc2a4e.js
+$ prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v6.19.3) to ./../../node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 108ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+
+src/approval-config/pg-approval-config-stores.ts(145,11): error TS2322: Type 'readonly ApprovalFlowConfigVersion[]' is not assignable to type 'JsonNull | InputJsonValue'.
+  Type 'readonly ApprovalFlowConfigVersion[]' is not assignable to type 'InputJsonArray'.
+    Type 'ApprovalFlowConfigVersion' is not assignable to type 'InputJsonValue | null'.
+      Type 'ApprovalFlowConfigVersion' is not assignable to type 'InputJsonObject'.
+        Index signature for type 'string' is missing in type 'ApprovalFlowConfigVersion'.
+/Users/yeemio/AI/gitrep/Cadence/packages/business-store:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @smes/business-store@0.1.0 build: `prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json`
+Exit status 2
+[e2e-global] 警告：business-store 构建失败（并行线中间态），沿用既有 dist 跑 15 模块走查栈
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "cadence", schema "public" at "127.0.0.1:55514"
+
+33 migrations found in prisma/migrations
+
+Applying migration `20261024135930_init`
+Applying migration `20261024163136_org_users_roles_policies`
+Applying migration `20261025120000_masterdata_items_resources_todos`
+Applying migration `20261025140000_approval_cases_records_events`
+Applying migration `20261025150000_auth_password_hash_sessions`
+Applying migration `20261025160000_workorder_module`
+Applying migration `20261025180000_baseline_p1_masters_validation`
+Applying migration `20261025190000_inspection_module`
+Applying migration `20261025193000_rls_tenant_isolation`
+Applying migration `20261025200000_listing_module`
+Applying migration `20261025210000_rls_tenant_isolation_replay`
+Applying migration `20261025220000_dispatch_module`
+Applying migration `20261025220000_inventory_module`
+Applying migration `20261025230000_rls_tenant_isolation_replay`
+Applying migration `20261026010000_reporting_module`
+Applying migration `20261026010400_reporting_rls_replay`
+Applying migration `20261026020000_hours_module`
+Applying migration `20261026030000_costing_module`
+Applying migration `20261026040000_baseline_p2_p3`
+Applying migration `20261026041000_rls_tenant_isolation_replay`
+Applying migration `20261026050000_rls_tenant_isolation_replay`
+Applying migration `20261026060000_payroll_module`
+Applying migration `20261026061000_rls_tenant_isolation_replay`
+Applying migration `20261026070000_maintenance_module`
+Applying migration `20261026080000_drawing_module`
+Applying migration `20261026090000_metric_pack_module`
+Applying migration `20261026091000_rls_tenant_isolation_replay`
+Applying migration `20261026100000_rls_tenant_isolation_replay`
+Applying migration `20261026110000_rls_tenant_isolation_replay`
+Applying migration `20261026120000_backfill_module`
+Applying migration `20261026121000_rls_tenant_isolation_replay`
+Applying migration `20261026130000_s5_capability_module`
+Applying migration `20261026131000_rls_tenant_isolation_replay`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20261024135930_init/
+    └─ migration.sql
+  └─ 20261024163136_org_users_roles_policies/
+    └─ migration.sql
+  └─ 20261025120000_masterdata_items_resources_todos/
+    └─ migration.sql
+  └─ 20261025140000_approval_cases_records_events/
+    └─ migration.sql
+  └─ 20261025150000_auth_password_hash_sessions/
+    └─ migration.sql
+  └─ 20261025160000_workorder_module/
+    └─ migration.sql
+  └─ 20261025180000_baseline_p1_masters_validation/
+    └─ migration.sql
+  └─ 20261025190000_inspection_module/
+    └─ migration.sql
+  └─ 20261025193000_rls_tenant_isolation/
+    └─ migration.sql
+  └─ 20261025200000_listing_module/
+    └─ migration.sql
+  └─ 20261025210000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261025220000_dispatch_module/
+    └─ migration.sql
+  └─ 20261025220000_inventory_module/
+    └─ migration.sql
+  └─ 20261025230000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026010000_reporting_module/
+    └─ migration.sql
+  └─ 20261026010400_reporting_rls_replay/
+    └─ migration.sql
+  └─ 20261026020000_hours_module/
+    └─ migration.sql
+  └─ 20261026030000_costing_module/
+    └─ migration.sql
+  └─ 20261026040000_baseline_p2_p3/
+    └─ migration.sql
+  └─ 20261026041000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026050000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026060000_payroll_module/
+    └─ migration.sql
+  └─ 20261026061000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026070000_maintenance_module/
+    └─ migration.sql
+  └─ 20261026080000_drawing_module/
+    └─ migration.sql
+  └─ 20261026090000_metric_pack_module/
+    └─ migration.sql
+  └─ 20261026091000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026100000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026110000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026120000_backfill_module/
+    └─ migration.sql
+  └─ 20261026121000_rls_tenant_isolation_replay/
+    └─ migration.sql
+  └─ 20261026130000_s5_capability_module/
+    └─ migration.sql
+  └─ 20261026131000_rls_tenant_isolation_replay/
+    └─ migration.sql
+      
+All migrations have been successfully applied.
+[e2e-global] 栈就绪：PG :55514 | server :3599 | preview :http://127.0.0.1:4280
+
+Running 12 tests using 1 worker
+
+  ✘   1 [setup] › e2e/specs/auth-setup.spec.ts:19:1 › 01 登录流程：填表单 → 提交 → MPA 整页跳主壳 (10.7s)
+[e2e-global] 栈已拆除（preview / server / docker 容器）
+
+
+  1) [setup] › e2e/specs/auth-setup.spec.ts:19:1 › 01 登录流程：填表单 → 提交 → MPA 整页跳主壳 ────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('离散制造运营平台', { exact: true })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByText('离散制造运营平台', { exact: true }) with timeout 10000ms
+      - waiting for getByText('离散制造运营平台', { exact: true })
+
+
+      31 |
+      32 |   // 主壳就绪：侧栏品牌 + 顶栏演示管理员身份（displayName 来自 /auth 会话）
+    > 33 |   await expect(page.getByText('离散制造运营平台', { exact: true })).toBeVisible();
+         |                                                             ^
+      34 |   await expect(page.getByText('演示管理员（Web 登录流）')).toBeVisible();
+      35 |   await page.screenshot({ path: `${ARTEFACTS}02-desktop-workbench.png`, fullPage: true });
+      36 |
+        at /Users/yeemio/AI/gitrep/Cadence/packages/testkit/e2e/specs/auth-setup.spec.ts:33:61
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/auth-setup-01-登录流程：填表单-→-提交-→-MPA-整页跳主壳-setup/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: e2e/artifacts/test-results/auth-setup-01-登录流程：填表单-→-提交-→-MPA-整页跳主壳-setup/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    e2e/artifacts/test-results/auth-setup-01-登录流程：填表单-→-提交-→-MPA-整页跳主壳-setup/trace.zip
+    Usage:
+
+        npx playwright show-trace e2e/artifacts/test-results/auth-setup-01-登录流程：填表单-→-提交-→-MPA-整页跳主壳-setup/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [setup] › e2e/specs/auth-setup.spec.ts:19:1 › 01 登录流程：填表单 → 提交 → MPA 整页跳主壳 ─────────────────────
+  11 did not run

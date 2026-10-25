@@ -15,13 +15,21 @@
         "command": {
           "kind": "stocktake.open.v1",
           "payload": {
-            "warehouseId": "__WAREHOUSE_ID__"
+            "warehouseId": "wh-01a1738f-7cae-756e-8663-5b0981e502be"
           }
         }
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "操作幂等冲突：operationId 'm2rec-inventory-stocktake-open' 已落账，拒绝重复执行"
+    },
+    "recordedAt": "2026-10-25T15:02:46.775Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

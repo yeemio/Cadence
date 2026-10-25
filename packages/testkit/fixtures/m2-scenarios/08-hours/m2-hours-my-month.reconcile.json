@@ -14,7 +14,24 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 200,
+    "body": {
+      "my": {
+        "workerId": "user-seed-admin",
+        "month": "2026-10",
+        "days": [
+          {
+            "workDate": "2026-10-25",
+            "totalHours": 1.5
+          }
+        ],
+        "totalHours": 1.5
+      }
+    },
+    "recordedAt": "2026-10-25T15:00:24.575Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

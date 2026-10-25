@@ -10,7 +10,11 @@
  *   - --target-base-url <url>   录制模式：复用 @smes/testkit recordFixtures，
  *                  把新系统（默认 http://localhost:3000，须 SMES_DEV_AUTH=on）
  *                  的真实响应写回各夹具 reference（含脱敏与录制时间戳）
- *   - --module <dir 名前缀>      只处理一个模块目录（如 --module 03-listing）
+ *   - --keep-values            录制不脱敏：compare.ignore/shape 命中字段原样
+ *                  落 reference（无 key 无序数组场景必需——comparator 的
+ *                  by-value 配对不做字段级忽略，脱敏后元素永不配对；库固定
+ *                  值 id/时间戳同库对跑稳定，比对时 ignore 仍生效）
+ *   - --module <dir 名前缀>      只处理一个模块目录（如 03-listing）
  *   - --filter <场景名子串>      只处理命中的场景（自含场景批量补录用）
  *
  * 链式场景（input 含 __UPPER_SNAKE__ 占位符：运行期 ID / 乐观锁版本 / 固定字节）
@@ -57,6 +61,7 @@ function printUsage() {
   --dry-run           录制计划（将录制/将跳过），不发请求
   --target-base-url   录制目标基址（默认 ${DEFAULT_BASE_URL}；需 server 以
                       SMES_DEV_AUTH=on 运行，身份走 x-smes-user dev 头）
+  --keep-values       录制不脱敏（无 key 无序数组场景必需，见文件头注）
   --module            只处理一个模块目录（如 03-listing；前缀匹配）
   --filter            只处理场景名含子串的夹具（自含场景补录用）
 
@@ -164,6 +169,7 @@ async function main() {
   console.log(header);
 
   if (list) {
+    let recorded = 0;
     for (const module of modules) {
       const rows = module.fixtures.filter((f) => filter === undefined || f.scenarioName.includes(filter));
       if (rows.length === 0) continue;
@@ -171,10 +177,17 @@ async function main() {
       console.log(`  ${module.dir}：${rows.length} 场景（自含 ${rows.length - chainedRows.length} / 链式 ${chainedRows.length}）`);
       for (const fixture of rows) {
         const entry = (module.chained ?? []).find((c) => c.fixture === fixture);
+        if (fixture.reference !== null) recorded += 1;
         console.log(`    ${fixture.scenarioName}${entry === undefined ? '' : `  [链式→待替换: ${entry.placeholders.join(', ')}]`}`);
       }
     }
-    console.log(`合计：${total} 场景（自含 ${total - chained} / 链式 ${chained}）；reference 全部待录制（骨架形态）`);
+    const pending = total - recorded;
+    console.log(
+      `合计：${total} 场景（自含 ${total - chained} / 链式 ${chained}）；` +
+        (pending === 0
+          ? `reference 已全部录制（${recorded}/${total}）`
+          : `reference 已录制 ${recorded}、待录制 ${pending}${pending === total ? '（骨架形态）' : ''}`),
+    );
     return 0;
   }
 
@@ -202,6 +215,7 @@ async function main() {
   const results = await testkit.recordFixtures({
     fixtures: selfContained.map((s) => s.fixture),
     target,
+    ...(flags.has('keep-values') ? { keepValues: true } : {}),
   });
   let failed = 0;
   for (const result of results) {

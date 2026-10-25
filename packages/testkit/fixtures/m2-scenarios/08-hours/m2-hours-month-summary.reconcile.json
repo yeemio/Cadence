@@ -11,7 +11,22 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 200,
+    "body": {
+      "summary": [
+        {
+          "workerId": "user-seed-admin",
+          "trade": "machining",
+          "totalHours": 1.5,
+          "outputQty": 10,
+          "entryCount": 1
+        }
+      ]
+    },
+    "recordedAt": "2026-10-25T15:00:24.765Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

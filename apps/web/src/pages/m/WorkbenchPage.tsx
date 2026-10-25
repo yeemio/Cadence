@@ -1,20 +1,42 @@
 /**
  * 移动工作台页（M5 首波，workbench:read；功能拆解 105/106 移动首页/待办的
  * 呈现面）：本人待办（workbench API——"仅本人"是服务端数据级过滤合同）+
- * 快捷入口（报工/扫码/库存查询/我的工时——车间工人高频动作）。
+ * 快捷入口（报工/扫码/库存查询/我的工时四高频动作 + S3 移动呈现增量 11 页
+ * ——覆盖矩阵 §3.2 19 项 + §3.4 #116 的可导航到达入口）。
  *
  * 与桌面 WorkbenchPage 的分工：桌面是计数卡片 + 全量表格（管理视角），
  * 移动是"快捷入口 + open 待办清单 + 完成按钮"（工人视角，卡片列表替表格）。
  * 数据层与组件完全复用（workbenchApi / ApiErrorHint / Card / Button）；快捷
- * 入口可见性复用 filterMenuByPermissions（与底部导航同一 RBAC 投影语义）。
+ * 入口可见性复用 filterMenuByPermissions（与底部导航同一 RBAC 投影语义）；
+ * 子页入口直引 MOBILE_SUBPAGES（注册表单一事实源）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePermissions } from '@refinedev/core';
 import { Link } from 'react-router';
-import { Boxes, CheckCircle2, ClipboardPen, Clock3, LoaderCircle, ScanLine } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  BarChart3,
+  Boxes,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  ClipboardPen,
+  Clock3,
+  History,
+  ListChecks,
+  LoaderCircle,
+  PackageCheck,
+  PackageOpen,
+  PackagePlus,
+  ScanLine,
+  ShieldCheck,
+  TriangleAlert,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { filterMenuByPermissions, permissionCode, toPermissionCodes } from '@smes/product-ui';
 import type { MenuNode } from '@smes/product-ui';
+import { MOBILE_SUBPAGES } from '@/mobile';
+import { useMergedMenu } from '@/shell/useMenuConfig';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { completeTodo, listMyTodos } from '@/data/workbenchApi';
 import { Button } from '@/components/ui/button';
@@ -32,9 +54,22 @@ const QUICK_ENTRY_ICONS: Record<string, LucideIcon> = {
   'quick-scan': ScanLine,
   'quick-stock': Boxes,
   'quick-hours': Clock3,
+  // S3 子页图标（键=移动页码，单一事实源见 MOBILE_SUBPAGES）
+  'm.verify': ClipboardCheck,
+  'm.parts': PackageOpen,
+  'm.parts-approval': PackageCheck,
+  'm.inspection': ShieldCheck,
+  'm.fault': TriangleAlert,
+  'm.receipt': PackagePlus,
+  'm.transfer': ArrowLeftRight,
+  'm.stocktake': ClipboardList,
+  'm.progress': ListChecks,
+  'm.op-progress': BarChart3,
+  'm.mine': History,
 };
 
-const QUICK_MENU: readonly MenuNode[] = [
+/** 快捷区核心四项（工作台页自有 UX，不进菜单配置管辖——T1 #99 合并只作用于子页注册表）。 */
+const QUICK_CORE: readonly MenuNode[] = [
   { code: 'quick-report', title: '扫码报工', routePath: '/m/report', permission: permissionCode('report:submit') },
   // 扫码指向桌面通用扫码页（跨环节数据采集，非移动组专属动作）
   { code: 'quick-scan', title: '扫码', routePath: '/scan', permission: permissionCode('scan:read') },
@@ -44,7 +79,14 @@ const QUICK_MENU: readonly MenuNode[] = [
 
 export function MobileWorkbenchPage() {
   const { data: permissionData } = usePermissions({});
-  const quickEntries = filterMenuByPermissions(QUICK_MENU, toPermissionCodes(permissionData));
+  // T1 #99：S3 移动呈现增量 11 页（覆盖矩阵 §3.2 19 项 + §3.4 #116）的入口
+  // 受移动菜单配置（code='mobile'）合并——未进配置树的子页隐藏（fail-open：
+  // 配置不可用 = 注册表全量，行为与 S3 一致）；核心四项恒在。
+  const mergedSubpages = useMergedMenu(MOBILE_SUBPAGES, 'mobile');
+  const quickEntries = filterMenuByPermissions(
+    [...QUICK_CORE, ...mergedSubpages],
+    toPermissionCodes(permissionData),
+  );
 
   const queryClient = useQueryClient();
   const todosQuery = useQuery({ queryKey: ['workbench', 'todos'], queryFn: listMyTodos });

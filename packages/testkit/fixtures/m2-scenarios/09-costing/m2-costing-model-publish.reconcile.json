@@ -30,7 +30,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "口径 'm2reconcile' 已存在（当前 v1），修订请声明 expectedRevision=1"
+    },
+    "recordedAt": "2026-10-25T15:02:47.188Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

@@ -11,7 +11,14 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 200,
+    "body": {
+      "kind": "xlsx-base64"
+    },
+    "recordedAt": "2026-10-25T15:00:23.409Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "base64"

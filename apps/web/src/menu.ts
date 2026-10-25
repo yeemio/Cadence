@@ -3,6 +3,12 @@
  *
  * manifest 形状见 @smes/product-ui（ADR-0009 参照字段集）；
  * 词汇纪律 ADR-0010：模块代码用离散制造通用词（workbench/workorder/dispatch/system）。
+ *
+ * S2 批次（九循环模块桌面管理页）：workorder/listing/dispatch/reporting/
+ * inspection/inventory/hours/costing/baseline 九模块按覆盖矩阵 §3.3 的 61 项
+ * "后端就绪缺 Web 页面"建组挂页；菜单权限码全部用后端控制器实态 :read 码
+ * （如 workorder:read 与 GET /workorder/work-orders 门禁同码——菜单可见性 =
+ * 接口可达性，不虚构后端没有的权限）。
  */
 import { buildMenuTree, flattenRoutes, permissionCode, SCAN_READ } from '@smes/product-ui';
 import type { AppModuleManifest } from '@smes/product-ui';
@@ -10,6 +16,17 @@ import type { AppModuleManifest } from '@smes/product-ui';
 const pc = permissionCode;
 
 export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
+  {
+    // T1 能力子集 #1 运营总览：四源聚合页（工作台待办/交付态势/质检汇总/
+    // 机加工时）。菜单可见性挂 workbench:read（工作台组入口码）；页面数据
+    // 另涉 workorder/inspection/hours 三码——部分权限用户进入页面时按
+    // overviewApi 取舍整页明示失败来源（不虚构后端没有的复合码）。
+    code: 'overview',
+    routePath: '/overview',
+    marketCategory: 'base',
+    entryPoint: 'overview/index.tsx',
+    menuConfig: { title: '运营总览', permission: pc('workbench:read') },
+  },
   {
     code: 'workbench',
     routePath: '/',
@@ -38,6 +55,28 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
         entryPoint: 'masterdata/resources.tsx',
         menuConfig: { title: '资源', permission: pc('resource:read') },
       },
+      // S3-a：S1 backfill 主数据三页挂基础数据组（菜单码与后端控制器同码）。
+      {
+        code: 'masterdata-customer',
+        routePath: '/masterdata/customers',
+        marketCategory: 'base',
+        entryPoint: 'masterdata/customers.tsx',
+        menuConfig: { title: '客户', permission: pc('customer:read') },
+      },
+      {
+        code: 'masterdata-supplier',
+        routePath: '/masterdata/suppliers',
+        marketCategory: 'base',
+        entryPoint: 'masterdata/suppliers.tsx',
+        menuConfig: { title: '供应商', permission: pc('supplier:read') },
+      },
+      {
+        code: 'masterdata-unit',
+        routePath: '/masterdata/units',
+        marketCategory: 'base',
+        entryPoint: 'masterdata/units.tsx',
+        menuConfig: { title: '计量单位', permission: pc('unit:read') },
+      },
     ],
   },
   {
@@ -50,14 +89,45 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
         routePath: '/workorders',
         marketCategory: 'process',
         entryPoint: 'workorder/index.tsx',
-        menuConfig: { title: '工作令', permission: pc('workorder:access') },
+        // S2：占位页升级真实页面（列表+建令+详情操作+齐套看板）；
+        // 菜单码切后端实态 workorder:read（与 GET /workorder/work-orders 同码）。
+        menuConfig: { title: '工作令', permission: pc('workorder:read') },
+      },
+      {
+        code: 'workorder-parts',
+        routePath: '/workorders/parts',
+        marketCategory: 'process',
+        entryPoint: 'workorder/parts.tsx',
+        menuConfig: { title: '配件申请', permission: pc('parts:read') },
+      },
+      {
+        code: 'listing-sheets',
+        routePath: '/listings/sheets',
+        marketCategory: 'process',
+        entryPoint: 'listing/sheets.tsx',
+        menuConfig: { title: '清单', permission: pc('listing:read') },
+      },
+      {
+        code: 'listing-gap-checks',
+        routePath: '/listings/gap-checks',
+        marketCategory: 'process',
+        entryPoint: 'listing/gap-checks.tsx',
+        menuConfig: { title: '缺口核查', permission: pc('gap:read') },
       },
       {
         code: 'dispatch',
         routePath: '/dispatches',
         marketCategory: 'process',
         entryPoint: 'dispatch/index.tsx',
-        menuConfig: { title: '派工', permission: pc('dispatch:access') },
+        // S2：占位页升级真实页面（六类派工列表+创建+四态操作）。
+        menuConfig: { title: '派工', permission: pc('dispatch:read') },
+      },
+      {
+        code: 'outsourcing-lines',
+        routePath: '/outsourcing/lines',
+        marketCategory: 'process',
+        entryPoint: 'dispatch/outsourcing-lines.tsx',
+        menuConfig: { title: '外协明细', permission: pc('outsourcing:read') },
       },
       {
         code: 'scan',
@@ -70,6 +140,211 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
       },
       // M5 首波：预研期的扫码报工页（scan-report）升级为移动组 m.report
       // （/m/report，底部标签导航——见 mobile.ts）；桌面菜单不再保留预研条目。
+    ],
+  },
+  {
+    code: 'reporting',
+    marketCategory: 'process',
+    menuConfig: { title: '报工管理' },
+    children: [
+      {
+        code: 'reports',
+        routePath: '/reports',
+        marketCategory: 'process',
+        entryPoint: 'reporting/reports.tsx',
+        menuConfig: { title: '报工单', permission: pc('report:read') },
+      },
+      {
+        code: 'report-verification',
+        routePath: '/reports/verification',
+        marketCategory: 'process',
+        entryPoint: 'reporting/verification.tsx',
+        menuConfig: { title: '报工核查', permission: pc('report:read') },
+      },
+    ],
+  },
+  {
+    code: 'purchasing',
+    marketCategory: 'process',
+    menuConfig: { title: '采购管理' },
+    children: [
+      {
+        code: 'purchase-requests',
+        routePath: '/purchase/requests',
+        marketCategory: 'process',
+        entryPoint: 'listing/purchase-requests.tsx',
+        menuConfig: { title: '采购申请', permission: pc('purchase:read') },
+      },
+      {
+        code: 'purchase-orders',
+        routePath: '/purchase/orders',
+        marketCategory: 'process',
+        entryPoint: 'listing/purchase-orders.tsx',
+        menuConfig: { title: '采购订单', permission: pc('purchase:read') },
+      },
+      {
+        code: 'purchase-returns',
+        routePath: '/purchase/returns',
+        marketCategory: 'process',
+        entryPoint: 'listing/purchase-returns.tsx',
+        menuConfig: { title: '采购退货', permission: pc('purchase:read') },
+      },
+      {
+        code: 'purchase-details',
+        routePath: '/purchase/details',
+        marketCategory: 'process',
+        entryPoint: 'listing/purchase-details.tsx',
+        menuConfig: { title: '采购明细', permission: pc('purchase:read') },
+      },
+    ],
+  },
+  {
+    code: 'quality',
+    marketCategory: 'process',
+    menuConfig: { title: '质量管理' },
+    children: [
+      {
+        code: 'inspections',
+        routePath: '/inspections',
+        marketCategory: 'process',
+        entryPoint: 'inspection/orders.tsx',
+        menuConfig: { title: '质检队列', permission: pc('inspection:read') },
+      },
+      {
+        code: 'nonconformities',
+        routePath: '/inspections/nonconformities',
+        marketCategory: 'process',
+        entryPoint: 'inspection/nonconformities.tsx',
+        menuConfig: { title: '不合格处置', permission: pc('nonconform:read') },
+      },
+    ],
+  },
+  {
+    code: 'warehouse',
+    marketCategory: 'process',
+    menuConfig: { title: '仓储管理' },
+    children: [
+      {
+        code: 'warehouses',
+        routePath: '/inventory/warehouses',
+        marketCategory: 'process',
+        entryPoint: 'inventory/warehouses.tsx',
+        menuConfig: { title: '仓库与库位', permission: pc('warehouse:read') },
+      },
+      {
+        code: 'stock-levels',
+        routePath: '/inventory/stock',
+        marketCategory: 'process',
+        entryPoint: 'inventory/stock-levels.tsx',
+        menuConfig: { title: '实时库存', permission: pc('stock:read') },
+      },
+      {
+        code: 'stock-operations',
+        routePath: '/inventory/stock-operations',
+        marketCategory: 'process',
+        entryPoint: 'inventory/stock-operations.tsx',
+        menuConfig: { title: '收发存操作', permission: pc('stock:read') },
+      },
+      {
+        code: 'stocktakes',
+        routePath: '/inventory/stocktakes',
+        marketCategory: 'process',
+        entryPoint: 'inventory/stocktakes.tsx',
+        menuConfig: { title: '库存盘点', permission: pc('stocktake:read') },
+      },
+      {
+        code: 'shipping-orders',
+        routePath: '/inventory/shipping-orders',
+        marketCategory: 'process',
+        entryPoint: 'inventory/shipping-orders.tsx',
+        menuConfig: { title: '发货任务', permission: pc('shipping:read') },
+      },
+    ],
+  },
+  {
+    code: 'costing',
+    marketCategory: 'process',
+    menuConfig: { title: '成本与工时' },
+    children: [
+      {
+        code: 'hours-stats',
+        routePath: '/hours/stats',
+        marketCategory: 'process',
+        entryPoint: 'hours/stats.tsx',
+        menuConfig: { title: '工时统计', permission: pc('hours:read') },
+      },
+      {
+        code: 'costing',
+        routePath: '/costing',
+        marketCategory: 'process',
+        entryPoint: 'costing/index.tsx',
+        menuConfig: { title: '成本核算', permission: pc('costing:read') },
+      },
+    ],
+  },
+  {
+    // S3-a：标准报表单页（口径四选一+时间窗求值）；权限复用 report:read
+    //（standardreports 控制器实态——报表中心读取面，不虚构新码）。
+    code: 'standard-reports',
+    routePath: '/standard-reports',
+    marketCategory: 'process',
+    entryPoint: 'reporting/standard-reports.tsx',
+    menuConfig: { title: '标准报表', permission: pc('report:read') },
+  },
+  {
+    code: 'baseline',
+    marketCategory: 'base',
+    menuConfig: { title: '工艺与设备' },
+    children: [
+      {
+        code: 'baseline-processes',
+        routePath: '/baseline/processes',
+        marketCategory: 'base',
+        entryPoint: 'baseline/processes.tsx',
+        menuConfig: { title: '工序', permission: pc('process:read') },
+      },
+      {
+        code: 'baseline-routings',
+        routePath: '/baseline/routings',
+        marketCategory: 'base',
+        entryPoint: 'baseline/routings.tsx',
+        menuConfig: { title: '工艺路线', permission: pc('routing:read') },
+      },
+      {
+        code: 'baseline-standard-times',
+        routePath: '/baseline/standard-times',
+        marketCategory: 'base',
+        entryPoint: 'baseline/standard-times.tsx',
+        menuConfig: { title: '额定工时', permission: pc('standardtime:read') },
+      },
+      {
+        code: 'baseline-equipment',
+        routePath: '/baseline/equipment',
+        marketCategory: 'base',
+        entryPoint: 'baseline/equipment.tsx',
+        menuConfig: { title: '设备档案', permission: pc('equipment:read') },
+      },
+      {
+        code: 'baseline-fault-reports',
+        routePath: '/baseline/fault-reports',
+        marketCategory: 'base',
+        entryPoint: 'baseline/fault-reports.tsx',
+        menuConfig: { title: '故障上报', permission: pc('fault:read') },
+      },
+      {
+        code: 'baseline-outsourcing-rules',
+        routePath: '/baseline/outsourcing-rules',
+        marketCategory: 'base',
+        entryPoint: 'baseline/outsourcing-rules.tsx',
+        menuConfig: { title: '外协计价', permission: pc('outsourcing-rule:read') },
+      },
+      {
+        code: 'baseline-material-validations',
+        routePath: '/baseline/material-validations',
+        marketCategory: 'base',
+        entryPoint: 'baseline/material-validations.tsx',
+        menuConfig: { title: '物料校验', permission: pc('material-validation:read') },
+      },
     ],
   },
   {
@@ -91,10 +366,51 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
         entryPoint: 'org/roles.tsx',
         menuConfig: { title: '角色与授权', permission: pc('role:read') },
       },
+      // S3-a：S1 backfill 组织两页 + 操作日志查询页挂系统管理组。
+      {
+        code: 'system-department',
+        routePath: '/system/departments',
+        marketCategory: 'base',
+        entryPoint: 'org/departments.tsx',
+        menuConfig: { title: '机构', permission: pc('department:read') },
+      },
+      {
+        code: 'system-position',
+        routePath: '/system/positions',
+        marketCategory: 'base',
+        entryPoint: 'org/positions.tsx',
+        menuConfig: { title: '岗位', permission: pc('position:read') },
+      },
+      {
+        code: 'system-audit',
+        routePath: '/system/audit',
+        marketCategory: 'base',
+        entryPoint: 'audit/logs.tsx',
+        menuConfig: { title: '操作日志', permission: pc('audit:read') },
+      },
+      // T1 能力子集：菜单管理（#98/#99）与审批流配置（#102）挂系统管理组——
+      // 权限码与 menu-config/approval-config 控制器实态同码（菜单可见性 =
+      // 接口可达性）。通知中心（#101）不走侧栏——入口 = 顶栏铃铛（hideInMenu
+      // 保留路由，见下方独立条目）。
+      {
+        code: 'system-menus',
+        routePath: '/system/menus',
+        marketCategory: 'base',
+        entryPoint: 'system/menus.tsx',
+        menuConfig: { title: '菜单管理', permission: pc('menu:read') },
+      },
+      {
+        code: 'system-approval-config',
+        routePath: '/system/approval-config',
+        marketCategory: 'base',
+        entryPoint: 'system/approval-config.tsx',
+        menuConfig: { title: '审批流配置', permission: pc('approval-config:read') },
+      },
       {
         code: 'system-session',
         routePath: '/system/sessions',
         marketCategory: 'base',
+        entryPoint: 'org/sessions.tsx',
         menuConfig: {
           title: '会话审计',
           permission: pc('system:access'),
@@ -102,6 +418,19 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
         },
       },
     ],
+  },
+  {
+    // T1 能力子集 #101 通知中心：路由存在但侧栏不进——入口 = 顶栏铃铛
+    // （ShellLayout 未读徽标，notification:read 同码轮询 GET unread-count）。
+    code: 'notifications',
+    routePath: '/notifications',
+    marketCategory: 'base',
+    entryPoint: 'notifications/index.tsx',
+    menuConfig: {
+      title: '通知中心',
+      permission: pc('notification:read'),
+      hideInMenu: true,
+    },
   },
 ];
 

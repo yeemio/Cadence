@@ -4,7 +4,7 @@
  */
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { TenantContext } from '@smes/application';
+import { TenantContext, reportSourceProviderOf, type ReportSourceProvider } from '@smes/application';
 import { connectApprovalStore } from '@smes/business-store/approval';
 import { connectBaselineStore } from '@smes/business-store/baseline';
 import { connectCostingStore } from '@smes/business-store/costing';
@@ -22,6 +22,11 @@ import { connectPayrollStore } from '@smes/business-store/payroll';
 import { connectMaintenanceStore } from '@smes/business-store/maintenance';
 import { connectDrawingStore } from '@smes/business-store/drawing';
 import { connectMetricPackStore, connectMetricSourceBundle, type MetricSourceBundleHandle } from '@smes/business-store/metric-pack';
+import { connectAuditStore } from '@smes/business-store/audit';
+import { connectStandardReportsSources } from '@smes/business-store/standardreports';
+import { connectMenuConfigStore } from '@smes/business-store/menu-config';
+import { connectNotificationStore } from '@smes/business-store/notifications';
+import { connectApprovalConfigStore } from '@smes/business-store/approval-config';
 import { metricSourceSetOf } from '@smes/metric-pack';
 import { hostBasedTenantResolver, type TenantId } from '@smes/business-core';
 import { buildAppModule, parseModulesEnabled } from './app-registry.js';
@@ -44,6 +49,8 @@ import { PayrollErrorFilter } from './payroll-error.filter.js';
 import { MaintenanceErrorFilter } from './maintenance-error.filter.js';
 import { DrawingErrorFilter } from './drawing-error.filter.js';
 import { MetricPackErrorFilter } from './metric-pack-error.filter.js';
+import { BackfillErrorFilter } from './backfill-error.filter.js';
+import { CapabilityErrorFilter } from './capability-error.filter.js';
 
 const DEFAULT_PORT = 3000;
 
@@ -74,6 +81,33 @@ async function bootstrap(): Promise<void> {
   const maintenanceStoreHandle = process.env['DATABASE_URL'] ? connectMaintenanceStore() : undefined;
   const drawingStoreHandle = process.env['DATABASE_URL'] ? connectDrawingStore() : undefined;
   const metricPackStoreHandle = process.env['DATABASE_URL'] ? connectMetricPackStore() : undefined;
+  // S1 backfill（0920 #103 操作日志 / #89/91/92/96 标准报表四源）：同上惰性连接；
+  // 四源租户收口=构造注入（引擎 MetricSource 端口不带租户参数）——组合根按请求
+  // 租户惰性构造并缓存（每租户一个 PrismaClient 惰性连接，同 metric 六源先例）。
+  // 零 DB = 不注入 = 未绑定源（求值显式 503——口径装载完整，数据面诚实缺失）。
+  const auditStoreHandle = process.env['DATABASE_URL'] ? connectAuditStore() : undefined;
+  // T1 能力子集三存储（0920 #98/99/#101/#102）：同上惰性连接；零 DB = 不注入
+  // （buildAppModule 在模块装配时回落内存实现并裁决共享实例——通知桥/审批
+  // 解析器与模块端点同源）。
+  const menuConfigStoreHandle = process.env['DATABASE_URL'] ? connectMenuConfigStore() : undefined;
+  const notificationStoreHandle = process.env['DATABASE_URL'] ? connectNotificationStore() : undefined;
+  const approvalConfigStoreHandle = process.env['DATABASE_URL'] ? connectApprovalConfigStore() : undefined;
+  const standardReportsProviderByTenant = new Map<string, ReportSourceProvider>();
+  const standardReportsSourceProvider = process.env['DATABASE_URL']
+    ? {
+        forTenant: (
+          tenant: TenantId,
+        ): ReturnType<ReportSourceProvider['forTenant']> => {
+          const key = String(tenant);
+          let provider = standardReportsProviderByTenant.get(key);
+          if (provider === undefined) {
+            provider = reportSourceProviderOf(connectStandardReportsSources(tenant).sources);
+            standardReportsProviderByTenant.set(key, provider);
+          }
+          return provider.forTenant(tenant);
+        },
+      }
+    : undefined;
 
   // 六源适配器束（接线 #24，仅 PG 形态有值）：六源各读不同模块表，connectMetricSourceBundle
   // 租户收口=构造注入（引擎 MetricSource 端口不带租户参数）——组合根按请求租户
@@ -103,9 +137,14 @@ async function bootstrap(): Promise<void> {
       policyStore: businessStore?.policyStore,
       userStore: businessStore?.userStore,
       roleStore: businessStore?.roleStore,
+      departmentStore: businessStore?.departmentStore,
+      positionStore: businessStore?.positionStore,
       sessionStore: businessStore?.sessionStore,
       itemStore: masterdataStore?.itemStore,
       resourceStore: masterdataStore?.resourceStore,
+      customerStore: masterdataStore?.customerStore,
+      supplierStore: masterdataStore?.supplierStore,
+      unitStore: masterdataStore?.unitStore,
       todoStore: workbenchStore?.todoStore,
       approvalCaseStore: approvalStore?.caseStore,
       approvalRecordStore: approvalStore?.recordStore,
@@ -125,6 +164,12 @@ async function bootstrap(): Promise<void> {
       drawingStores: drawingStoreHandle?.stores,
       metricPackStores: metricPackStoreHandle?.stores,
       metricPackSourceSetFor,
+      auditLogStore: auditStoreHandle?.logStore,
+      standardReportsSourceProvider,
+      // T1 能力子集三存储注入（0920 #98/99/#101/#102）
+      menuConfigStore: menuConfigStoreHandle?.menuConfigStore,
+      notificationStore: notificationStoreHandle?.notificationStore,
+      approvalFlowConfigStore: approvalConfigStoreHandle?.flowConfigStore,
       workOrderStore: workOrderStoreHandle?.orderStore,
       workOrderAttachmentStore: workOrderStoreHandle?.attachmentStore,
       workOrderPartsStore: workOrderStoreHandle?.partsStore,
@@ -200,6 +245,8 @@ async function bootstrap(): Promise<void> {
     new MaintenanceErrorFilter(),
     new DrawingErrorFilter(),
     new MetricPackErrorFilter(),
+    new BackfillErrorFilter(),
+    new CapabilityErrorFilter(),
   );
 
   // 跨模块端口接线收口（M2 后第一增量）：buildAppModule 已把 store 级适配器随

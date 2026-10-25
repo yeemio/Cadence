@@ -59,7 +59,7 @@ export const STANDARD_REPORTS_PACK: MetricPack = defineMetricPack({
       version: 1,
       display: '工作令工时报表（四工种）',
       description:
-        '口径重述（#91）：按工作令汇总机加工、装配、电气、售后四类工时；冲销条目计负值（净额口径），total 为四类合计。下钻到明细 = 工时账本条目（labor_entries），明细呈现待 S2 报表页面。零工（misc）不挂工作令，不在四类口径内。',
+        '口径重述（#91）：按工作令汇总机加工、装配、电气、售后四类工时；冲销条目计负值（净额口径），total 为四类合计。下钻到明细 = 工时账本条目（labor_entries），明细呈现待 S2 报表页面。零工（misc）不挂工作令，不在四类口径内——根过滤 workOrderId ne null：无工作令归属的行（misc 零工及任何异常无主行）不进口径，不产 {workOrderId: null} 分组。',
       timeBasis: 'business',
       sourceKind: 'labor-entry-facts',
       dimensions: [{ field: 'workOrderId', label: '工作令' }],
@@ -71,6 +71,7 @@ export const STANDARD_REPORTS_PACK: MetricPack = defineMetricPack({
         { measureId: 'total-hours', aggregation: 'sum', field: 'netHours', format: { unit: 'h', maximumFractionDigits: 2 } },
         { measureId: 'entry-count', aggregation: 'count' },
       ],
+      filter: { kind: 'compare', op: 'ne', field: 'workOrderId', value: null },
     },
     {
       schemaVersion: 1,
@@ -78,7 +79,7 @@ export const STANDARD_REPORTS_PACK: MetricPack = defineMetricPack({
       version: 1,
       display: '自制零件派工报工报表',
       description:
-        '口径重述（#92）：按工作令—设备—模块看自制件派工与报工执行。降级维度：工作令×图号×工序（dispatch_orders 无设备/模块列——现按图号×工序派发，设备/模块维度待数据面补齐）；reported = 未撤销报工单 doneQty 合计（撤销单不计）。时间口径 occurred = 派工单创建（派发时刻）。',
+        '口径重述（#92）：按工作令—设备—模块看自制件派工与报工执行。降级维度：工作令×图号×工序（dispatch_orders 无设备/模块列——现按图号×工序派发，设备/模块维度待数据面补齐）；reported = ΣdoneQty，为 dispatch.complete 回填的终态量——reporting 域报工撤销不回滚 doneQty（两域未联动），口径暂按派工侧终态呈现，对账阶段校正。时间口径 occurred = 派工单创建（派发时刻）。',
       timeBasis: 'occurred',
       sourceKind: 'part-dispatch-report-facts',
       dimensions: [

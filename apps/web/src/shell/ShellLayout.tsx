@@ -16,10 +16,14 @@ import {
   useLogout,
   usePermissions,
 } from '@refinedev/core';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router';
 import { Outlet } from 'react-router';
-import { AudioWaveform, Building2, LoaderCircle, LogOut, Menu, X } from 'lucide-react';
+import { AudioWaveform, Bell, Building2, LoaderCircle, LogOut, Menu, X } from 'lucide-react';
 import { toPermissionCodes, toSidebarMenu } from '@smes/product-ui';
 import { menuTree } from '../menu';
+import { fetchUnreadCount } from '../data/notificationsApi';
+import { useMergedMenu } from './useMenuConfig';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MenuNav } from './MenuNav';
@@ -49,7 +53,21 @@ interface ShellIdentity {
 function ShellBody() {
   const { data: permissionData } = usePermissions({});
   const permissions = toPermissionCodes(permissionData);
-  const sidebarNodes = toSidebarMenu(menuTree, permissions);
+  // T1 #98：持久化菜单配置（code='default'）启动合并——fail-open，配置不可用
+  // 即静态树原样（取舍见 shell/useMenuConfig.ts 与 product-ui menu-merge.ts）。
+  const mergedTree = useMergedMenu(menuTree, 'default');
+  const sidebarNodes = toSidebarMenu(mergedTree, permissions);
+
+  // T1 #101：顶栏铃铛——notification:read 门禁的未读计数（30s 轮询；无权限/
+  // 失败 = 不渲染，fail-open 不占位）。入口页 = /notifications（通知中心页）。
+  const unreadQuery = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: fetchUnreadCount,
+    refetchInterval: 30_000,
+    retry: false,
+  });
+  const showBell = unreadQuery.data !== undefined;
+  const unreadCount = unreadQuery.data ?? 0;
 
   const { data: identityData } = useGetIdentity();
   const identity =
@@ -139,6 +157,24 @@ function ShellBody() {
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
+            {showBell && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative size-11"
+                aria-label={unreadCount > 0 ? `通知中心（${unreadCount} 条未读）` : '通知中心'}
+                asChild
+              >
+                <Link to="/notifications">
+                  <Bell />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-4 text-destructive-foreground">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+              </Button>
+            )}
             <div className="flex items-center gap-2.5">
               <div
                 className={cn(

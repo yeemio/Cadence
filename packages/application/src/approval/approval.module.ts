@@ -48,6 +48,13 @@ export interface ApprovalModuleOptions {
   readonly submitEvent?: string | undefined;
   /** 进审跳步命令动词（缺省 'START_REVIEW'；显式 null = 发起后不自动进审）。 */
   readonly reviewEvent?: string | null | undefined;
+  /**
+   * 租户级配置解析器（T1 接线 #102）：组合根注入"读 approval-config 模块
+   * 当前 active 行"的解析函数；缺省不解析（回落静态 config——既有行为零变化）。
+   */
+  readonly flowConfigResolver?:
+    | ((tenant: import('@smes/business-core').TenantId) => Promise<ApprovalFlowConfig | null>)
+    | undefined;
 }
 
 @Module({})
@@ -57,6 +64,9 @@ export class ApprovalModule {
       config: options.config ?? DEFAULT_APPROVAL_FLOW_CONFIG,
       submitEvent: options.submitEvent ?? 'SUBMIT',
       reviewEvent: options.reviewEvent === undefined ? 'START_REVIEW' : options.reviewEvent,
+      ...(options.flowConfigResolver === undefined
+        ? {}
+        : { flowConfigResolver: options.flowConfigResolver }),
     };
     const providers: Provider[] = [
       { provide: APPROVAL_CASE_STORE, useValue: options.caseStore ?? new InMemoryApprovalCaseStore() },

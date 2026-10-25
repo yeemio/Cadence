@@ -129,7 +129,7 @@ describe('控制器权限码元数据（@RequirePermission 声明面）', () => 
     expect(routePermissions(MasterdataResourcesController, 'update')).toBe('resource:write');
   });
 
-  it('MasterdataModule.register 装配两个控制器，缺省回落内存存储', () => {
+  it('MasterdataModule.register 装配五个控制器（items/resources + S1 客户/供应商/计量单位 backfill），缺省回落内存存储', () => {
     const dynamic = MasterdataModule.register();
     const controllers = Reflect.getMetadata(
       MODULE_METADATA.CONTROLLERS,

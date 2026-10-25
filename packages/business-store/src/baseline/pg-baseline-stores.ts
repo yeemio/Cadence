@@ -145,7 +145,9 @@ function masterCreateData(input: { readonly tenant: TenantId; readonly objectVer
 
 type PrismaMasterDelegate<DbRow extends MasterDbRow> = {
   create(args: { data: Record<string, unknown> }): Promise<DbRow>;
-  findMany(args: { where: { tenantId: string; code?: string }; orderBy: { code: 'asc'; objectVersion: 'asc' } }): Promise<DbRow[]>;
+  // 泛型 delegate 走未类型化运行时：Prisma 6 的 orderBy 只接受数组形态
+  // （对象形态报 Expected Input[], provided Object——2026-10-26 S4 基线录制实证）
+  findMany(args: { where: { tenantId: string; code?: string }; orderBy: readonly ({ code: 'asc' } | { objectVersion: 'asc' })[] }): Promise<DbRow[]>;
 };
 
 /** 版本化主数据 PG 内核（三端口共用；列面差异经 toRow/toData 收窄）。 */
@@ -173,7 +175,7 @@ class PgVersionedMasterStore<DbRow extends MasterDbRow, Row, CreateInput> {
   async versions(tenant: TenantId, code: string): Promise<readonly Row[]> {
     const rows = await this.delegate.findMany({
       where: { tenantId: tenant, code },
-      orderBy: { code: 'asc', objectVersion: 'asc' },
+      orderBy: [{ code: 'asc' }, { objectVersion: 'asc' }],
     });
     return rows.map((row) => this.toRow(row));
   }
@@ -181,7 +183,7 @@ class PgVersionedMasterStore<DbRow extends MasterDbRow, Row, CreateInput> {
   async listAll(tenant: TenantId): Promise<readonly Row[]> {
     const rows = await this.delegate.findMany({
       where: { tenantId: tenant },
-      orderBy: { code: 'asc', objectVersion: 'asc' },
+      orderBy: [{ code: 'asc' }, { objectVersion: 'asc' }],
     });
     return rows.map((row) => this.toRow(row));
   }

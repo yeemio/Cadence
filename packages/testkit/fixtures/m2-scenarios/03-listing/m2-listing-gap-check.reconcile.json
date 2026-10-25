@@ -5,7 +5,7 @@
     "description": "03-listing §7 Done-when #2「缺口核查给出可发起采购的缺口行」：gap.check.v1 核查动作+快照（载荷空对象；缺口行=需求 vs 可用量）。链式场景——前置=清单导入后（准备链见手册 §4.2）",
     "input": {
       "method": "POST",
-      "path": "/listing/work-orders/__WORK_ORDER_ID__/gap-checks",
+      "path": "/listing/work-orders/wo-01a1738f-7c86-7723-85a2-95c9da0f3b79/gap-checks",
       "headers": {
         "x-smes-user": "user-seed-admin"
       },
@@ -19,7 +19,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "操作幂等冲突：operationId 'm2rec-listing-gap-check' 已落账，拒绝重复执行"
+    },
+    "recordedAt": "2026-10-25T15:02:06.800Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

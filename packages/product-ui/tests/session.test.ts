@@ -35,8 +35,6 @@ describe('authenticateMockIdentity：mock 凭据校验', () => {
     expect(session?.tenantId).toBe(TenantId.create('tenant-demo'));
     expect(session?.displayName).toBe('演示操作员');
     expect([...(session?.permissions ?? [])]).toEqual([
-      permissionCode('workorder:access'),
-      permissionCode('dispatch:access'),
       permissionCode('workbench:read'),
       permissionCode('item:read'),
       // M1 收尾波-②：operator 增授扫码读取（扫码页可见，M2 报工消费扫码结果）
@@ -46,7 +44,47 @@ describe('authenticateMockIdentity：mock 凭据校验', () => {
       // M5 首波：operator 增授工时/库存读取（移动端 m.hours/m.stock 页可见）
       permissionCode('hours:read'),
       permissionCode('stock:read'),
+      // S2 批次：桌面菜单码切后端实态 :read 码——车间岗位桌面可见面（制造运营 +
+      // 报工 + 工时统计；采购/质检/盘点/发货/成本/工艺基线不授予）。
+      // workorder:access / dispatch:access 两占位码随占位页退役移除。
+      permissionCode('workorder:read'),
+      permissionCode('parts:read'),
+      permissionCode('listing:read'),
+      permissionCode('gap:read'),
+      permissionCode('dispatch:read'),
+      permissionCode('outsourcing:read'),
+      permissionCode('report:read'),
+      // S3-d：移动端 m.parts/m.fault 可见（117 配件申请/127 故障上报是现场
+      // 工人动作；桌面菜单门控全在 :read 码，桌面可见面不变）
+      permissionCode('parts:request'),
+      permissionCode('fault:report'),
     ]);
+  });
+
+  it('身份表含演示班长（S3-d 移动动作码承载——16 码精确匹配，无通配）', () => {
+    const lead = DEMO_IDENTITIES.find((identity) => identity.email === 'lead@demo.local');
+    if (lead === undefined) throw new Error('fixture: lead identity missing');
+    expect(lead.permissions).not.toContain('*');
+    expect([...lead.permissions]).toEqual([
+      permissionCode('workbench:read'),
+      permissionCode('report:read'),
+      permissionCode('report:verify'),
+      permissionCode('workorder:read'),
+      permissionCode('parts:read'),
+      permissionCode('parts:request'),
+      permissionCode('parts:approve'),
+      permissionCode('inspection:read'),
+      permissionCode('inspection:judge'),
+      permissionCode('fault:report'),
+      permissionCode('stock:read'),
+      permissionCode('stock:receive'),
+      permissionCode('stock:transfer'),
+      permissionCode('stocktake:read'),
+      permissionCode('stocktake:record'),
+      permissionCode('stocktake:approve'),
+    ]);
+    const session = authenticateMockIdentity(DEMO_IDENTITIES, 'lead@demo.local', 'demo-password');
+    expect(session?.displayName).toBe('演示班长');
   });
 
   it('未知邮箱 / 空口令 / 空邮箱 → null', () => {
@@ -59,7 +97,8 @@ describe('authenticateMockIdentity：mock 凭据校验', () => {
     const session = authenticateMockIdentity(DEMO_IDENTITIES, 'operator@demo.local', 'x');
     expect(session).not.toBeNull();
     // permissions 声明为 readonly，运行时防御：不通过引用泄漏内部数组
-    expect([...(session?.permissions ?? [])].length).toBe(8);
+    // S3-d：operator 13 → 15（parts:request + fault:report）
+    expect([...(session?.permissions ?? [])].length).toBe(15);
   });
 });
 

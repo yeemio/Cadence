@@ -15,13 +15,21 @@
         "command": {
           "kind": "costing.rebuild.v1",
           "payload": {
-            "workOrderId": "__WORK_ORDER_ID__"
+            "workOrderId": "wo-01a1738f-7c86-7723-85a2-95c9da0f3b79"
           }
         }
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "口径 'standard' 未发布（costing.rebuild 前先执行 costing.model.publish）"
+    },
+    "recordedAt": "2026-10-25T15:02:47.385Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

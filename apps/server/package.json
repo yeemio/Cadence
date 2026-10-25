@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --reporter=dot",
     "org:e2e": "node scripts/e2e-org.mjs",
+    "backfill:e2e": "node scripts/e2e-backfill.mjs",
+    "capability:e2e": "node scripts/e2e-capability.mjs",
     "mdwb:e2e": "node scripts/e2e-masterdata-workbench.mjs",
     "approval:e2e": "node scripts/e2e-approval.mjs",
     "auth:e2e": "node scripts/e2e-auth.mjs",

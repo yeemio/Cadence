@@ -244,6 +244,23 @@ export class InMemoryListingLineStore implements ListingLineStore {
       .map(toLine);
   }
 
+  /** A9 下图统计：part 行按 createdAt 日部闭区间计数（投影行即有效行——本模块无行级逻辑删除面）。 */
+  async countPartLinesCreatedBetween(
+    tenant: TenantId,
+    range?: { readonly fromDay?: string; readonly toDay?: string },
+  ): Promise<number> {
+    const from = range?.fromDay;
+    const to = range?.toDay;
+    return [...this.rows.values()].filter((row) => {
+      if (row.tenant !== tenant || row.kind !== 'part') return false;
+      const day = row.createdAt.slice(0, 10);
+      if (day.length !== 10) return false; // create_time 为空/形状异常不计入（口径同开发文档）
+      if (from !== undefined && day < from) return false;
+      if (to !== undefined && day > to) return false;
+      return true;
+    }).length;
+  }
+
   async update(
     tenant: TenantId,
     id: string,

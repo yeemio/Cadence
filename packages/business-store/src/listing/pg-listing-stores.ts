@@ -23,6 +23,9 @@
  *                                  purchase-request / purchase-order / purchase-return
  *                                  三类聚合共用，(aggregate_id, aggregate_revision)
  *                                  唯一 = DB 级乐观锁）
+ *  - PgProcessMaterialLinkStore  → process_material_links 工序×原材料关联投影
+ *                                  （U4 S10 数据面：replaceSet 事务内删旧插新；
+ *                                  (tenant, process_id) 组 UNIQUE 兜底并发）
  *
  * 租户解析取舍（同 workorder）：engine 机器事件端口不带租户参数——聚合锚定合同 =
  * 投影行（purchase_requests / purchase_orders / purchase_returns），租户经投影行
@@ -72,6 +75,8 @@ import {
   type ListingSheetStore,
   type ListPurchaseOrdersFilter,
   type ListPurchaseRequestsFilter,
+  type ProcessMaterialLink,
+  type ProcessMaterialLinkStore,
   type PurchaseOrder,
   type PurchaseOrderLine,
   type PurchaseOrderStore,
@@ -81,6 +86,7 @@ import {
   type PurchaseReturn,
   type PurchaseReturnLine,
   type PurchaseReturnStore,
+  type ReplaceProcessMaterialSetInput,
   type UpdateListingLineFields,
 } from '@smes/application';
 import { fromBusinessEventRow, toBusinessEventRow } from '../events/event-row.js';
@@ -348,6 +354,48 @@ export function rowToListingEvent(row: ListingEventDbRow): ApprovalEvent {
     occurredAt: row.occurredAt.toISOString(),
     payload: row.payload as ApprovalEventPayload,
   });
+}
+
+// ---- 工序×原材料关联行（U4，application ProcessMaterialLinkStore） ----
+
+interface ProcessMaterialDbRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly listingLineId: string;
+  readonly processId: string;
+  readonly sortOrder: number;
+  readonly rawMaterialId: string;
+  readonly quantity: number;
+  readonly unitPriceMinor: number | null;
+  readonly measureType: string;
+  readonly partLength: number;
+  readonly partWidth: number | null;
+  readonly partHeight: number | null;
+  readonly cutSizeForm: string;
+  readonly cutSizeUnit: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export function rowToProcessMaterialLink(row: ProcessMaterialDbRow): ProcessMaterialLink {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenantId),
+    listingLineId: row.listingLineId,
+    processId: row.processId,
+    sortOrder: row.sortOrder,
+    rawMaterialId: row.rawMaterialId,
+    quantity: row.quantity,
+    unitPriceMinor: row.unitPriceMinor,
+    measureType: row.measureType as ProcessMaterialLink['measureType'],
+    partLength: row.partLength,
+    partWidth: row.partWidth,
+    partHeight: row.partHeight,
+    cutSizeForm: row.cutSizeForm as ProcessMaterialLink['cutSizeForm'],
+    cutSizeUnit: row.cutSizeUnit as ProcessMaterialLink['cutSizeUnit'],
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }
 
 // ---- 清单单据头（application ListingSheetStore） ----
@@ -803,6 +851,83 @@ export class PgListingOperationStore implements ListingOperationStore {
   }
 }
 
+// ---- 工序×原材料关联（U4，整表替换投影） ----
+
+export class PgProcessMaterialLinkStore implements ProcessMaterialLinkStore {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async replaceSet(input: ReplaceProcessMaterialSetInput): Promise<readonly ProcessMaterialLink[]> {
+    try {
+      // 交互式事务：整表替换原子落（删旧 + 按数组序插新，sortOrder 0..N-1）；
+      // (tenant, process_id) 组 UNIQUE 兜底并发竞态（行序/原材料重复、跨清单行
+      // 复用工序引用——冲突整批回滚）。
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.processMaterialLinkRecord.deleteMany({
+          where: { tenantId: input.tenant, listingLineId: input.listingLineId, processId: input.processId },
+        });
+        const rows: ProcessMaterialLink[] = [];
+        for (const [sortOrder, row] of input.rows.entries()) {
+          const created = await tx.processMaterialLinkRecord.create({
+            data: {
+              id: row.id,
+              tenantId: input.tenant,
+              listingLineId: input.listingLineId,
+              processId: input.processId,
+              sortOrder,
+              rawMaterialId: row.rawMaterialId,
+              quantity: row.quantity,
+              unitPriceMinor: row.unitPriceMinor,
+              measureType: row.measureType,
+              partLength: row.partLength,
+              partWidth: row.partWidth,
+              partHeight: row.partHeight,
+              cutSizeForm: row.cutSizeForm,
+              cutSizeUnit: row.cutSizeUnit,
+            },
+          });
+          rows.push(rowToProcessMaterialLink(created));
+        }
+        return rows;
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ListingConflictError(
+          `工序 '${input.processId}' 原材料关联插入冲突：(tenant, process) 行序/原材料唯一被违反（或同一工序引用被跨清单行复用）`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async listByProcess(
+    tenant: TenantId,
+    listingLineId: string,
+    processId: string,
+  ): Promise<readonly ProcessMaterialLink[]> {
+    const rows = await this.prisma.processMaterialLinkRecord.findMany({
+      where: { tenantId: tenant, listingLineId, processId },
+      orderBy: [{ sortOrder: 'asc' }],
+    });
+    return rows.map(rowToProcessMaterialLink);
+  }
+
+  async listByLine(tenant: TenantId, listingLineId: string): Promise<readonly ProcessMaterialLink[]> {
+    const rows = await this.prisma.processMaterialLinkRecord.findMany({
+      where: { tenantId: tenant, listingLineId },
+      orderBy: [{ processId: 'asc' }, { sortOrder: 'asc' }],
+    });
+    return rows.map(rowToProcessMaterialLink);
+  }
+
+  async findByProcessId(tenant: TenantId, processId: string): Promise<readonly ProcessMaterialLink[]> {
+    const rows = await this.prisma.processMaterialLinkRecord.findMany({
+      where: { tenantId: tenant, processId },
+      orderBy: [{ listingLineId: 'asc' }, { sortOrder: 'asc' }],
+    });
+    return rows.map(rowToProcessMaterialLink);
+  }
+}
+
 // ---- 域事件（BusinessEvent + Outbox，复用既有 event_records / outbox_records） ----
 
 export class PgListingDomainEventStore implements ListingDomainEventStore {
@@ -986,7 +1111,7 @@ export interface ListingStoreOptions {
   readonly datasourceUrl?: string;
 }
 
-/** 组合根装配句柄：八端口实现（可直接喂 ListingModule.register）+ 优雅断连。 */
+/** 组合根装配句柄：八端口 + U4 工序×原材料关联端口实现（可直接喂 ListingModule.register）+ 优雅断连。 */
 export interface ListingStoreHandle {
   readonly sheetStore: ListingSheetStore;
   readonly lineStore: ListingLineStore;
@@ -997,6 +1122,8 @@ export interface ListingStoreHandle {
   readonly operationStore: ListingOperationStore;
   readonly domainEventStore: ListingDomainEventStore;
   readonly machineEventStore: ApprovalEventStore;
+  /** 工序×原材料关联存储（U4；喂 ListingModuleOptions.processMaterialStore）。 */
+  readonly processMaterialStore: ProcessMaterialLinkStore;
   disconnect(): Promise<void>;
 }
 
@@ -1015,6 +1142,7 @@ export function connectListingStore(options: ListingStoreOptions = {}): ListingS
     operationStore: new PgListingOperationStore(prisma),
     domainEventStore: new PgListingDomainEventStore(prisma),
     machineEventStore: new PgListingMachineEventStore(prisma),
+    processMaterialStore: new PgProcessMaterialLinkStore(prisma),
     async disconnect(): Promise<void> {
       await prisma.$disconnect();
     },

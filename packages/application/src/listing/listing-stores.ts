@@ -161,6 +161,19 @@ export interface ListingLineStore {
   find(tenant: TenantId, id: string): Promise<ListingLine | null>;
   listBySheet(tenant: TenantId, sheetId: string): Promise<readonly ListingLine[]>;
   listByWorkOrder(tenant: TenantId, workOrderId: string): Promise<readonly ListingLine[]>;
+  /**
+   * 下图统计（A9，工作令-下图统计-开发文档）：租户内**零件清单（kind='part'）**
+   * 明细行按行创建时间（createdAt）计数——不去重图号、不按工作令/设备拆分；
+   * create_time 为空的行不计入。range 为 yyyy-MM-dd **闭区间**（比较 createdAt
+   * 日部），两端均可缺省（缺省不滤该侧；仅传一侧=半开区间）。实现方做计数
+   * 而非取行（PG 侧 count 查询，勿 SELECT * 内存数）。可选成员：内存实现已
+   * 备；PG 适配器（business-store）合流时补实现——未实现时 service 显式拒绝
+   * （不静默回 0，体例同 LISTING_UNWIRED_MATERIAL_VALIDATION）。
+   */
+  countPartLinesCreatedBetween?(
+    tenant: TenantId,
+    range?: { readonly fromDay?: string; readonly toDay?: string },
+  ): Promise<number>;
   update(
     tenant: TenantId,
     id: string,

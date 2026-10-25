@@ -32,7 +32,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "仓库编码 'WH-M2REC-01' 已存在（wh-01a17391-0f86-7636-8240-cf22ff784321）"
+    },
+    "recordedAt": "2026-10-25T15:02:06.399Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

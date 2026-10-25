@@ -42,7 +42,8 @@ pnpm --filter @smes/web test
   product-ui `scan.ts`（泛型消费边缘包形状，边缘词汇不进业务层）
 - `src/data/orgApi.ts`（M1 增量 3-D）：组织端点薄数据层（fetch + `x-smes-user` 头）
 - 演示身份：`admin@demo.local`（全量）/ `org-admin@demo.local`（组织管理四码，
-  精确码无通配）/ `operator@demo.local`（工作令+派工+工作台+物品查看+扫码，口令任意非空）
+  精确码无通配）/ `operator@demo.local`（工作台+物品+扫码+移动四页 + S2 桌面
+  制造运营/报工/工时/库存读码——详见下节 S2 登记；口令任意非空）
 
 ## 数据层取舍（M1 增量 3-D）
 
@@ -139,3 +140,63 @@ PWA/离线的形状预研已落地，见下节）、会话保活行为规则（A
 prompt 更新交互）；真实 reporting 后端对接（M2，接缝在 reportingApi 一处）；
 性能验收 p95；多端编辑冲突解决；离线队列淘汰策略复核（drop-oldest 的替代项
 与容量告警 UX）；manifest 真实图标（PNG 192/512——安装横幅在部分浏览器要位图）。
+
+## S2 批次登记（九循环模块桌面管理页——覆盖矩阵 §3.3 的 61 项，2026-10-25）
+
+九循环模块（workorder/listing/dispatch/reporting/inspection/inventory/hours/
+costing/baseline）每模块"列表页 + 核心详情/操作页"挂菜单走真实 API；覆盖
+architecture/coverage/coverage-matrix.md §3.3 登记的全部 61 项"后端就绪缺 Web
+页面"缺口 + costing（0920 外 R7 增量）。端点/权限码/载荷形状全部按
+packages/application/src 各控制器实态映射（零猜测）；命令走 smes.command.v1
+信封（乐观锁 expectedRevision 取行 objectVersion，创建类命令为 'initial'）。
+
+### 页面与菜单组（33 页；PAGE_BY_CODE 装配表抽提至 src/pages/assembly.ts）
+
+| 菜单组 | 页面码（路由） | 覆盖矩阵项 |
+| --- | --- | --- |
+| 制造运营 | workorder（/workorders：九态列表+建令+流转/关闭/附件+三进度+齐套看板） | #24/25/27/28/29/30 |
+| 制造运营 | workorder-parts（/workorders/parts：配件五态+审批+发货联动出库） | #26 |
+| 制造运营 | listing-sheets（/listings/sheets：骨架导入+四类清单按工作令+行详情） | #31-34 |
+| 制造运营 | listing-gap-checks（/listings/gap-checks：核查动作+最新快照） | #73-76 |
+| 制造运营 | dispatch（/dispatches：六类创建+四态操作+任务视图） | #38-43 |
+| 制造运营 | outsourcing-lines（/outsourcing/lines：供应商维度+单价补录+打印数据） | #39 外协面 |
+| 报工管理 | reports（/reports：五类×四态多键过滤+详情+核查/修正/撤销+图号工序进度+产出趋势） | #44-48 |
+| 报工管理 | report-verification（/reports/verification：待核查队列+核查/撤销） | #49-53 |
+| 采购管理 | purchase-requests / purchase-orders（含审批/下发/收货）/ purchase-returns / purchase-details（含逾期与催货扫描、导出） | #54-56/59-62 |
+| 质量管理 | inspections（四类队列+判定/复检+汇总+超时点名）/ nonconformities（处置+闭环） | #63-66 |
+| 仓储管理 | warehouses / stock-levels（+库位/流水）/ stock-operations（三类入库/出库/调拨移库）/ stocktakes（开单-录入-审核调账）/ shipping-orders（执行-确认） | #14/71-72/77-83 |
+| 成本与工时 | hours-stats（机加工时统计+月度汇总/明细/快照+重算）/ costing（口径版本链+三分类+对比+重算+导出） | #84/85（+R7） |
+| 工艺与设备 | baseline-processes / -routings / -standard-times / -equipment / -fault-reports / -outsourcing-rules / -material-validations | #10/12/13/16/20/35/36 |
+
+### 数据层与共享视图件
+
+- `src/data/commandClient.ts`：九模块共享薄层——信封构造/命令三分结果归一/
+  列表 envelope 抽取/objectVersion 乐观锁锚点（缺失阻断提交并明示）；
+- `src/data/{workorder,listing,dispatch,inspection,inventory,hours,costing,baseline}Api.ts`：
+  各模块端点薄映射（Bearer 经 apiClient 注入）；
+- `src/components/ModuleTable.tsx` + `ui/select.tsx`：表格横滚/行详情/命令结果
+  共享视图件与原生 Select（shadcn 令牌对齐）。
+
+### 菜单码与演示身份
+
+- 九模块叶子菜单码全部用后端控制器实态 `:read` 码（如 `workorder:read` 与
+  GET /workorder/work-orders 门禁同码）；M1 占位码 `workorder:access` /
+  `dispatch:access` 随占位页退役移除；
+- operator 演示身份按"车间岗位桌面可见面"授码：制造运营组全部 + 报工组 +
+  工时统计 + 库存两页（stock:read）；采购/质检/盘点/发货/成本/工艺基线/组织
+  管理不授予——菜单按码过滤的证据面（product-ui session.ts + 三处测试同步）。
+
+### 测试与验证（本批次）
+
+`tests/module-pages.test.ts`（每模块一组：页面挂接 + 读端点 HTTP 形状 + 命令
+信封 kind/乐观锁）；`tests/menu.test.ts` 35 路由全量对照 + S2 权限码表 + 三
+身份投影；product-ui session/auth 测试同步 operator 权限。typecheck/test/
+vite build 双包绿；登录 chunk 2.41KB（<15KB 不回归）；depcruise 局部
+（apps/web + product-ui）无违规。
+
+### 剩余缺口（如实）
+
+- #25 工作令"申请→审批→立项"链后端本身未接 approval 案件（页面覆盖建令命令面）；
+- 清单行修订命令（listing.line.update）API 已映射、页面未提供行内编辑入口；
+- 四张 P3 标准报表（#89/91/92/96）与移动 19 项（§3.2）不属本批次；costing
+  页为 R7 增量非 61 项内。

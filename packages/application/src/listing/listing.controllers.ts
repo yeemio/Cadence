@@ -10,6 +10,7 @@
  *   POST /listing/imports                            listing:import  （骨架/Excel 导入）
  *   GET  /listing/sheets?workOrderId=                listing:read    （四类清单按工作令）
  *   GET  /listing/sheets/:id                         listing:read    （清单详情含行）
+ *   GET  /listing/upload-stats                       listing:read    （A9 下图统计：零件清单行 COUNT）
  *   POST /listing/lines/:id/update                   listing:write   （行修订）
  *   POST /listing/work-orders/:id/gap-checks         gap:read        （核查动作+快照）
  *   GET  /listing/work-orders/:id/gap-checks/latest  gap:read        （核查结果）
@@ -132,6 +133,26 @@ export class ListingSheetsController {
       gapCheck: await this.listing.latestGapCheck(
         this.tenantContext.current(),
         parseIdParam(id, '工作令 id'),
+      ),
+    };
+  }
+
+  /**
+   * A9 下图统计（工作令-下图统计-开发文档）：时间范围内零件清单明细行
+   * COUNT——不去重、不分页、恒一行（无匹配行 drawingCount=0）。空串参数按
+   * 未传处理（与 purchase 控制器空串归一口径一致）。
+   */
+  @Get('upload-stats')
+  @RequirePermission('listing:read')
+  async uploadStats(
+    @Query('createTimeStart') createTimeStart?: string,
+    @Query('createTimeEnd') createTimeEnd?: string,
+  ): Promise<{ uploadStat: Awaited<ReturnType<ListingService['partUploadStats']>> }> {
+    return {
+      uploadStat: await this.listing.partUploadStats(
+        this.tenantContext.current(),
+        createTimeStart === '' ? undefined : createTimeStart,
+        createTimeEnd === '' ? undefined : createTimeEnd,
       ),
     };
   }

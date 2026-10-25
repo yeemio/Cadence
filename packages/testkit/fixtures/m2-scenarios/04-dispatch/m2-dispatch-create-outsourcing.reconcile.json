@@ -15,7 +15,7 @@
         "command": {
           "kind": "dispatch.create.v1",
           "payload": {
-            "workOrderId": "__WORK_ORDER_ID__",
+            "workOrderId": "wo-01a1738f-7c86-7723-85a2-95c9da0f3b79",
             "kind": "outsourcing",
             "quantity": 5,
             "lines": [
@@ -35,7 +35,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "操作幂等冲突：operationId 'm2rec-dispatch-create-outsourcing' 已落账，拒绝重复执行"
+    },
+    "recordedAt": "2026-10-25T15:02:07.202Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

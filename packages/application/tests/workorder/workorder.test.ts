@@ -585,6 +585,48 @@ describe('workorder.kit.refresh（齐套编排）', () => {
     expect(board[0]?.gapLines).toEqual([]);
     expect((await h.kitChecks.latestPerTenant(t1)).length).toBe(1); // 旧快照仍保留（不可变）
   });
+
+  it('register 注入面（S3-e 接线 #25/#26 锚点）：listingPort/inventoryPort 经模块装配到达服务，真实缺口数据驱动快照翻转', async () => {
+    // 组合根（app-registry + cross-module-wiring）喂的就是 register 的这两个
+    // 选项——零框架直连解析 providers 工厂，证明选项真正传入服务并被齐套
+    // 判定消费（接线前该缝只在单测注入，真实栈从未喂过——S3-b 钉住的缺口）。
+    const listing = new FakeListingPort();
+    const inventory = new FakeInventoryPort();
+    const dynamic = WorkOrderModule.register({ listingPort: listing, inventoryPort: inventory });
+    const providers = (dynamic.providers ?? []) as readonly {
+      readonly provide?: unknown;
+      readonly useValue?: unknown;
+      readonly useFactory?: (...args: never[]) => WorkOrderService;
+      readonly inject?: readonly unknown[];
+    }[];
+    const byToken = new Map(providers.map((provider) => [provider.provide, provider]));
+    const serviceFactory = providers.find((provider) => provider.provide === WorkOrderService);
+    expect(serviceFactory?.useFactory, 'register 应以 useFactory 构造 WorkOrderService').toBeTypeOf('function');
+    const args = (serviceFactory!.inject ?? []).map(
+      (token) => (byToken.get(token) as { useValue: unknown }).useValue,
+    );
+    const service = serviceFactory!.useFactory!(...(args as never[]));
+
+    // 真实缺口形状（e2e 同款）：1 行 part 需 10 / 库存 0 → complete=false（缺口行
+    // = dispatch 齐套拦截的证据）；补货到 10 → 再刷新 complete=true（放行）。
+    const order = await createOrder(service, { projectName: '接线注入面' });
+    listing.lines.push({ kind: 'part', itemId: 'item-kit-wire', drawingNo: null, requiredQty: 10, neededBy: null });
+
+    const short = mustCommit(
+      await service.execute(envelope('workorder.kit.refresh.v1', {}, { expectedRevision: 1 }), order.id),
+    );
+    expect(short.kitCheck?.complete).toBe(false);
+    expect(short.kitCheck?.gapLines).toEqual([
+      { kind: 'part', itemId: 'item-kit-wire', drawingNo: null, requiredQty: 10, availableQty: 0, gapQty: 10 },
+    ]);
+
+    inventory.stock.set('item-kit-wire', 10);
+    const filled = mustCommit(
+      await service.execute(envelope('workorder.kit.refresh.v1', {}, { expectedRevision: 1 }), order.id),
+    );
+    expect(filled.kitCheck?.complete).toBe(true);
+    expect(filled.kitCheck?.gapLines).toEqual([]);
+  });
 });
 
 describe('配件申请（parts.request/approve/ship）', () => {

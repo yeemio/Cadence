@@ -4,10 +4,9 @@
  * 写拦截器行为（只记写方法/成功收场/自身路径跳过/失败隔离）、查询解析边界、
  * 控制器权限码与模块装配。
  */
-import 'reflect-metadata', { } from 'node:assert';
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
-import type { Observable } from 'rxjs';
+import { firstValueFrom, of, throwError, type Observable } from 'rxjs';
 import { TenantId, UserId } from '@smes/business-core';
 import { MODULE_METADATA } from '@nestjs/common/constants.js';
 import {
@@ -21,6 +20,7 @@ import {
   REQUEST_USER_KEY,
   TenantContext,
   auditSummaryOf,
+  parseAuditQueryInput,
 } from '../src/index.js';
 
 const t1 = TenantId.create('t1');
@@ -75,33 +75,21 @@ describe('写操作拦截器', () => {
 
   function handlerOf(response: unknown, error?: Error): { handle: () => Observable<unknown> } {
     return {
-      handle: () =>
-        ({
-          subscribe(observer: { next?: (v: unknown) => void; error?: (e: unknown) => void; complete?: () => void }) {
-            if (error !== undefined) observer.error?.(error);
-            else {
-              observer.next?.(response);
-              observer.complete?.();
-            }
-            return { unsubscribe: () => {} };
-          },
-        }) as unknown as Observable<unknown>,
+      handle: () => (error === undefined ? of(response) : throwError(() => error)),
     };
   }
 
-  async function settle(): Promise<void> {
-    await new Promise((resolve) => setImmediate(resolve));
+  /** 等拦截器管道走完（mergeMap 异步投影完成后才 resolve——落账先行，读回即得）。 */
+  async function settle(stream: Observable<unknown>): Promise<void> {
+    await firstValueFrom(stream).catch(() => {});
   }
 
   it('写方法成功收场 → 落一条（method/path/user/租户取 ALS）；GET 不记', async () => {
     const { interceptor, store, tenantContext } = makeInterceptor();
     const write = { method: 'POST', url: '/masterdata/customers?trace=1', [REQUEST_USER_KEY]: alice };
-    const response = await tenantContext.run(
-      t1,
-      () => interceptor.intercept(contextOf(write) as never, handlerOf({ id: 'x' })) as never as Promise<unknown>,
+    await tenantContext.run(t1, () =>
+      settle(interceptor.intercept(contextOf(write) as never, handlerOf({ id: 'x' }))),
     );
-    await (response as unknown as Promise<unknown>).catch(() => {});
-    await settle();
     const logs = await store.query({ tenant: t1 });
     expect(logs.length).toBe(1);
     expect(logs[0]!.method).toBe('POST');
@@ -109,40 +97,41 @@ describe('写操作拦截器', () => {
     expect(logs[0]!.userId).toBe(String(alice));
 
     const read = { method: 'GET', url: '/masterdata/customers', [REQUEST_USER_KEY]: alice };
-    const readStream = interceptor.intercept(contextOf(read) as never, handlerOf({}));
-    await (readStream as unknown as Promise<unknown>).catch(() => {});
-    await settle();
+    await tenantContext.run(t1, () =>
+      settle(interceptor.intercept(contextOf(read) as never, handlerOf({}))),
+    );
     expect((await store.query({ tenant: t1 })).length).toBe(1); // GET 不追加
   });
 
-  it('/audit/* 自身路径跳过（防递归）；公开写路由 user=null；失败响应不落账', async () => {
+  it('/audit/* 自身路径跳过（防递归）；失败响应不落账；非字符串 user 记 null', async () => {
     const { interceptor, store, tenantContext } = makeInterceptor();
-    const self = { method: 'GET', url: '/audit/logs?limit=10', [REQUEST_USER_KEY]: alice };
-    await tenantContext.run(t1, async () => {
-      const stream = interceptor.intercept(contextOf(self) as never, handlerOf({ logs: [] }));
-      await (stream as unknown as Promise<unknown>).catch(() => {});
-    });
-    await settle();
-    expect((await store.query({ tenant: t1 })).length).toBe(0); // 自身不记
+    const self = { method: 'POST', url: '/audit/logs', [REQUEST_USER_KEY]: alice };
+    await tenantContext.run(t1, () =>
+      settle(interceptor.intercept(contextOf(self) as never, handlerOf({ logs: [] }))),
+    );
+    expect((await store.query({ tenant: t1 })).length).toBe(0); // 自身不记（写方法也跳过）
 
     // 失败写（handler 抛错）：不落账（不改变系统状态的操作）
     const failing = { method: 'POST', url: '/org/users', [REQUEST_USER_KEY]: alice };
-    await tenantContext.run(t1, async () => {
-      const stream = interceptor.intercept(contextOf(failing) as never, handlerOf(undefined, new Error('boom')));
-      await (stream as unknown as Promise<unknown>).catch(() => {});
-    });
-    await settle();
+    await tenantContext.run(t1, () =>
+      settle(interceptor.intercept(contextOf(failing) as never, handlerOf(undefined, new Error('boom')))),
+    );
     expect((await store.query({ tenant: t1 })).length).toBe(0);
+
+    // 公开写路由（无 REQUEST_USER_KEY）：user=null 仍落账（记录"有人写了"这一事实）
+    const anonymous = { method: 'POST', url: '/workbench/todos' };
+    await tenantContext.run(t1, () =>
+      settle(interceptor.intercept(contextOf(anonymous) as never, handlerOf({ id: 't' }))),
+    );
+    const logs = await store.query({ tenant: t1 });
+    expect(logs.length).toBe(1);
+    expect(logs[0]!.userId).toBeNull();
   });
 });
 
 describe('查询解析与权限码', () => {
   it('limit 边界与非法 ISO 拒绝（AuditInputError）', () => {
-    expect(() =>
-      (() => { const f = require('../src/audit/audit-input.js'); return f; })(),
-    ).not.toThrow();
     const params = new URLSearchParams('from=not-a-time');
-    const { parseAuditQueryInput } = require('../src/audit/audit-input.js') as typeof import('../src/audit/audit-input.js');
     expect(() => parseAuditQueryInput(params)).toThrow(AuditInputError);
     const badLimit = new URLSearchParams('limit=0');
     expect(() => parseAuditQueryInput(badLimit)).toThrow(AuditInputError);
@@ -156,7 +145,7 @@ describe('查询解析与权限码', () => {
   });
 
   it('GET /audit/logs = audit:read；模块装配并导出 AuditService', () => {
-    const proto = AuditController.prototype as Record<string, unknown>;
+    const proto = AuditController.prototype as unknown as Record<string, unknown>;
     expect(Reflect.getMetadata(PERMISSION_METADATA_KEY, proto['list'] as object)).toBe('audit:read');
     const dynamic = AuditModule.register();
     const controllers = Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, dynamic) as unknown[];

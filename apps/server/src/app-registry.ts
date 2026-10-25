@@ -9,6 +9,8 @@ import { DynamicModule, Module, Provider, Type } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import {
   ApprovalModule,
+  AuditModule,
+  AuditWriteInterceptor,
   AuthModule,
   BaselineModule,
   CoreModule,
@@ -36,11 +38,19 @@ import {
   InventoryModule,
   ListingModule,
   MasterdataModule,
+  MenuConfigModule,
+  NotificationsModule,
+  ApprovalConfigModule,
+  InMemoryMenuConfigStore,
+  InMemoryNotificationStore,
+  InMemoryApprovalFlowConfigStore,
   OrgModule,
   ReportingModule,
+  StandardReportsModule,
   WorkbenchModule,
   WorkOrderModule,
   type ApprovalCaseStore,
+  type AuditLogStore,
   type BaselineEventStore,
   type BaselineOperationLedger,
   type CostEntryStore,
@@ -48,6 +58,8 @@ import {
   type CostingModelStore,
   type CostingOperationStore,
   type CostSnapshotStore,
+  type CustomerStore,
+  type DepartmentStore,
   type DispatchDomainEventStore,
   type DispatchOperationStore,
   type DispatchOrderStore,
@@ -76,6 +88,7 @@ import {
   type PolicyStore,
   type LaborEntryStore,
   type LaborLedgerMonthStore,
+  type PositionStore,
   type ProcessDefStore,
   type ReportAuditStore,
   type ReportDomainEventStore,
@@ -84,6 +97,7 @@ import {
   type PurchaseRequestStore,
   type PurchaseReturnStore,
   type ReleaseFactStore,
+  type ReportSourceProvider,
   type StockReservationStore,
   type ResourceStore,
   type RoleStore,
@@ -91,7 +105,9 @@ import {
   type ShippingOrderStore,
   type StockAccountStore,
   type StocktakeStore,
+  type SupplierStore,
   type TodoStore,
+  type UnitStore,
   type UserStore,
   type WarehouseStore,
   type InspectionOrderStore,
@@ -102,6 +118,9 @@ import {
   type WorkOrderStore,
   type RoutingStore,
   type StandardTimeStore,
+  type MenuConfigStore,
+  type NotificationStore,
+  type ApprovalFlowConfigStore,
 } from '@smes/application';
 import { inMemoryPayrollStores, type PayrollStores } from '@smes/payroll';
 import { PayrollHttpModule } from './payroll-http.module.js';
@@ -119,6 +138,7 @@ import type { TenantId } from '@smes/business-core';
 import { AuthGuard } from './auth.guard.js';
 import {
   createCrossModuleWiring,
+  createTodoNotifyingStore,
   CROSS_MODULE_WIRING,
   HOURS_INGEST_TRIGGER,
   type CrossModuleRegisterPorts,
@@ -149,12 +169,22 @@ export interface StorePorts {
   readonly userStore?: UserStore | undefined;
   /** 角色元数据存储（OrgModule 注入点）。 */
   readonly roleStore?: RoleStore | undefined;
+  /** 机构/部门主数据存储（OrgModule 注入点，S1 backfill：0920 #3）。 */
+  readonly departmentStore?: DepartmentStore | undefined;
+  /** 岗位主数据存储（OrgModule 注入点，S1 backfill：0920 #7）。 */
+  readonly positionStore?: PositionStore | undefined;
   /** 会话存储（AuthModule 注入点；users.active 停用撤销同源，收尾波-③）。 */
   readonly sessionStore?: SessionStore | undefined;
   /** 物品主数据存储（MasterdataModule 注入点）。 */
   readonly itemStore?: ItemStore | undefined;
   /** 资源主数据存储（MasterdataModule 注入点）。 */
   readonly resourceStore?: ResourceStore | undefined;
+  /** 客户主数据存储（MasterdataModule 注入点，S1 backfill：0920 #8）。 */
+  readonly customerStore?: CustomerStore | undefined;
+  /** 供应商主数据存储（MasterdataModule 注入点，S1 backfill：0920 #9）。 */
+  readonly supplierStore?: SupplierStore | undefined;
+  /** 计量单位字典存储（MasterdataModule 注入点，S1 backfill：0920 #100）。 */
+  readonly unitStore?: UnitStore | undefined;
   /** 待办存储（WorkbenchModule 与 ApprovalModule 共享注入点——待办联动同源）。 */
   readonly todoStore?: TodoStore | undefined;
   /** 审批案件存储（ApprovalModule 注入点）。 */
@@ -293,6 +323,22 @@ export interface StorePorts {
   readonly drawingStores?: DrawingStores | undefined;
   /** metric-pack 三存储束（MetricPackHttpModule 注入点，M3 第二波）。 */
   readonly metricPackStores?: MetricPackStores | undefined;
+  /** 操作日志存储（AuditModule 注入点，S1 backfill：0920 #103）。 */
+  readonly auditLogStore?: AuditLogStore | undefined;
+  /** 标准报表事实源解析（StandardReportsModule 注入点，S1 backfill：0920 #89/91/92/96）。 */
+  readonly standardReportsSourceProvider?: ReportSourceProvider | undefined;
+  /** 菜单配置存储（MenuConfigModule 注入点，T1 能力子集：0920 #98/99）。 */
+  readonly menuConfigStore?: MenuConfigStore | undefined;
+  /**
+   * 通知存储（NotificationsModule 注入点 + 待办桥发布面，T1 能力子集：0920
+   * #101——组合根保证模块与待办桥拿到同一实例，同 sharedTodoStore 裁决）。
+   */
+  readonly notificationStore?: NotificationStore | undefined;
+  /**
+   * 审批流配置存储（ApprovalConfigModule 注入点 + approval 运行时解析器事实源，
+   * T1 能力子集：0920 #102——组合根保证配置面与案件运行时同源）。
+   */
+  readonly approvalFlowConfigStore?: ApprovalFlowConfigStore | undefined;
 }
 
 /**
@@ -310,11 +356,16 @@ export const MODULE_DEFINITIONS: Record<
       roleStore: stores.roleStore,
       // 停用撤销同源：注入同一会话存储（auth 判定与 org 停用撤销不分叉）
       sessionRevoker: stores.sessionStore,
+      departmentStore: stores.departmentStore,
+      positionStore: stores.positionStore,
     }),
   masterdata: (stores) =>
     MasterdataModule.register({
       itemStore: stores.itemStore,
       resourceStore: stores.resourceStore,
+      customerStore: stores.customerStore,
+      supplierStore: stores.supplierStore,
+      unitStore: stores.unitStore,
     }),
   workbench: (stores) => WorkbenchModule.register({ todoStore: stores.todoStore }),
   approval: (stores) =>
@@ -323,6 +374,18 @@ export const MODULE_DEFINITIONS: Record<
       recordStore: stores.approvalRecordStore,
       eventStore: stores.approvalEventStore,
       todoStore: stores.todoStore,
+      // T1 接线 #102：approval-config 装配时，案件发起/决策按租户读当前启用
+      // 配置（active 行；无 active 行回落静态默认配置）。stores.todoStore 在
+      // buildAppModule 已是待办桥包装实例（notifications 装配时）——审批派
+      // 待办即进收件箱（接线 #27）。
+      ...(stores.approvalFlowConfigStore === undefined
+        ? {}
+        : {
+            flowConfigResolver: (tenant: import('@smes/business-core').TenantId) =>
+              stores.approvalFlowConfigStore!.list(tenant).then(
+                (flows) => flows.find((row) => row.active)?.config ?? null,
+              ),
+          }),
     }),
   // M2 Wave-1 环节模块（按需启停，不进默认清单——D9 插件装配；跨模块端口
   // listing/inventory/progress/customer 暂用模块缺省空实现，Wave-2 模块合流后接线）
@@ -357,9 +420,13 @@ export const MODULE_DEFINITIONS: Record<
       machineEventStore: stores.workOrderMachineEventStore,
       // 待办联动与工作台/审批同源（sharedTodoStore 见 buildAppModule）
       todoStore: stores.todoStore,
-      // 跨模块接线（#15/#16）：dispatch 进度上卷 + inventory 配件出库
+      // 跨模块接线（#15/#16/#25/#26）：dispatch 进度上卷 + inventory 配件出库
+      // + listing 需求行 + inventory 可用量（齐套刷新的真实判定输入——S3-e
+      // 接线：此前两端口按模块缺省"零行全齐套"，缺口驱动拦截不生效）
       progressPort: wiring.workorder?.progressPort,
       issuePort: wiring.workorder?.issuePort,
+      listingPort: wiring.workorder?.listingPort,
+      inventoryPort: wiring.workorder?.inventoryPort,
     }),
   // M2 Wave-2 环节模块（同上按需启停；跨模块端口 workOrderFeed/inventory/receipt/
   // excel/materialValidation 暂用模块缺省——workOrderFeed 空实现时骨架走四类缺省集、
@@ -489,6 +556,23 @@ export const MODULE_DEFINITIONS: Record<
       sourceSetFor: wiring['metric-pack']?.sourceSetFor,
       exportPort: wiring['metric-pack']?.exportPort,
     }),
+  // S1 backfill 两模块（激活价语义：仅显式 MODULES_ENABLED 开启，同 M2/M3 环节
+  // 模块口径；取舍见 application src/audit/audit.module.ts 与
+  // src/standardreports/standardreports.module.ts 文件头）
+  audit: (stores) => AuditModule.register({ logStore: stores.auditLogStore }),
+  standardreports: (stores) =>
+    StandardReportsModule.register({
+      sourceProvider: stores.standardReportsSourceProvider,
+    }),
+  // T1 能力子集三模块（激活价语义：仅显式 MODULES_ENABLED 开启，同上先例——
+  // 0920 #98/99 菜单管理 / #101 通知中心 / #102 审批配置；存储实例由
+  // buildAppModule 裁决共享，见 shared* 构造注释）。
+  'menu-config': (stores) =>
+    MenuConfigModule.register({ menuConfigStore: stores.menuConfigStore }),
+  notifications: (stores) =>
+    NotificationsModule.register({ notificationStore: stores.notificationStore }),
+  'approval-config': (stores) =>
+    ApprovalConfigModule.register({ flowConfigStore: stores.approvalFlowConfigStore }),
   demo: () => DemoModule.register(),
 };
 
@@ -508,9 +592,14 @@ export interface BuildAppModuleOptions {
   readonly policyStore?: PolicyStore | undefined;
   readonly userStore?: UserStore | undefined;
   readonly roleStore?: RoleStore | undefined;
+  readonly departmentStore?: DepartmentStore | undefined;
+  readonly positionStore?: PositionStore | undefined;
   readonly sessionStore?: SessionStore | undefined;
   readonly itemStore?: ItemStore | undefined;
   readonly resourceStore?: ResourceStore | undefined;
+  readonly customerStore?: CustomerStore | undefined;
+  readonly supplierStore?: SupplierStore | undefined;
+  readonly unitStore?: UnitStore | undefined;
   readonly todoStore?: TodoStore | undefined;
   readonly approvalCaseStore?: ApprovalCaseStore | undefined;
   readonly approvalRecordStore?: ApprovalRecordStore | undefined;
@@ -600,6 +689,26 @@ export interface BuildAppModuleOptions {
    * 缺省 = 空源集——零接线 boot 语义诚实）。
    */
   readonly metricPackSourceSetFor?: ((tenant: TenantId) => MetricSourceSet) | undefined;
+  /** 操作日志存储（PG 形态经 connectAuditStore 注入，S1 backfill：0920 #103）。 */
+  readonly auditLogStore?: AuditLogStore | undefined;
+  /**
+   * 标准报表四源适配器束的租户解析（S1 backfill：0920 #89/91/92/96；PG 形态
+   * main.ts 注入 connectStandardReportsSources 每租户缓存包装；缺省 = 未绑定
+   * 源——零 DB boot 求值显式 503，口径装载完整、数据面诚实缺失）。
+   */
+  readonly standardReportsSourceProvider?: ReportSourceProvider | undefined;
+  /** 菜单配置存储（PG 形态经 connectMenuConfigStore 注入，T1 能力子集：0920 #98/99）。 */
+  readonly menuConfigStore?: MenuConfigStore | undefined;
+  /**
+   * 通知存储（PG 形态经 connectNotificationStore 注入，T1 能力子集：0920
+   * #101；模块与待办桥共享同源——零 DB 形态组合根裁决内存实例）。
+   */
+  readonly notificationStore?: NotificationStore | undefined;
+  /**
+   * 审批流配置存储（PG 形态经 connectApprovalConfigStore 注入，T1 能力子集：
+   * 0920 #102；配置面与 approval 案件运行时解析器共享同源）。
+   */
+  readonly approvalFlowConfigStore?: ApprovalFlowConfigStore | undefined;
 }
 
 export class ModuleRegistryError extends Error {
@@ -670,6 +779,30 @@ export function buildAppModule(
   ].filter((m) => enabled.includes(m));
   const sharedTodoStore =
     options.todoStore ?? (todoConsumers.length > 0 ? new InMemoryTodoStore() : undefined);
+
+  // T1 能力子集共享实例（零 DB 形态组合根是唯一裁决点，同 sharedTodoStore
+  // 先例；PG 形态经 options 注入同源）：
+  // - 菜单配置：menu-config 模块自身消费（读写同实例天然同源）；
+  // - 通知：notifications 模块与待办桥（接线 #27）必须同一实例——否则桥写
+  //   的收件箱行对模块端点不可见；
+  // - 审批流配置：approval-config 模块与 approval 案件运行时解析器必须同一
+  //   实例——配置页启用行对案件发起实时生效。
+  const sharedMenuConfigStore =
+    options.menuConfigStore ?? (enabled.includes('menu-config') ? new InMemoryMenuConfigStore() : undefined);
+  const sharedNotificationStore =
+    options.notificationStore ?? (enabled.includes('notifications') ? new InMemoryNotificationStore() : undefined);
+  const sharedApprovalFlowConfigStore =
+    options.approvalFlowConfigStore ??
+    (enabled.includes('approval-config') ? new InMemoryApprovalFlowConfigStore() : undefined);
+
+  // 待办 → 站内通知桥（T1 接线 #27）：notifications 装配且共享待办存在时，
+  // 在共享待办外包一层"创建即投收件箱"装饰——七方待办联动（approval/
+  // workorder/listing/inspection/dispatch/baseline + 工作台手动）全量进
+  // 通知中心，不逐模块加钩子。通知失败不阻塞待办创建（通知式合同）。
+  const effectiveTodoStore =
+    sharedTodoStore !== undefined && sharedNotificationStore !== undefined
+      ? createTodoNotifyingStore(sharedTodoStore, sharedNotificationStore)
+      : sharedTodoStore;
 
   // 物品主数据共享（M2 Wave-1）：baseline 物料校验的比对基准与 masterdata
   // 物品库必须是同一实例（零 DB 形态组合根裁决；PG 形态经 itemStore 注入同源）。
@@ -749,10 +882,15 @@ export function buildAppModule(
         policyStore: options.policyStore,
         userStore: sharedUserStore,
         roleStore: options.roleStore,
+        departmentStore: options.departmentStore,
+        positionStore: options.positionStore,
         sessionStore: sharedSessionStore,
         itemStore: sharedItemStore,
         resourceStore: options.resourceStore,
-        todoStore: sharedTodoStore,
+        customerStore: options.customerStore,
+        supplierStore: options.supplierStore,
+        unitStore: options.unitStore,
+        todoStore: effectiveTodoStore,
         approvalCaseStore: options.approvalCaseStore,
         approvalRecordStore: options.approvalRecordStore,
         approvalEventStore: options.approvalEventStore,
@@ -829,6 +967,11 @@ export function buildAppModule(
         metricPackStores:
           options.metricPackStores ??
           (enabled.includes('metric-pack') ? inMemoryMetricPackStores() : undefined),
+        auditLogStore: options.auditLogStore,
+        standardReportsSourceProvider: options.standardReportsSourceProvider,
+        menuConfigStore: sharedMenuConfigStore,
+        notificationStore: sharedNotificationStore,
+        approvalFlowConfigStore: sharedApprovalFlowConfigStore,
       }, wiring.register);
     }),
   ];
@@ -852,6 +995,10 @@ export function buildAppModule(
           { provide: APP_INTERCEPTOR, useClass: HoursIngestLinkInterceptor },
         ]
       : []),
+    // 操作日志写拦截（S1 backfill：0920 #103）：audit 模块装配才注册（同
+    // HoursIngestLinkInterceptor 条件装配先例——未启用零开销；AuditService 由
+    // AuditModule 导出，DI 随模块可用）。
+    ...(enabled.includes('audit') ? [{ provide: APP_INTERCEPTOR, useClass: AuditWriteInterceptor }] : []),
   ];
 
   @Module({ imports, controllers, providers })

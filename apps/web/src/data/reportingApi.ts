@@ -30,6 +30,7 @@
  * 存量后修正 ref 重报；reason 经 Error message 原样带回。
  */
 import { request } from './apiClient';
+import { fetchRawObject, fetchRows, postCommand, queryString, revisionOf } from './commandClient';
 import type { ReportDraftSubmission } from '@/pages/scan/reportDraft';
 
 export type { ReportDraftSubmission };
@@ -80,4 +81,94 @@ export async function submitReportDraft(draft: ReportDraftSubmission): Promise<v
     throw new Error(`报工被拒绝：${reason}`);
   }
   throw new Error(`报工结果不确定（status=${String(outcome.status)}）`);
+}
+
+// ---- 管理读面与核查命令（S2 批次；端点形状按 reporting.controllers.ts 实态） ----
+
+export interface ReportFilters {
+  readonly kind?: string | undefined;
+  readonly state?: string | undefined;
+  readonly dispatchId?: string | undefined;
+  readonly reporter?: string | undefined;
+  readonly drawingNo?: string | undefined;
+}
+
+/** 报工单列表（五类 kind × 四态；多键过滤）。 */
+export async function listReports(filters: ReportFilters = {}): Promise<readonly Record<string, unknown>[]> {
+  return fetchRows(
+    `/reports${queryString([
+      ['kind', filters.kind],
+      ['state', filters.state],
+      ['dispatchId', filters.dispatchId],
+      ['reporter', filters.reporter],
+      ['drawingNo', filters.drawingNo],
+    ])}`,
+    'reports',
+  );
+}
+
+/** 待核查队列（pending-verification 端点，具名路由在 :id 之前声明）。 */
+export async function listPendingVerification(): Promise<readonly Record<string, unknown>[]> {
+  return fetchRows('/reports/pending-verification', 'reports');
+}
+
+/** 报工详情（直返对象：修正链+留痕+里程碑）。 */
+export async function getReportDetail(id: string): Promise<Record<string, unknown>> {
+  return fetchRawObject(`/reports/${encodeURIComponent(id)}`);
+}
+
+/** 核查（reported→verified；载荷=hours 消费合同）。 */
+export function verifyReport(id: string, row: Record<string, unknown>, remark?: string | undefined) {
+  return postCommand(
+    `/reports/${encodeURIComponent(id)}/verify`,
+    'report.verify.v1',
+    { remark: remark ?? null },
+    revisionOf(row, '报工单行'),
+  );
+}
+
+/** 修正（修正版+原因，不改原单；reason 必填）。 */
+export function auditEditReport(
+  id: string,
+  row: Record<string, unknown>,
+  input: {
+    readonly reason: string;
+    readonly doneQty?: number | undefined;
+    readonly laborMinutes?: number | undefined;
+    readonly remark?: string | undefined;
+  },
+) {
+  return postCommand(
+    `/reports/${encodeURIComponent(id)}/audit-edit`,
+    'report.audit-edit.v1',
+    {
+      reason: input.reason,
+      doneQty: input.doneQty ?? null,
+      laborMinutes: input.laborMinutes ?? null,
+      businessTime: null,
+      remark: input.remark ?? null,
+    },
+    revisionOf(row, '报工单行'),
+  );
+}
+
+/** 撤销冲销（→ReportRevoked）。 */
+export function revokeReport(id: string, row: Record<string, unknown>, reason?: string | undefined) {
+  return postCommand(
+    `/reports/${encodeURIComponent(id)}/revoke`,
+    'report.revoke.v1',
+    { reason: reason ?? null },
+    revisionOf(row, '报工单行'),
+  );
+}
+
+/** 图号 × 工序进度（{rows}）。 */
+export async function getDrawingOperationProgress(drawingNo: string): Promise<readonly Record<string, unknown>[]> {
+  return fetchRows(`/reporting/drawings/${encodeURIComponent(drawingNo)}/operation-progress`, 'rows');
+}
+
+/** 产出趋势（缺省 12 日窗口；{trend} 数组行）。 */
+export async function getOutputTrend(days?: number | undefined): Promise<readonly Record<string, unknown>[]> {
+  const suffix = days === undefined ? '' : `?days=${days}`;
+  return fetchRows(`/reporting/output-trend${suffix}`, 'trend');
 }

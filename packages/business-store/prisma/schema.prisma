@@ -990,6 +990,44 @@ model ListingOperationRecord {
   @@map("listing_operations")
 }
 
+/// listing 工序×原材料关联行（U4 S10 数据面：生产购置清单 §1.3.4 重述；
+/// ProcessMaterialLinkStore 端口的 PG 持久化。运营投影——唯一写面是整表替换
+/// （事务内删旧插新），不套证据公共列、无行级乐观版本（行集不存在部分更新）。
+/// process_id 为工序行 opaque 引用（listing 域工序面落库前由调用方约定）；
+/// (tenant, process_id) 双 UNIQUE 守恒：sort_order 行序 0..N-1 唯一 +
+/// raw_material_id 同工序不重复——原文「不得建 UNIQUE」的动因是 Java 侧逻辑
+/// 删除会让已删行撞唯一键；Cadence 整表替换为硬删，DB 级守恒与
+/// listing_lines (tenant, sheet, line_no) 唯一先例一致，且顺带钉住工序引用
+/// 归属（跨清单行复用同一工序引用时插入必撞 sortOrder 唯一）。
+model ProcessMaterialLinkRecord {
+  id             String   @id @default(uuid(7))
+  tenantId       String   @map("tenant_id")
+  listingLineId  String   @map("listing_line_id")
+  processId      String   @map("process_id")
+  sortOrder      Int      @map("sort_order")
+  rawMaterialId  String   @map("raw_material_id")
+  /// 数量/件数（正整数；合同列明的数据面字段，原文表无此列）。
+  quantity       Int
+  /// 单价快照（分；录入值无取价源；null = 未定价）。
+  unitPriceMinor Int?     @map("unit_price_minor")
+  measureType    String   @map("measure_type")
+  /// 下料尺寸·长或面积值（>0，≤2 位小数；输入层校验）。
+  partLength     Float    @map("part_length")
+  /// 下料尺寸·宽（仅体积形式有值；长度/面积为 NULL）。
+  partWidth      Float?   @map("part_width")
+  /// 下料尺寸·厚（仅体积形式有值；长度/面积为 NULL）。
+  partHeight     Float?   @map("part_height")
+  cutSizeForm    String   @map("cut_size_form")
+  cutSizeUnit    String   @map("cut_size_unit")
+  createdAt      DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, processId, sortOrder])
+  @@unique([tenantId, processId, rawMaterialId])
+  @@index([tenantId, listingLineId])
+  @@map("process_material_links")
+}
+
 // ---------------------------------------------------------------------------
 // dispatch 六类派工（M2-W6）。四表分工与 workorder/listing 同一取舍（头注见
 // migrations/20261025220000_dispatch_module/migration.sql）：
@@ -1002,6 +1040,9 @@ model ListingOperationRecord {
 //                                        唯一 = DB 级乐观锁）；
 //   dispatch_operations                  命令幂等记账（PK = operation_key =
 //                                        租户|operationId，运营表豁免触发器）。
+//   aftercare_claims / aftercare_claim_lines  U5 售后报销两表（版本化运营数据，
+//                                        取舍同 outsourcing_lines；域事件复用
+//                                        event_records，幂等复用 dispatch_operations）。
 // 域事件（BusinessEvent 形状 + Outbox）不建新表：映射既有 event_records /
 // outbox_records（PG 适配见 src/dispatch/pg-dispatch-stores.ts）。
 // ---------------------------------------------------------------------------
@@ -1096,6 +1137,55 @@ model DispatchOperationRecord {
 
   @@index([tenantId])
   @@map("dispatch_operations")
+}
+
+/// 售后报销单投影行（AftercareClaimStore 端口的 PG 持久化；U5 A12——挂售后
+/// 派工单，一单一报销；版本化运营数据，费用经 updateFees 乐观重写 +1 版本；
+/// 行身份快照（报工日期/售后人/审批工时）创建即冻结；不套证据公共列——
+/// 投影取舍同 outsourcing_lines，域事件落既有 event_records）。
+model AftercareClaimRecord {
+  id            String   @id @default(uuid(7))
+  tenantId      String   @map("tenant_id")
+  /// 所挂售后派工单（dispatch_orders.id，opaque；一单一报销 = 租户内唯一）。
+  dispatchId    String   @map("dispatch_id")
+  objectVersion Int      @default(1) @map("object_version")
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, dispatchId])
+  @@map("aftercare_claims")
+}
+
+/// 售后报销明细行（AftercareClaimStore 端口的 PG 持久化；行 = 一条审批通过
+/// 报工——明细键 reportId 单内唯一；四类费用整数分，未填默认 0 落库；
+/// 小计/合计读面计算不落冗余列；无独立行版本——随报销单 updateFees 批量推进）。
+model AftercareClaimLineRecord {
+  id              String   @id @default(uuid(7))
+  tenantId        String   @map("tenant_id")
+  claimId         String   @map("claim_id")
+  lineNo          Int      @map("line_no")
+  /// 审批通过报工（work_reports.id，跨模块 opaque；单内唯一）。
+  reportId        String   @map("report_id")
+  /// 报工日期快照（报工 businessTime）。
+  reportDate      DateTime @db.Timestamptz(6) @map("report_date")
+  /// 售后人快照（报工申报人）。
+  worker          String
+  /// 审批人快照（报工核查人；可空）。
+  approvedBy      String?  @map("approved_by")
+  /// 审批工时快照（分钟；Cadence 报工单值工时，无正班/加班分列）。
+  approvedMinutes Int      @map("approved_minutes")
+  lodgingMinor    Int      @default(0) @map("lodging_minor")
+  trafficMinor    Int      @default(0) @map("traffic_minor")
+  overtimeMinor   Int      @default(0) @map("overtime_minor")
+  otherMinor      Int      @default(0) @map("other_minor")
+  remark          String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, claimId, lineNo])
+  @@unique([tenantId, claimId, reportId])
+  @@index([tenantId, claimId])
+  @@map("aftercare_claim_lines")
 }
 
 // ---------------------------------------------------------------------------
@@ -2026,4 +2116,352 @@ model MaintenanceOperationRecord {
 
   @@unique([tenantId, operationId])
   @@map("maintenance_operations")
+}
+
+// ---------------------------------------------------------------------------
+// S1 backfill：六项主数据/日志（0920 清单 #3 机构/#7 岗位/#8 客户/#9 供应商/
+// #100 计量单位/#103 操作日志）。与 users/roles/items 同取舍：配置数据与运维
+// 日志非业务事实——不套证据公共列、不设 append-only 触发器；tenant_id 全表
+// （ADR-0005），RLS 同批补登（src/rls/tables.ts + 全量重放迁移）。
+// ---------------------------------------------------------------------------
+
+/// 机构/部门节点（0920 #3；parent_id 自引用树——层级/成环守卫在 OrgService
+/// 用例层，表不设外键：父节点可停用/换挂，引用完整性由服务端守卫收口）。
+model DepartmentRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  parentId  String?  @map("parent_id")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, parentId])
+  @@map("departments")
+}
+
+/// 岗位主数据（0920 #7；department_ref 可空引用 departments.id，引用完整性
+/// 由 OrgService 守卫——同 parent_id 取舍，不设外键）。
+model PositionRecord {
+  id            String   @id @default(uuid(7))
+  tenantId      String   @map("tenant_id")
+  code          String
+  name          String
+  departmentRef String?  @map("department_ref")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, departmentRef])
+  @@map("positions")
+}
+
+/// 客户主数据（0920 #8；工作令 customerRef 文本引用的主数据面）。
+model CustomerRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  contact   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, code])
+  @@map("customers")
+}
+
+/// 供应商主数据（0920 #9；外协 supplierRef/采购引用的主数据面）。
+model SupplierRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, code])
+  @@map("suppliers")
+}
+
+/// 计量单位字典项（0920 #100；纯字典无 active——改错=直接改名，取舍见
+/// application masterdata-stores.ts 文件头）。
+model UnitRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  symbol    String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, code])
+  @@map("units")
+}
+
+/// 操作日志行（0920 #103；写操作拦截器落账的横切运维事实——append-only 只
+/// 插入，user_id 可空 = 公开路由写操作；summary 截断策略见 application
+/// audit-stores.ts 文件头，不打载荷全文）。
+model AuditLogRecord {
+  id         String   @id @default(uuid(7))
+  tenantId   String   @map("tenant_id")
+  userId     String?  @map("user_id")
+  method     String
+  path       String
+  summary    String
+  occurredAt DateTime @db.Timestamptz(6) @map("occurred_at")
+
+  @@index([tenantId, occurredAt(sort: Desc)])
+  @@index([tenantId, userId, occurredAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// T 波 S5 能力子集：三面配置/收件箱（109 口径 #98/99 菜单管理 / #102 审批
+// 配置 / #101 通知中心）。与 items/customers 同取舍：配置数据与轻量运营
+// 状态非业务事实——不套证据公共列、不设 append-only 触发器；tenant_id 全表
+// （ADR-0005），RLS 同批补登（src/rls/tables.ts + 全量重放迁移）。
+// ---------------------------------------------------------------------------
+
+/// 菜单配置集（T 波 #98/99；一行 = 一棵节点树 JSON 文档，节点形状与
+/// product-ui MenuNode 一一对应——树校验在 application 输入解析层，表只收
+/// 已校验文档。软停用同 items 体例：无 delete，active=false 停用）。
+model MenuConfigRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  nodes     Json
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, code])
+  @@map("menu_configs")
+}
+
+/// 审批流配置行（T 波 #102，approval 域；一行 = 一份 engine-flow
+/// ApprovalFlowConfig 全文 JSON。flow_id 即案件行 approval_cases.flow_config_id
+/// 引用的业务键——不可变（应用层守卫），无 delete 软停用。JSON 读出经
+/// defineApprovalFlowConfig 固化复核，损坏 fail-fast）。
+model ApprovalFlowConfigRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  flowId    String   @map("flow_id")
+  name      String
+  config    Json
+  active    Boolean  @default(true)
+  /// 历史版本快照（T1 接线 #102：整文档替换时压入先前 config+当时 updatedAt，
+  /// 应用侧维护封顶 20；旧行缺省空数组）。
+  history   Json     @default("[]")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, flowId])
+  @@map("approval_flow_configs")
+}
+
+/// 收件箱通知行（T 波 #101；轻量运营状态（未读→已读单向标记）非业务事实，
+/// 已读标记 = UPDATE，不设 append-only 触发器。通知的事实源是各业务域自身
+/// 事件账本，本行只是面向人的投影视图；数据级过滤 (tenant, recipient) 双键，
+/// 语义同 todos）。
+model NotificationRecord {
+  id          String    @id @default(uuid(7))
+  tenantId    String    @map("tenant_id")
+  recipientId String    @map("recipient_id")
+  title       String
+  body        String?
+  source      String
+  refType     String?   @map("ref_type")
+  refId       String?   @map("ref_id")
+  readAt      DateTime? @db.Timestamptz(6) @map("read_at")
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([tenantId, recipientId, readAt])
+  @@index([tenantId, recipientId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// U1 issue 发料链路（U 波 A11 增量：发料任务/发料记录）。五表分工（体例照抄
+// inventory/listing 节取舍，DDL 见 migrations/20261026140000_issue_module）：
+//   issue_tasks / issue_task_lines    投影（任务状态由汇总推导 refreshSummary
+//                                     乐观推进；子行按 (task, source_line_id)
+//                                     去重补全——派工同步幂等锚点）；
+//   issue_records                     投影（确认快照 + 撤销态：lines 为 JSONB
+//                                     载荷含库位分配与扣减回执快照，同
+//                                     purchase_orders.lines 取舍；撤销 = state
+//                                     迁移 revoked，legacy is_deleted 语义）；
+//   issue_expresses                   投影（配件发料发货头元数据；对象存储零
+//                                     依赖——图片只存引用串数组）；
+//   issue_operations                  命令幂等记账（PK = operation_key =
+//                                     租户|operationId，运营表豁免触发器）。
+// 均不套证据公共列、不设 append-only 触发器（运营单据非不可变事实——不可变
+// 事实由域事件 event_records/outbox_records 承载，复用 M1 既有表）。
+// 维度唯一性：issue_tasks (tenant, dimension_key) 唯一——dimension_key 为应用
+// 侧拼键（工作令|派工类型|归拢|设备引用），归拢行设备维空值也收敛进唯一键
+// （PG unique 对 NULL 不去重，拼键规避）。
+// ---------------------------------------------------------------------------
+
+/// 发料任务主行（投影；状态 not-started/issuing/done 由汇总推导）。
+model IssueTaskRecord {
+  id              String    @id @default(uuid(7))
+  tenantId        String    @map("tenant_id")
+  taskNo          String    @map("task_no")
+  workOrderId     String    @map("work_order_id")
+  workOrderLabel  String?   @map("work_order_label")
+  /// assembly / electrical。
+  dispatchKind    String    @map("dispatch_kind")
+  /// 整线装配外购设备归拢（一工作令一条，equipment_ref 为空）。
+  rollup          Boolean   @default(false)
+  /// 工作令设备维（opaque；归拢任务为空）。
+  equipmentRef    String?   @map("equipment_ref")
+  /// 维度拼键（工作令|派工类型|归拢|设备引用——应用侧拼键；归拢行设备维空值
+  /// 收敛进唯一键，规避 PG unique 对 NULL 不去重）。
+  dimensionKey    String    @map("dimension_key")
+  state           String
+  objectVersion   Int       @default(1) @map("object_version")
+  plannedStartAt  DateTime? @db.Timestamptz(6) @map("planned_start_at")
+  plannedEndAt    DateTime? @db.Timestamptz(6) @map("planned_end_at")
+  /// 操作工人快照（JSONB 数组）。
+  operators       Json      @default("[]")
+  /// 触发来源锚点集（JSONB 数组：关联派工单展示用）。
+  triggerRefs     Json      @default("[]") @map("trigger_refs")
+  totalRequiredQty Float    @default(0) @map("total_required_qty")
+  totalIssuedQty  Float     @default(0) @map("total_issued_qty")
+  finishedAt      DateTime? @db.Timestamptz(6) @map("finished_at")
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, dimensionKey])
+  @@index([tenantId, state])
+  @@index([tenantId, workOrderId])
+  @@map("issue_tasks")
+}
+
+/// 发料任务明细行（投影；(tenant, task, source_line_id) 唯一 = 派工同步补全幂等锚点）。
+model IssueTaskLineRecord {
+  id           String   @id @default(uuid(7))
+  tenantId     String   @map("tenant_id")
+  taskId       String   @map("task_id")
+  lineNo       Int      @map("line_no")
+  /// part / standard / electrical / equipment（镜像 listing 四类清单 kind）。
+  kind         String
+  sourceLineId String   @map("source_line_id")
+  itemId       String?  @map("item_id")
+  moduleName   String?  @map("module_name")
+  name         String?
+  drawingNo    String?  @map("drawing_no")
+  requiredQty  Float    @map("required_qty")
+  createdAt    DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, taskId, sourceLineId])
+  @@index([tenantId, taskId])
+  @@index([tenantId, sourceLineId])
+  @@map("issue_task_lines")
+}
+
+/// 发料记录主行（投影：确认快照 + 撤销态；lines 为 JSONB 明细快照集）。
+model IssueRecordRecord {
+  id             String    @id @default(uuid(7))
+  tenantId       String    @map("tenant_id")
+  recordNo       String    @map("record_no")
+  taskId         String    @map("task_id")
+  taskNo         String    @map("task_no")
+  workOrderId    String    @map("work_order_id")
+  workOrderLabel String?   @map("work_order_label")
+  dispatchKind   String    @map("dispatch_kind")
+  rollup         Boolean   @default(false)
+  equipmentRef   String?   @map("equipment_ref")
+  /// 本次发料类别（一条记录一种类别）。
+  lineKind       String    @map("line_kind")
+  issuedAt       DateTime  @db.Timestamptz(6) @map("issued_at")
+  issuedBy       String    @map("issued_by")
+  totalQty       Float     @map("total_qty")
+  expressId      String?   @map("express_id")
+  /// active / revoked（revoked 不计入已发累计）。
+  state          String    @default("active")
+  revokedAt      DateTime? @db.Timestamptz(6) @map("revoked_at")
+  revokedBy      String?   @map("revoked_by")
+  /// 明细快照集（JSONB：行快照 + 库位分配 + 扣减回执 + issueKey 回滚锚点）。
+  lines          Json
+  objectVersion  Int       @default(1) @map("object_version")
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, taskId])
+  @@index([tenantId, workOrderId])
+  @@index([tenantId, issuedAt(sort: Desc)])
+  @@map("issue_records")
+}
+
+/// 快递单（发货头元数据投影；图片引用串数组 ≤6，对象存储零依赖）。
+model IssueExpressRecord {
+  id          String   @id @default(uuid(7))
+  tenantId    String   @map("tenant_id")
+  trackingNo  String   @map("tracking_no")
+  shipper     String
+  shipTime    DateTime @db.Timestamptz(6) @map("ship_time")
+  imageRefs   Json     @default("[]") @map("image_refs")
+  workOrderId String?  @map("work_order_id")
+  taskId      String?  @map("task_id")
+  createdAt   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([tenantId, workOrderId, trackingNo])
+  @@index([tenantId, taskId])
+  @@map("issue_expresses")
+}
+
+/// 命令幂等记账行（IssueOperationStore 端口的 PG 持久化；运营表豁免触发器）。
+model IssueOperationRecord {
+  operationKey  String   @id @map("operation_key")
+  tenantId      String   @map("tenant_id")
+  operationId   String   @map("operation_id")
+  command       String
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id")
+  occurredAt    DateTime @db.Timestamptz(6) @map("occurred_at")
+
+  @@index([tenantId])
+  @@map("issue_operations")
+}
+
+// ---------------------------------------------------------------------------
+// U3 attachment 附件中心（U 波 A13：统一附件元数据 + ObjectStoragePort）。
+// 单表 attachments = 文档 mes_biz_file 重述（体例照抄 notifications 节取舍）：
+// 轻量运营元数据（追加 + 逻辑删除 deleted_at 置位），不套证据公共列、不设
+// append-only 触发器。存储引用三字段（storage_kind/target/object_key）为
+// ObjectStoragePort 对象引用（文档方案 B），仅签发短时只读引用时读——列表
+// VO 不下发（文档已确认决策：减少暴露）。物理字节在端口适配器侧（内存/
+// 本地文件，MinIO/S3 接入归部署期换装），本表零对象存储依赖。
+// 词汇重述（ADR-0010）：biz_module 字典 → biz_type 通用类型码（单段小写，
+// 取值由消费方定义）；storage_type 字典 → storage_kind 适配器自述串；
+// bucket_name → target；is_deleted → deleted_at；status 框架占位不落。
+// 排序合同：createdAt DESC + id ASC（列表索引前导租户）。
+// ---------------------------------------------------------------------------
+
+/// 附件元数据行（AttachmentStore 端口的 PG 持久化；逻辑删除不删物理对象）。
+model AttachmentRecord {
+  id          String    @id @default(uuid(7))
+  tenantId    String    @map("tenant_id")
+  fileName    String    @map("file_name")
+  contentType String?   @map("content_type")
+  /// 端口适配器自述存储类型（'memory' / 'local-fs' / 未来 'minio' 等）。
+  storageKind String    @map("storage_kind")
+  /// 存储目标标识（桶名 / 本地根目录名；保存时服务端按端口当前目标写入）。
+  target      String
+  /// 目标内对象键（不含目标名、不含前导 /）。
+  objectKey   String    @map("object_key")
+  /// 展示/兼容地址（可空——下载不以它为准，以端口签发的短时只读引用为准）。
+  fileUrl     String?   @map("file_url")
+  bizType     String    @map("biz_type")
+  bizId       String    @map("biz_id")
+  createdBy   String?   @map("created_by")
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  /// 逻辑删除时刻（null = 有效；删除不删物理对象）。
+  deletedAt   DateTime? @db.Timestamptz(6) @map("deleted_at")
+
+  @@index([tenantId, bizId, createdAt(sort: Desc)])
+  @@map("attachments")
 }

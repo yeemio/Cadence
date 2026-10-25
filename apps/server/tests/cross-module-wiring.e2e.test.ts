@@ -328,6 +328,151 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
     expect(String(refused.body.reason)).toMatch(/齐套/);
   });
 
+  it(
+    '齐套缺口驱动拦截组合态（#25/#26）：真实需求行×可用量 → complete=false 拦装配 → 补货刷新放行',
+    async () => {
+      // ---- 自足链：建令 → 清单骨架 + excel 行导入 → 人工确认 itemId（需求侧造数）----
+      const createdOrder = await post(
+        baseUrl,
+        '/workorder/work-orders',
+        envelope('workorder.create.v1', { projectName: '接线组合态-缺口驱动齐套' }),
+      );
+      expect(createdOrder.body.status).toBe('committed');
+      const wo = createdOrder.body['workOrder'] as { id: string; objectVersion: number };
+
+      const skeleton = await post(
+        baseUrl,
+        '/listing/imports',
+        envelope('listing.import.v1', { source: 'workorder', workOrderId: wo.id }),
+      );
+      expect(skeleton.body.status).toBe('committed');
+
+      // masterdata 未装配（零 DB 组合态）→ 校验 unmatched → itemId 空；行本身落账
+      const lineImport = await post(
+        baseUrl,
+        '/listing/imports',
+        envelope('listing.import.v1', {
+          source: 'excel',
+          workOrderId: wo.id,
+          kind: 'part',
+          excel: {
+            kind: 'json-tables',
+            sheets: [
+              {
+                name: '零件清单',
+                header: ['图号', '物料编码', '物料名称', '需求数量', '需求日期'],
+                rows: [['DWG-KIT-1', 'MAT-WIRE-KIT', '齐套接线物料', '10', '2026-11-30']],
+              },
+            ],
+          },
+        }),
+      );
+      expect(lineImport.body.status, `行导入：${JSON.stringify(lineImport.body)}`).toBe('committed');
+
+      const sheets = (await getJson(baseUrl, `/listing/sheets?workOrderId=${wo.id}`))['sheets'] as {
+        id: string;
+        kind: string;
+      }[];
+      const partSheet = sheets.find((sheet) => sheet.kind === 'part');
+      expect(partSheet, `四类清单应含 part：${JSON.stringify(sheets)}`).toBeDefined();
+      const detail = (await getJson(baseUrl, `/listing/sheets/${partSheet!.id}`)) as unknown as {
+        lines: { id: string; objectVersion: number }[];
+      };
+      expect(detail.lines.length).toBe(1);
+      const line = detail.lines[0]!;
+
+      const confirmed = await post(
+        baseUrl,
+        `/listing/lines/${line.id}/update`,
+        envelope('listing.line.update.v1', { itemId: 'item-wire-kit', requiredQty: 10 }, line.objectVersion),
+      );
+      expect(confirmed.body.status, `人工确认：${JSON.stringify(confirmed.body)}`).toBe('committed');
+
+      // ---- 缺口刷新（#25 需求行 × #26 可用量=0）→ complete=false + 缺口行 ----
+      // （接线前两端口按模块缺省"零行全齐套"，此快照恒 complete=true——S3-b 钉住）
+      const shortRefresh = await post(
+        baseUrl,
+        `/workorder/work-orders/${wo.id}/kit-checks`,
+        envelope('workorder.kit.refresh.v1', {}, wo.objectVersion),
+      );
+      expect(shortRefresh.body.status, `缺口刷新：${JSON.stringify(shortRefresh.body)}`).toBe('committed');
+      const shortSnapshot = shortRefresh.body['kitCheck'] as {
+        complete: boolean;
+        gapLines: { itemId: string; requiredQty: number; availableQty: number; gapQty: number }[];
+      };
+      expect(shortSnapshot.complete).toBe(false);
+      expect(shortSnapshot.gapLines).toEqual([
+        expect.objectContaining({ itemId: 'item-wire-kit', requiredQty: 10, availableQty: 0, gapQty: 10 }),
+      ]);
+
+      // ---- 拦截：缺口快照上的装配派工被拒（缺口驱动形态，非"无记录"形态）----
+      const refused = await post(
+        baseUrl,
+        '/dispatch/orders',
+        envelope('dispatch.create.v1', { workOrderId: wo.id, kind: 'assembly', operationCode: 'ASM-KIT', quantity: 2 }),
+      );
+      expect(refused.body.status).toBe('rejected');
+      expect(String(refused.body.reason)).toMatch(/齐套未通过.*被齐套拦截/);
+
+      // ---- 补货：建仓 + 生产入库 10 → 再刷新 → complete=true → 装配放行 ----
+      const warehouse = await post(
+        baseUrl,
+        '/inventory/warehouses',
+        envelope('warehouse.define.v1', {
+          code: 'WH-WIRE-KIT',
+          name: '齐套接线仓库',
+          locations: [{ code: 'LOC-A', name: '主库位' }],
+        }),
+      );
+      expect(warehouse.body.status).toBe('committed');
+      const warehouses = (await getJson(baseUrl, '/inventory/warehouses'))['warehouses'] as {
+        id: string;
+        code: string;
+      }[];
+      const warehouseId = warehouses.find((row) => row.code === 'WH-WIRE-KIT')?.id;
+      expect(warehouseId, `仓库读回：${JSON.stringify(warehouses)}`).toBeDefined();
+
+      const received = await post(
+        baseUrl,
+        '/inventory/stock/receipts',
+        envelope('stock.receive.v1', {
+          kind: 'production',
+          itemId: 'item-wire-kit',
+          warehouseId,
+          locationId: null,
+          quantity: 10,
+          inspectionId: null,
+          purchaseOrderId: null,
+          workOrderId: wo.id,
+          receiptKey: null,
+          remark: null,
+        }),
+      );
+      expect(received.body.status, `生产入库：${JSON.stringify(received.body)}`).toBe('committed');
+
+      const filledRefresh = await post(
+        baseUrl,
+        `/workorder/work-orders/${wo.id}/kit-checks`,
+        envelope('workorder.kit.refresh.v1', {}, wo.objectVersion), // 快照不推进工作令版本
+      );
+      expect(filledRefresh.body.status).toBe('committed');
+      const filledSnapshot = filledRefresh.body['kitCheck'] as {
+        complete: boolean;
+        gapLines: unknown[];
+      };
+      expect(filledSnapshot.complete).toBe(true);
+      expect(filledSnapshot.gapLines).toEqual([]);
+
+      const allowed = await post(
+        baseUrl,
+        '/dispatch/orders',
+        envelope('dispatch.create.v1', { workOrderId: wo.id, kind: 'assembly', operationCode: 'ASM-KIT', quantity: 2 }),
+      );
+      expect(allowed.body.status, `补货后装配派工：${JSON.stringify(allowed.body)}`).toBe('committed');
+    },
+    60_000,
+  );
+
   it('workOrderSubject fail-closed：costing rebuild 对不存在的工作令 rejected（接线 #6）', async () => {
     // 自足：本用例独立发布口径（不依赖用例 1 的发布次序）
     const published = await post(

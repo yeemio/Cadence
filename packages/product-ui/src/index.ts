@@ -110,6 +110,65 @@ export {
   STOCK_READ,
 } from './inventory.js';
 
+// ---- 报工单读取视图模型（S3：m.verify 核查页 + m.mine 我的报工页） ----
+export type { WorkReportRowView } from './report-views.js';
+export {
+  parseWorkReportsResponse,
+  REPORT_READ,
+  REPORT_VERIFY,
+  ReportViewsError,
+} from './report-views.js';
+
+// ---- 配件申请视图模型（S3：m.parts 申请页 + m.parts-approval 审批页） ----
+export type { PartsRequestRowView } from './parts-views.js';
+export {
+  parsePartsRequestsResponse,
+  PARTS_APPROVE,
+  PARTS_READ,
+  PARTS_REQUEST,
+  PartsViewsError,
+} from './parts-views.js';
+
+// ---- 质检队列视图模型（S3：m.inspection 四类质检页） ----
+export type { InspectionOrderRowView } from './inspection-views.js';
+export {
+  INSPECTION_JUDGE,
+  INSPECTION_READ,
+  InspectionViewsError,
+  parseInspectionOrdersResponse,
+} from './inspection-views.js';
+
+// ---- 仓储作业视图模型（S3：m.receipt/m.transfer/m.stocktake 三页） ----
+export type {
+  StocktakeDetailView,
+  StocktakeLineView,
+  StocktakeMilestoneView,
+  StocktakeRowView,
+} from './stocktake-views.js';
+export {
+  parseStocktakeDetailResponse,
+  parseStocktakesResponse,
+  STOCK_RECEIVE,
+  STOCK_TRANSFER,
+  STOCKTAKE_APPROVE,
+  STOCKTAKE_READ,
+  STOCKTAKE_RECORD,
+  StocktakeViewsError,
+} from './stocktake-views.js';
+
+// ---- 进度查询视图模型（S3：m.progress/m.op-progress 两页） ----
+export type {
+  OperationProgressRowView,
+  WorkOrderMilestoneView,
+  WorkOrderProgressView,
+} from './progress-views.js';
+export {
+  parseOperationProgressResponse,
+  parseWorkOrderProgressResponse,
+  ProgressViewsError,
+  WORKORDER_READ,
+} from './progress-views.js';
+
 // ---- 扫码会话视图模型 + IM 容器识别（M1 收尾波-②；泛型消费边缘包形状，ADR-0011） ----
 export type {
   ImContainerKind,
@@ -144,3 +203,35 @@ export {
   OFFLINE_QUEUE_STORAGE_KEY_PREFIX,
   offlineQueueStorageKey,
 } from './offline.js';
+
+// ---- 运营总览聚合视图模型（T 波 #1：四源聚合总览卡片+下钻分组） ----
+export type {
+  DeliveryRiskLevelView,
+  DeliverySituationRowView,
+  DeliverySituationView,
+  InspectionKindRowView,
+  InspectionSummaryView,
+  MachiningStatRowView,
+  OverviewDeliveryCardView,
+  OverviewInspectionCardView,
+  OverviewMachiningCardView,
+  OverviewRiskGroupView,
+  OverviewSources,
+  OverviewTodoCardView,
+  OverviewView,
+} from './overview-views.js';
+export {
+  OVERVIEW_REQUIRED_PERMISSIONS,
+  OverviewViewsError,
+  buildOverviewView,
+  parseDeliverySituationResponse,
+  parseInspectionSummaryResponse,
+  parseMachiningStatsResponse,
+} from './overview-views.js';
+
+// ---- 菜单配置合并（T1 #98/99"前端启动合并"：配置树叠加静态树，呈现面专用） ----
+export type {
+  MenuConfigNodeView,
+  MenuConfigSetView,
+} from './menu-merge.js';
+export { mergeMenuConfig, selectMenuConfigNodes } from './menu-merge.js';

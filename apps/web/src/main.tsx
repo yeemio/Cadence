@@ -5,8 +5,11 @@
  *
  * M5 首波：移动路由组 /m/*（MobileLayout 底部标签导航壳）与桌面壳
  * ShellLayout 并列——同一 SPA 内两个导航面，路由按路径前缀分流。
+ *
+ * S2 批次：页面装配表（PAGE_BY_CODE/MOBILE_PAGE_BY_CODE）抽提至
+ * pages/assembly.ts（装配测试直接对注册表断言，本文件只消费）。
  */
-import { StrictMode, type ComponentType } from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Refine } from '@refinedev/core';
@@ -18,18 +21,9 @@ import { authInFlightCount } from './data/apiClient';
 import { setInFlightProvider, startSessionKeepalive } from './session-keepalive';
 import { menuRoutes } from './menu';
 import { mobileRoutes } from './mobile';
+import { MOBILE_PAGE_BY_CODE, PAGE_BY_CODE } from './pages/assembly';
 import { ModulePagePlaceholder } from './pages/ModulePagePlaceholder';
 import { NotFoundPage } from './pages/NotFoundPage';
-import { ItemsPage } from './pages/masterdata/ItemsPage';
-import { ResourcesPage } from './pages/masterdata/ResourcesPage';
-import { WorkbenchPage } from './pages/workbench/WorkbenchPage';
-import { OrgRolesPage } from './pages/org/OrgRolesPage';
-import { OrgUsersPage } from './pages/org/OrgUsersPage';
-import { ScanPage } from './pages/scan/ScanPage';
-import { MobileWorkbenchPage } from './pages/m/WorkbenchPage';
-import { MobileReportPage } from './pages/m/ReportPage';
-import { MobileHoursPage } from './pages/m/HoursPage';
-import { MobileStockPage } from './pages/m/StockPage';
 import { ShellLayout } from './shell/ShellLayout';
 import { MobileLayout } from './shell/MobileLayout';
 import './index.css';
@@ -55,33 +49,19 @@ const queryClient = new QueryClient({
   },
 });
 
-/** 桌面模块代码 -> 页面装配（占位页之外的已实现页面在此挂接）。 */
-const PAGE_BY_CODE: Record<string, ComponentType> = {
-  workbench: WorkbenchPage,
-  'masterdata-item': ItemsPage,
-  'masterdata-resource': ResourcesPage,
-  scan: ScanPage,
-  'system-user': OrgUsersPage,
-  'system-role': OrgRolesPage,
-};
-
-/** 移动页面码 -> 页面装配（注册表见 mobile.ts；预研 scan-report 已升级为 m.report）。 */
-const MOBILE_PAGE_BY_CODE: Record<string, ComponentType> = {
-  'm.workbench': MobileWorkbenchPage,
-  'm.report': MobileReportPage,
-  'm.hours': MobileHoursPage,
-  'm.stock': MobileStockPage,
-};
-
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <Refine
-        authProvider={authProvider}
-        routerProvider={routerProvider}
-        options={{ syncWithLocation: true, disableTelemetry: true }}
-      >
-        <BrowserRouter>
+      {/* T1 白屏修复：BrowserRouter 必须在 Refine 外层——@refinedev/react-router
+          的 routerProvider.parse 渲染即调 useLocation()，Refine 在 Router context
+          之外会整树崩（生产构建登录后白屏；登录 bundle 不加载本模块故 preview
+          curl 一直看不出）。E2E 证据：testkit e2e-browser 主壳走查。 */}
+      <BrowserRouter>
+        <Refine
+          authProvider={authProvider}
+          routerProvider={routerProvider}
+          options={{ syncWithLocation: true, disableTelemetry: true }}
+        >
           <Routes>
             <Route element={<ShellLayout />}>
               {menuRoutes.map((route) => {
@@ -105,8 +85,8 @@ createRoot(document.getElementById('root') as HTMLElement).render(
               })}
             </Route>
           </Routes>
-        </BrowserRouter>
-      </Refine>
+        </Refine>
+      </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,
 );

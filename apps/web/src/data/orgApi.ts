@@ -24,6 +24,7 @@ import {
   type OrgUserView,
 } from '@smes/product-ui';
 import { ApiError, request as sharedRequest } from './apiClient';
+import { fetchRows } from './commandClient';
 
 export class OrgApiError extends Error {
   constructor(
@@ -89,4 +90,71 @@ export async function setOrgRolePermissions(name: string, codes: readonly string
     method: 'PUT',
     body: JSON.stringify(buildPermissionCodesPayload(codes)),
   });
+}
+
+// ---- 机构/岗位（S3-a：0920 #3/#7 管理页；org.controllers.ts 实态） ----
+// 与上面用户/角色的差别：这两组是普通 REST 资源（GET 列表/POST 创建/PUT 期望态
+// 更新直返实体，无命令信封、无乐观锁）——按 S2 批次管理页的裸行风格走
+// fetchRows + 直连 POST/PUT，行形状以 DepartmentMaster/PositionMaster 为准。
+
+/** GET /org/departments → { departments: [...] }（平铺全量；组树是页面呈现取舍）。 */
+export async function listDepartments(): Promise<readonly Record<string, unknown>[]> {
+  return fetchRows('/org/departments', 'departments');
+}
+
+/** POST /org/departments（code/name 必填；parentId 可选引用，空白不送）。 */
+export async function createDepartment(input: {
+  readonly code: string;
+  readonly name: string;
+  readonly parentId?: string;
+}): Promise<Record<string, unknown>> {
+  const payload: Record<string, unknown> = { code: input.code.trim(), name: input.name.trim() };
+  const parentId = input.parentId?.trim();
+  if (parentId) payload.parentId = parentId;
+  return (await request('/org/departments', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })) as Record<string, unknown>;
+}
+
+/** PUT /org/departments/:id（字段级期望态；软停用 = { active: false }）。 */
+export async function updateDepartment(
+  id: string,
+  patch: { readonly name?: string; readonly parentId?: string | null; readonly active?: boolean },
+): Promise<Record<string, unknown>> {
+  return (await request(`/org/departments/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  })) as Record<string, unknown>;
+}
+
+/** GET /org/positions → { positions: [...] }。 */
+export async function listPositions(): Promise<readonly Record<string, unknown>[]> {
+  return fetchRows('/org/positions', 'positions');
+}
+
+/** POST /org/positions（code/name 必填；departmentRef 可选引用）。 */
+export async function createPosition(input: {
+  readonly code: string;
+  readonly name: string;
+  readonly departmentRef?: string;
+}): Promise<Record<string, unknown>> {
+  const payload: Record<string, unknown> = { code: input.code.trim(), name: input.name.trim() };
+  const departmentRef = input.departmentRef?.trim();
+  if (departmentRef) payload.departmentRef = departmentRef;
+  return (await request('/org/positions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })) as Record<string, unknown>;
+}
+
+/** PUT /org/positions/:id（字段级期望态；软停用 = { active: false }）。 */
+export async function updatePosition(
+  id: string,
+  patch: { readonly name?: string; readonly departmentRef?: string | null; readonly active?: boolean },
+): Promise<Record<string, unknown>> {
+  return (await request(`/org/positions/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  })) as Record<string, unknown>;
 }

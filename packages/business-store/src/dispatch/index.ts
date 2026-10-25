@@ -19,3 +19,5 @@ export type {
   DispatchStoreHandle,
   DispatchStoreOptions,
 } from './pg-dispatch-stores.js';
+// U5 aftercare claim 售后报销（A12：一单一投影 + 明细行；与派工单族共享装配工厂）
+export { PgAftercareClaimStore, rowToAftercareClaimLine } from './pg-aftercare-claim-stores.js';

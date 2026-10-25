@@ -39,12 +39,26 @@ export const DEMO_IDENTITIES: readonly MockIdentity[] = [
     tenantId: TenantId.create('tenant-demo'),
     email: 'org-admin@demo.local',
     displayName: '演示组织管理员',
-    // 精确权限码（非 '*' bypass）：菜单按码过滤的用户管理/角色授权可见性证据
+    // 精确权限码（非 '*' bypass）：菜单按码过滤的用户管理/角色授权可见性证据。
+    // S3-a：补组织/基础数据 backfill 六资源码 + audit:read（0920 #3/#7/#8/#9/
+    // #100/#103 页面可见面——机构/岗位挂系统管理组，客户/供应商/计量单位挂
+    // 基础数据组，操作日志页挂 audit:read；operator 不动，菜单过滤证据面保持）。
     permissions: [
       permissionCode('user:read'),
       permissionCode('user:write'),
       permissionCode('role:read'),
       permissionCode('role:write'),
+      permissionCode('department:read'),
+      permissionCode('department:write'),
+      permissionCode('position:read'),
+      permissionCode('position:write'),
+      permissionCode('customer:read'),
+      permissionCode('customer:write'),
+      permissionCode('supplier:read'),
+      permissionCode('supplier:write'),
+      permissionCode('unit:read'),
+      permissionCode('unit:write'),
+      permissionCode('audit:read'),
     ],
   },
   {
@@ -59,15 +73,59 @@ export const DEMO_IDENTITIES: readonly MockIdentity[] = [
     // 码与 M2 reporting 后端端点同码 report:submit）。
     // M5 首波：补工时/库存读取（移动端 m.hours/m.stock 页可见——车间工人
     // demo 身份按"移动四页全见"口径授码，与后端 /hours/my、/inventory/stock 同码）。
+    // S2 批次：桌面菜单码全部切后端控制器实态 :read 码——操作员按"车间岗
+    // 位桌面可见面"授制造运营 + 报工 + 工时统计 + 库存两页的读码；采购/质检/
+    // 盘点/发货/成本/工艺基线/组织管理均不授予（菜单按码过滤的证据面）。
+    // （workorder:access/dispatch:access 两个 M1 菜单占位码随占位页退役移除。）
+    // S3-d：增授配件申请/故障上报动作码（移动端 m.parts/m.fault 页可见——
+    // 117 配件申请与 127 故障上报是现场工人动作；桌面菜单门控全在 :read 码，
+    // 桌面可见面不变）。
     permissions: [
-      permissionCode('workorder:access'),
-      permissionCode('dispatch:access'),
       permissionCode('workbench:read'),
       permissionCode('item:read'),
       permissionCode('scan:read'),
       permissionCode('report:submit'),
       permissionCode('hours:read'),
       permissionCode('stock:read'),
+      permissionCode('workorder:read'),
+      permissionCode('parts:read'),
+      permissionCode('listing:read'),
+      permissionCode('gap:read'),
+      permissionCode('dispatch:read'),
+      permissionCode('outsourcing:read'),
+      permissionCode('report:read'),
+      permissionCode('parts:request'),
+      permissionCode('fault:report'),
+    ],
+  },
+  {
+    userId: UserId.create('user-demo-lead'),
+    tenantId: TenantId.create('tenant-demo'),
+    email: 'lead@demo.local',
+    displayName: '演示班长',
+    // S3-d：移动呈现批次的动作码承载身份（覆盖矩阵 §3.2 19 项的呈现可见面
+    // 证据——核查/审批/判定/入库/调拨/盘点全径 + 工人查询页）。小厂单班长
+    // 兼质检与库管的演示口径；读码按各移动页队列读取实态同码（verify 队列
+    // report:read、配件队列 parts:read、质检队列 inspection:read、盘点台账
+    // stocktake:read）。桌面菜单可见面：工作令/配件/报工/核查/质检/库存/
+    // 盘点/实时库存（全部 :read 码同构，桌面证据面不受影响）。
+    permissions: [
+      permissionCode('workbench:read'),
+      permissionCode('report:read'),
+      permissionCode('report:verify'),
+      permissionCode('workorder:read'),
+      permissionCode('parts:read'),
+      permissionCode('parts:request'),
+      permissionCode('parts:approve'),
+      permissionCode('inspection:read'),
+      permissionCode('inspection:judge'),
+      permissionCode('fault:report'),
+      permissionCode('stock:read'),
+      permissionCode('stock:receive'),
+      permissionCode('stock:transfer'),
+      permissionCode('stocktake:read'),
+      permissionCode('stocktake:record'),
+      permissionCode('stocktake:approve'),
     ],
   },
 ];

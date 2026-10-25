@@ -5,13 +5,13 @@
     "description": "06-inspection §3 不合格闭环：nonconform.close.v1（载荷形态=application 质检测试 {remark}；v1.1 实施裁定：复检不重建明细、closed 无放行量）。链式场景——录制前替换 __NONCONFORM_ID__ 与 __EXPECTED_REVISION__（前置 dispose→recheck 链见手册 §4.2）",
     "input": {
       "method": "POST",
-      "path": "/inspection/nonconformities/__NONCONFORM_ID__/close",
+      "path": "/inspection/nonconformities/nc-01a1738f-7dc1-7336-8763-2101cc1d73f4/close",
       "headers": {
         "x-smes-user": "user-seed-admin"
       },
       "body": {
         "operationId": "m2rec-inspection-nonconform-close",
-        "expectedRevision": "__EXPECTED_REVISION__",
+        "expectedRevision": 2,
         "command": {
           "kind": "nonconform.close.v1",
           "payload": {
@@ -21,7 +21,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "乐观锁冲突：expectedRevision=2，不合格处置当前 objectVersion=3"
+    },
+    "recordedAt": "2026-10-25T15:02:46.385Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

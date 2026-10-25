@@ -5,13 +5,13 @@
     "description": "06-inspection §3 检验记录：inspection.judge.v1 合格/不合格数量（e2e-live-db 口径 93 造数 c 形态；judgedAt 物化回厂时点）。链式场景——录制前替换 __INSPECTION_ID__ 与 __EXPECTED_REVISION__（质检单须 pending）",
     "input": {
       "method": "POST",
-      "path": "/inspection/orders/__INSPECTION_ID__/judgment",
+      "path": "/inspection/orders/insp-01a1738f-7d99-7623-8aeb-a12a230ca72c/judgment",
       "headers": {
         "x-smes-user": "user-seed-admin"
       },
       "body": {
         "operationId": "m2rec-inspection-judge",
-        "expectedRevision": "__EXPECTED_REVISION__",
+        "expectedRevision": 1,
         "command": {
           "kind": "inspection.judge.v1",
           "payload": {
@@ -23,7 +23,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "乐观锁冲突：expectedRevision=1，质检单当前 objectVersion=2"
+    },
+    "recordedAt": "2026-10-25T15:02:46.197Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

@@ -31,7 +31,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "工艺路线 'DWG-M2REC-01' 已存在（当前 v1），修订请走 revise 命令并声明 expectedRevision"
+    },
+    "recordedAt": "2026-10-25T15:16:46.624Z",
+    "recordedFrom": "http://127.0.0.1:55499"
+  },
   "compare": {
     "ignore": [
       "id",

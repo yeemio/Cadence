@@ -78,6 +78,26 @@
     "./maintenance": {
       "types": "./dist/maintenance/index.d.ts",
       "default": "./dist/maintenance/index.js"
+    },
+    "./audit": {
+      "types": "./dist/audit/index.d.ts",
+      "default": "./dist/audit/index.js"
+    },
+    "./standardreports": {
+      "types": "./dist/standardreports/index.d.ts",
+      "default": "./dist/standardreports/index.js"
+    },
+    "./menu-config": {
+      "types": "./dist/menu-config/index.d.ts",
+      "default": "./dist/menu-config/index.js"
+    },
+    "./notifications": {
+      "types": "./dist/notifications/index.d.ts",
+      "default": "./dist/notifications/index.js"
+    },
+    "./approval-config": {
+      "types": "./dist/approval-config/index.d.ts",
+      "default": "./dist/approval-config/index.js"
     }
   },
   "scripts": {

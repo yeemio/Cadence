@@ -71,6 +71,7 @@ import {
   PurchaseRequestsController,
   PurchaseReturnsController,
 } from '../../src/listing/listing.controllers.js';
+import { ProcessMaterialsController } from '../../src/listing/process-material.controllers.js';
 import { ListingService } from '../../src/listing/listing.service.js';
 import type { ListingCommitted, ListingCommandResult } from '../../src/listing/listing.service.js';
 
@@ -1248,12 +1249,13 @@ describe('模块装配与权限码', () => {
       PurchaseOrdersController,
       PurchaseReturnsController,
       PurchaseQueriesController,
+      ProcessMaterialsController,
     ]);
     expect(module.providers?.length).toBeGreaterThan(0);
     expect(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, ListingModule)).toBeUndefined();
   });
 
-  it('权限码：22 路由逐点声明（03-listing.md §5 最小集）', () => {
+  it('权限码：24 路由逐点声明（03-listing.md §5 最小集 + U4 工序×原材料关联两路由复用 listing:read/write）', () => {
     const expected: readonly [object, string, string][] = [
       [ListingSheetsController.prototype, 'import', 'listing:import'],
       [ListingSheetsController.prototype, 'sheets', 'listing:read'],
@@ -1277,6 +1279,8 @@ describe('模块装配与权限码', () => {
       [PurchaseQueriesController.prototype, 'overdue', 'purchase:read'],
       [PurchaseQueriesController.prototype, 'exportDetails', 'purchase:read'],
       [PurchaseQueriesController.prototype, 'details', 'purchase:read'],
+      [ProcessMaterialsController.prototype, 'replace', 'listing:write'],
+      [ProcessMaterialsController.prototype, 'list', 'listing:read'],
     ];
     for (const [target, method, code] of expected) {
       const actual = Reflect.getMetadata(

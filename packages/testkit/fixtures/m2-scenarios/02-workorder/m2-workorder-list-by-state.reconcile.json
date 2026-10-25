@@ -14,7 +14,30 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 200,
+    "body": {
+      "orders": [
+        {
+          "id": "wo-01a17391-0dbd-7513-a7ee-500afc5ad012",
+          "tenant": "default",
+          "flowConfigId": "work-order",
+          "state": "not_started",
+          "objectVersion": 1,
+          "customerRef": null,
+          "projectName": "M2对账-工作令-01",
+          "salesRep": null,
+          "manager": null,
+          "plannedDeliveryAt": "2026-12-31T00:00:00.000Z",
+          "packagingArrivalAt": "2026-12-20T00:00:00.000Z",
+          "createdAt": "2026-10-25T14:57:28.513Z",
+          "updatedAt": "2026-10-25T14:57:28.513Z"
+        }
+      ]
+    },
+    "recordedAt": "2026-10-25T15:06:38.220Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

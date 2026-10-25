@@ -1,0 +1,14 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:4280",
+      "localStorage": [
+        {
+          "name": "cadence.session.v2",
+          "value": "{\"userId\":\"user-demo-admin\",\"tenantId\":\"default\",\"displayName\":\"演示管理员（Web 登录流）\",\"permissions\":[\"*\"],\"token\":\"8Zh848RTM71oyX88BCO2zU2B3bfcrdUS2B2a1zrkdsM\",\"expiresAt\":\"2026-10-26T01:18:37.096Z\"}"
+        }
+      ]
+    }
+  ]
+}

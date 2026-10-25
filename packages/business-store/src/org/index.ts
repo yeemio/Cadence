@@ -6,7 +6,9 @@
  */
 export {
   connectBusinessStore,
+  PgDepartmentStore,
   PgPolicyStore,
+  PgPositionStore,
   PgRoleStore,
   PgSessionStore,
   PgUserStore,

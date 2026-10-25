@@ -121,6 +121,32 @@
  *     值；零 DB = 空源集（装载/清单语义完整，求值显式报"源未绑定"——与
  *     payroll 缺省空源同口径，语义诚实）。导出端口 = ExcelJS 同实例结构同形
  *     （#21 先例）。
+ *
+ * S3-e（workorder 齐套判定输入接线——S3-b e2e 发现的组合根缺口：注册表
+ * workorder 只注 #15/#16，齐套刷新按模块缺省"零行全齐套"）：
+ * 25. workorder.listingPort ← listing 清单需求行投影
+ *     机制：service 级迟到绑定——createListingRequirementAdapter(
+ *     ListingService.requirementLines)（仅 itemId 已解析行；装备类不入齐套
+ *     范围由 workorder 侧 kitScopeKinds 过滤，口径在消费方）。
+ * 26. workorder.inventoryPort ← inventory 可用量
+ *     机制：service 级迟到绑定——createInventoryAvailabilityAdapter(
+ *     InventoryService.availableQtyOf)（跨仓 Σ max(0, 总量−预占) 恒等式口径；
+ *     与 #13 listing 可用量共用同一迟到绑定的 InventoryService）。
+ *     接线效果：workorder.kit.refresh.v1 的快照由真实需求行 × 可用量驱动
+ * （缺口 → complete=false → dispatch 齐套拦截真实生效）；未接线形态的
+ * 模块缺省（零行全齐套）语义不变——单模块装配/测试不受影响。
+ *
+ * T1 能力子集（#101 通知中心的业务事件发布钩子）：
+ * 27. notifications.inbox ← 共享 TodoStore 创建面（待办/审批/派修/点名全量）
+ *     机制：store 级装饰——createTodoNotifyingStore(共享 TodoStore,
+ *     NotificationStore)。组合根在 sharedTodoStore 裁决点包一层：每次待办
+ *     创建同发一条站内通知（recipient=assignee、source=todo.source、
+ *     refType/refId 透传；body=null——短通知只投标题）。发布失败不回滚业务
+ *     命令（catch + console.warn 留痕——通知是投影视图，事实源在各业务域
+ *     事件账本，见 notifications-stores.ts 文件头分工）。0920 #101 原文口径
+ *     "将待办、审批等业务消息推送至站内消息"：approval/workorder/listing/
+ *     inspection/dispatch/baseline 七方待办联动全部经此一点进收件箱，
+ *     不逐模块加钩子。notifications 模块未装配 = 不包（零行为变化）。
  */
 import { randomUUID } from 'node:crypto';
 import type { INestApplicationContext, Type } from '@nestjs/common';
@@ -137,6 +163,7 @@ import {
   createHoursCostSource,
   createInventoryAvailabilityAdapter,
   createInventoryReceiptAdapter,
+  createListingRequirementAdapter,
   createPartsIssueAdapter,
   createStockReleaseRecorder,
   DISPATCH_NOOP_INSPECTION_INTAKE,
@@ -145,7 +172,10 @@ import {
   InspectionService,
   InventoryService,
   LISTING_UNWIRED_MATERIAL_VALIDATION,
+  ListingService,
   minutesToHours,
+  type InventoryAvailabilityPort,
+  type ListingRequirementPort,
   REPORT_EVENT_TYPES,
   WORKORDER_EVENT_TYPES,
   WORK_ORDER_AGGREGATE_TYPE,
@@ -186,6 +216,9 @@ import {
   type WorkOrderStore,
   type WorkOrderSubjectPort,
   type WorkReportStore,
+  type NotificationStore,
+  type TodoItem,
+  type TodoStore,
 } from '@smes/application';
 import {
   makeCommandEnvelope,
@@ -236,6 +269,10 @@ export interface CrossModuleWiringStores {
 /** 各模块 register 的跨模块端口注入面（形状与 *ModuleOptions 对应字段同构）。 */
 export interface CrossModuleRegisterPorts {
   readonly workorder?: {
+    /** listing 需求行（齐套判定需求侧，#25）；缺省回落模块空实现（零行全齐套）。 */
+    readonly listingPort?: ListingRequirementPort | undefined;
+    /** inventory 可用量（齐套判定供给侧，#26）；缺省回落模块空实现。 */
+    readonly inventoryPort?: InventoryAvailabilityPort | undefined;
     readonly progressPort?: Parameters<typeof createDispatchProgressAdapter>[0] | undefined;
     readonly issuePort?: PartsIssuePort | undefined;
   };
@@ -789,6 +826,43 @@ function createImNotifyChannel(sink: ImNotifySink): NotifyChannel {
   };
 }
 
+/**
+ * 待办 → 站内通知桥（T1 #101 接线清单 #27）：装饰共享 TodoStore 的创建面——
+ * 每次待办创建同发一条收件箱通知（recipient=assignee、source=todo.source、
+ * refType/refId 透传）。通知式合同：发布失败不回滚待办创建（catch + warn），
+ * 待办本体先行返回。
+ */
+export function createTodoNotifyingStore(
+  todoStore: TodoStore,
+  notifications: NotificationStore,
+): TodoStore {
+  return {
+    create: async (input) => {
+      const todo: TodoItem = await todoStore.create(input);
+      try {
+        await notifications.create({
+          tenant: input.tenant,
+          recipient: input.assignee,
+          title: input.title,
+          body: null,
+          source: input.source,
+          refType: input.refType ?? null,
+          refId: input.refId ?? null,
+        });
+      } catch (error) {
+        console.warn(
+          '[smes] 待办→通知投递失败（通知式合同，不阻塞待办创建）:',
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      return todo;
+    },
+    listOwn: (tenant, assignee) => todoStore.listOwn(tenant, assignee),
+    findOwn: (tenant, assignee, id) => todoStore.findOwn(tenant, assignee, id),
+    complete: (tenant, assignee, id) => todoStore.complete(tenant, assignee, id),
+  };
+}
+
 // ---- wiring 装配 ----
 
 /** wiring 构造入参。 */
@@ -835,8 +909,10 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
   const { enabled, stores } = input;
   const has = (module: string): boolean => enabled.includes(module);
 
-  // 迟到引用（#3/#8/#9/#12~#17 的 service 级端口；#22 的 maintenance）
+  // 迟到引用（#3/#8/#9/#12~#17 的 service 级端口；#22 的 maintenance；
+  // #25 的 listing）
   const lateInventory = new LateBound<InventoryService>();
+  const lateListing = new LateBound<ListingService>();
   const lateDispatch = new LateBound<DispatchService>();
   const lateBaseline = new LateBound<BaselineService>();
   const lateInspection = new LateBound<InspectionService>();
@@ -1054,6 +1130,34 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
         })
       : undefined;
 
+  // #25 workorder.listingPort（service 级迟到绑定；未绑定回落空实现语义——
+  // 组合根构造到 bind 之间的窗口与模块缺省 EMPTY_LISTING_PORT 同口径零行）
+  const workorderListingPort: ListingRequirementPort | undefined =
+    has('workorder') && has('listing')
+      ? createListingRequirementAdapter({
+          requirementLines: (tenant, workOrderId) => {
+            const listing = lateListing.resolve();
+            return listing === undefined
+              ? Promise.resolve([])
+              : listing.requirementLines(tenant, workOrderId);
+          },
+        })
+      : undefined;
+
+  // #26 workorder.inventoryPort（service 级迟到绑定；与 #13/#16 共用同一
+  // InventoryService——可用量恒等式口径单点定义）
+  const workorderInventoryPort: InventoryAvailabilityPort | undefined =
+    has('workorder') && has('inventory')
+      ? createInventoryAvailabilityAdapter({
+          availableQtyOf: async (tenant, itemIds) => {
+            const inventory = lateInventory.resolve();
+            return inventory === undefined
+              ? new Map<string, number>()
+              : inventory.availableQtyOf(tenant, itemIds);
+          },
+        })
+      : undefined;
+
   // #17 inspection.stockReleasePort（service 级迟到绑定；未绑定回落 no-op 缺省语义）
   const stockReleasePort: StockReleasePort | undefined =
     has('inspection') && has('inventory')
@@ -1204,9 +1308,14 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
 
   return {
     register: {
-      ...(progressPort !== undefined || issuePort !== undefined
+      ...(progressPort !== undefined ||
+      issuePort !== undefined ||
+      workorderListingPort !== undefined ||
+      workorderInventoryPort !== undefined
         ? {
             workorder: {
+              ...(workorderListingPort !== undefined ? { listingPort: workorderListingPort } : {}),
+              ...(workorderInventoryPort !== undefined ? { inventoryPort: workorderInventoryPort } : {}),
               ...(progressPort !== undefined ? { progressPort } : {}),
               ...(issuePort !== undefined ? { issuePort } : {}),
             },
@@ -1302,6 +1411,10 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
       if (has('inventory')) {
         const inventory = resolveOptional(InventoryService);
         if (inventory !== undefined) lateInventory.bind(inventory);
+      }
+      if (has('listing')) {
+        const listing = resolveOptional(ListingService);
+        if (listing !== undefined) lateListing.bind(listing);
       }
       if (has('dispatch')) {
         const dispatch = resolveOptional(DispatchService);

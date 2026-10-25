@@ -5,13 +5,13 @@
     "description": "05-reporting §7 对账点 2「撤销后重报的净额口径一致」：report.revoke.v1（revoked 终态旁支→hours 冲销信号；载荷形态=cross-module-wiring 冲销验证用例）。链式场景——录制前替换 __REPORT_ID__ 与 __EXPECTED_REVISION__",
     "input": {
       "method": "POST",
-      "path": "/reports/__REPORT_ID__/revoke",
+      "path": "/reports/wr-01a1738f-7d5f-7c71-b80e-2947c24c7a33/revoke",
       "headers": {
         "x-smes-user": "user-seed-admin"
       },
       "body": {
         "operationId": "m2rec-report-revoke",
-        "expectedRevision": "__EXPECTED_REVISION__",
+        "expectedRevision": 3,
         "command": {
           "kind": "report.revoke.v1",
           "payload": {
@@ -21,7 +21,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "乐观锁冲突：expectedRevision=3，报工单当前 objectVersion=4"
+    },
+    "recordedAt": "2026-10-25T15:02:46.001Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

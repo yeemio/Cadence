@@ -80,6 +80,18 @@ describe('组织权限码常量与演示身份（M1 增量 3-D）', () => {
       'user:write',
       'role:read',
       'role:write',
+      // S3-a：组织/基础数据 backfill 六资源 + audit:read（与后端控制器同码）
+      'department:read',
+      'department:write',
+      'position:read',
+      'position:write',
+      'customer:read',
+      'customer:write',
+      'supplier:read',
+      'supplier:write',
+      'unit:read',
+      'unit:write',
+      'audit:read',
     ]);
     expect(orgAdmin?.permissions.includes(ADMIN_PERMISSION)).toBe(false);
   });

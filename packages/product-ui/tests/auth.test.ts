@@ -56,8 +56,6 @@ describe('createMockAuthProvider：refine v5 契约骨架', () => {
 
     await provider.login(operatorLogin);
     expect(await provider.getPermissions?.()).toEqual([
-      permissionCode('workorder:access'),
-      permissionCode('dispatch:access'),
       permissionCode('workbench:read'),
       permissionCode('item:read'),
       // M1 收尾波-②：operator 增授 scan:read（与 session.test 同步）
@@ -67,6 +65,18 @@ describe('createMockAuthProvider：refine v5 契约骨架', () => {
       // M5 首波：operator 增授 hours:read / stock:read（移动端页可见；与 session.test 同步）
       permissionCode('hours:read'),
       permissionCode('stock:read'),
+      // S2 批次：桌面菜单码切后端实态 :read 码（与 session.test 同步）
+      permissionCode('workorder:read'),
+      permissionCode('parts:read'),
+      permissionCode('listing:read'),
+      permissionCode('gap:read'),
+      permissionCode('dispatch:read'),
+      permissionCode('outsourcing:read'),
+      permissionCode('report:read'),
+      // S3-d：operator 增授 parts:request / fault:report（移动端 m.parts/m.fault
+      // 可见；与 session.test 同步——桌面菜单门控在 :read 码，桌面可见面不变）
+      permissionCode('parts:request'),
+      permissionCode('fault:report'),
     ]);
     expect(await provider.getIdentity?.()).toEqual({
       userId: 'user-demo-operator',

@@ -16,6 +16,7 @@ import { AudioWaveform, Boxes, Circle, ClipboardPen, Clock3, LayoutGrid, LoaderC
 import type { LucideIcon } from 'lucide-react';
 import { filterMenuByPermissions, toPermissionCodes } from '@smes/product-ui';
 import { MOBILE_MENU } from '../mobile';
+import { useMergedMenu } from './useMenuConfig';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -50,7 +51,10 @@ interface MobileIdentity {
 
 function MobileBody() {
   const { data: permissionData } = usePermissions({});
-  const tabs = filterMenuByPermissions(MOBILE_MENU, toPermissionCodes(permissionData));
+  // T1 #99：移动菜单配置（code='mobile'）启动合并——fail-open（取舍同桌面
+  // 侧栏，见 shell/useMenuConfig.ts）。配置树未含的标签隐藏（移动导航可配）。
+  const mergedTabs = useMergedMenu(MOBILE_MENU, 'mobile');
+  const tabs = filterMenuByPermissions(mergedTabs, toPermissionCodes(permissionData));
 
   const { data: identityData } = useGetIdentity();
   const identity =

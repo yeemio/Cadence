@@ -21,7 +21,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "操作幂等冲突：operationId 'm2rec-hours-rebuild-month' 已落账，不重试同信封（可改后重发新 operationId）"
+    },
+    "recordedAt": "2026-10-25T15:02:46.980Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

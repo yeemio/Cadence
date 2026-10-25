@@ -21,7 +21,12 @@ import {
   roleName,
   permissionCode,
 } from '../src/index.js';
-import { OrgRolesController, OrgUsersController } from '../src/org/org.controllers.js';
+import {
+  OrgDepartmentsController,
+  OrgPositionsController,
+  OrgRolesController,
+  OrgUsersController,
+} from '../src/org/org.controllers.js';
 
 const t1 = TenantId.create('t1');
 const t2 = TenantId.create('t2');
@@ -324,13 +329,15 @@ describe('控制器权限码元数据（@RequirePermission 声明面）', () => 
     expect(routePermissions(OrgRolesController, 'setPermissions')).toBe('role:write');
   });
 
-  it('OrgModule.register 装配两个控制器，缺省回落内存存储', () => {
+  it('OrgModule.register 装配四个控制器（users/roles + S1 机构/岗位 backfill），缺省回落内存存储', () => {
     const dynamic = OrgModule.register();
     // 注：register() 返回的字面量 DynamicModule 不带 reflect-metadata——断言
     // 直读 controllers 属性（真实属性，非 metadata 空真）。
     expect(dynamic.module).toBe(OrgModule);
-    expect(dynamic.controllers).toHaveLength(2);
+    expect(dynamic.controllers).toHaveLength(4);
     expect(dynamic.controllers).toContain(OrgUsersController);
     expect(dynamic.controllers).toContain(OrgRolesController);
+    expect(dynamic.controllers).toContain(OrgDepartmentsController);
+    expect(dynamic.controllers).toContain(OrgPositionsController);
   });
 });

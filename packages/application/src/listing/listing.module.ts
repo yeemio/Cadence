@@ -35,6 +35,7 @@ import {
   InMemoryPurchaseRequestStore,
   InMemoryPurchaseReturnStore,
 } from './in-memory-listing-stores.js';
+import { InMemoryProcessMaterialLinkStore } from './in-memory-process-material-stores.js';
 import type {
   GapCheckStore,
   ListingDomainEventStore,
@@ -64,6 +65,9 @@ import {
   PurchaseReturnsController,
 } from './listing.controllers.js';
 import { ListingService, type ListingServiceOptions } from './listing.service.js';
+import { ProcessMaterialsController } from './process-material.controllers.js';
+import { ProcessMaterialService } from './process-material.service.js';
+import type { ProcessMaterialLinkStore } from './process-material-stores.js';
 
 export const LISTING_SHEET_STORE = Symbol('smes.listing.sheetStore');
 export const LISTING_LINE_STORE = Symbol('smes.listing.lineStore');
@@ -74,6 +78,7 @@ export const LISTING_RETURN_STORE = Symbol('smes.listing.returnStore');
 export const LISTING_OPERATION_STORE = Symbol('smes.listing.operationStore');
 export const LISTING_DOMAIN_EVENT_STORE = Symbol('smes.listing.domainEventStore');
 export const LISTING_MACHINE_EVENT_STORE = Symbol('smes.listing.machineEventStore');
+export const LISTING_PROCESS_MATERIAL_STORE = Symbol('smes.listing.processMaterialStore');
 export const LISTING_TODO_STORE = Symbol('smes.listing.todoStore');
 export const LISTING_WORK_ORDER_FEED = Symbol('smes.listing.workOrderFeed');
 export const LISTING_INVENTORY_PORT = Symbol('smes.listing.inventoryPort');
@@ -99,6 +104,9 @@ export interface ListingModuleOptions {
   readonly operationStore?: ListingOperationStore | undefined;
   /** 域事件（BusinessEvent + Outbox）存储；缺省 = 内存实现（PG 侧映射 event_records）。 */
   readonly domainEventStore?: ListingDomainEventStore | undefined;
+  /** 工序×原材料关联存储（U4）；缺省 = 内存实现。与 operationStore/domainEventStore
+   * 共用注入实例（ProcessMaterialService 幂等记账与事件发布走 listing 同一套账面）。 */
+  readonly processMaterialStore?: ProcessMaterialLinkStore | undefined;
   /** 状态机事件账本（engine-flow 端口）；缺省 = 内存实现。 */
   readonly machineEventStore?: ApprovalEventStore | undefined;
   /** 待办存储（workbench 端口）；缺省 = 内存实现（组合根注入共享实例见 app-registry）。 */
@@ -135,6 +143,25 @@ export class ListingModule {
       {
         provide: LISTING_DOMAIN_EVENT_STORE,
         useValue: options.domainEventStore ?? new InMemoryListingDomainEventStore(),
+      },
+      {
+        provide: LISTING_PROCESS_MATERIAL_STORE,
+        useValue: options.processMaterialStore ?? new InMemoryProcessMaterialLinkStore(),
+      },
+      {
+        provide: ProcessMaterialService,
+        useFactory: (
+          materialStore: ProcessMaterialLinkStore,
+          lines: ListingLineStore,
+          operations: ListingOperationStore,
+          domainEvents: ListingDomainEventStore,
+        ) => new ProcessMaterialService(materialStore, lines, operations, domainEvents),
+        inject: [
+          LISTING_PROCESS_MATERIAL_STORE,
+          LISTING_LINE_STORE,
+          LISTING_OPERATION_STORE,
+          LISTING_DOMAIN_EVENT_STORE,
+        ],
       },
       {
         provide: LISTING_MACHINE_EVENT_STORE,
@@ -213,6 +240,7 @@ export class ListingModule {
         PurchaseOrdersController,
         PurchaseReturnsController,
         PurchaseQueriesController,
+        ProcessMaterialsController,
       ],
       providers,
     };

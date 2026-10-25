@@ -17,6 +17,10 @@
  *  - PgDispatchMachineEventStore → engine-flow ApprovalEventStore（dispatch_events
  *                                  账本；dispatch-order 聚合专用，(aggregate_id,
  *                                  aggregate_revision) 唯一 = DB 级乐观锁）
+ *  - PgAftercareClaimStore       → aftercare_claims / aftercare_claim_lines
+ *                                  报销两表（U5 A12 增量；实现移 pg-aftercare-
+ *                                  claim-stores.ts——一单一报销 + 行费用整批
+ *                                  乐观重写）
  *
  * 租户解析取舍（同 workorder/listing）：engine 机器事件端口不带租户参数——聚合
  * 锚定合同 = 投影行（dispatch_orders），租户经投影行解析（孤儿聚合 fail-fast
@@ -45,6 +49,7 @@ import {
 import {
   DISPATCH_ORDER_AGGREGATE_TYPE,
   DispatchConflictError,
+  type AftercareClaimStore,
   type AppendOutsourcingLineInput,
   type BackfillOutsourcingPriceFields,
   type CreateDispatchOrderInput,
@@ -59,6 +64,7 @@ import {
 } from '@smes/application';
 import { fromBusinessEventRow, toBusinessEventRow } from '../events/event-row.js';
 import { initialOutboxRow, toOutboxRecord } from '../events/outbox-row.js';
+import { PgAftercareClaimStore } from './pg-aftercare-claim-stores.js';
 
 // ---- 小工具（同 workorder / listing 体例） ----
 
@@ -563,13 +569,16 @@ export interface DispatchStoreOptions {
   readonly datasourceUrl?: string;
 }
 
-/** 组合根装配句柄：五端口实现（可直接喂 DispatchModule.register）+ 优雅断连。 */
+/** 组合根装配句柄：六端口实现（可直接喂 DispatchModule / AftercareClaimModule
+ * register）+ 优雅断连（aftercareClaimStore 为 U5 增量——售后报销与派工单族
+ * 共享同一 PrismaClient）。 */
 export interface DispatchStoreHandle {
   readonly orderStore: DispatchOrderStore;
   readonly outsourcingLineStore: OutsourcingLineStore;
   readonly operationStore: DispatchOperationStore;
   readonly domainEventStore: DispatchDomainEventStore;
   readonly machineEventStore: ApprovalEventStore;
+  readonly aftercareClaimStore: AftercareClaimStore;
   disconnect(): Promise<void>;
 }
 
@@ -584,6 +593,7 @@ export function connectDispatchStore(options: DispatchStoreOptions = {}): Dispat
     operationStore: new PgDispatchOperationStore(prisma),
     domainEventStore: new PgDispatchDomainEventStore(prisma),
     machineEventStore: new PgDispatchMachineEventStore(prisma),
+    aftercareClaimStore: new PgAftercareClaimStore(prisma),
     async disconnect(): Promise<void> {
       await prisma.$disconnect();
     },

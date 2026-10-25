@@ -89,7 +89,7 @@ describe('schema 骨架', () => {
     expect(schemaText).toMatch(/generator\s+client\s*\{/);
   });
 
-  it('八十张表齐全（M1 十三表 + baseline P1 五表（M2-W2）+ workorder 六表（M2-W1）+ inspection 四表（M2-W4）+ listing 八表（M2-W3）+ dispatch 四表（M2-W6）+ inventory 十一表（M2-W5）+ reporting 四表（M2-W7）+ baseline P2/P3 四表（M2-W7）+ hours 三表（M2-W6）+ costing 四表（M2-W6）+ payroll 四表（M3）+ metric-pack 两表（M3）+ drawing 四表（M3）+ maintenance 四表（M3））', () => {
+  it('九十六张表齐全（M1 十三表 + baseline P1 五表（M2-W2）+ workorder 六表（M2-W1）+ inspection 四表（M2-W4）+ listing 八表（M2-W3）+ dispatch 四表（M2-W6）+ inventory 十一表（M2-W5）+ reporting 四表（M2-W7）+ baseline P2/P3 四表（M2-W7）+ hours 三表（M2-W6）+ costing 四表（M2-W6）+ payroll 四表（M3）+ metric-pack 两表（M3）+ drawing 四表（M3）+ maintenance 四表（M3）+ backfill 六表（S1）+ S5 能力子集三表（T 波）+ issue 五表（U1）+ attachment 单表（U3）+ process-material 单表（U4））', () => {
     expect(models.has('WorkOrderRecord')).toBe(true);
     expect(models.has('BusinessEventRecord')).toBe(true);
     expect(models.has('OutboxRecord')).toBe(true);
@@ -178,7 +178,31 @@ describe('schema 骨架', () => {
     expect(models.has('MaintenanceTaskRecord')).toBe(true);
     expect(models.has('MaintenanceActivityRecord')).toBe(true);
     expect(models.has('MaintenanceOperationRecord')).toBe(true);
-    expect(models.size).toBe(80);
+    // S1 backfill 六表（守恒计数 80 → 86，0920 #3/#7/#8/#9/#100/#103）
+    expect(models.has('DepartmentRecord')).toBe(true);
+    expect(models.has('PositionRecord')).toBe(true);
+    expect(models.has('CustomerRecord')).toBe(true);
+    expect(models.has('SupplierRecord')).toBe(true);
+    expect(models.has('UnitRecord')).toBe(true);
+    expect(models.has('AuditLogRecord')).toBe(true);
+    // T 波 S5 能力子集三表（守恒计数 86 → 89，#98/99 菜单 / #102 审批配置 / #101 通知）
+    expect(models.has('MenuConfigRecord')).toBe(true);
+    expect(models.has('ApprovalFlowConfigRecord')).toBe(true);
+    expect(models.has('NotificationRecord')).toBe(true);
+    // U1 issue 发料链路五表（守恒计数 89 → 94，A11 增量：发料任务/发料记录）
+    expect(models.has('IssueTaskRecord')).toBe(true);
+    expect(models.has('IssueTaskLineRecord')).toBe(true);
+    expect(models.has('IssueRecordRecord')).toBe(true);
+    expect(models.has('IssueExpressRecord')).toBe(true);
+    expect(models.has('IssueOperationRecord')).toBe(true);
+    // U3 attachment 附件中心单表（守恒计数 94 → 95，A13 增量：统一附件元数据）
+    expect(models.has('AttachmentRecord')).toBe(true);
+    // U4 listing 工序×原材料关联单表（守恒计数 95 → 96，S10 数据面增量）
+    expect(models.has('ProcessMaterialLinkRecord')).toBe(true);
+    // U5 aftercare claim 售后报销两表（守恒计数 96 → 98，A12 增量：一单一投影 + 明细行）
+    expect(models.has('AftercareClaimRecord')).toBe(true);
+    expect(models.has('AftercareClaimLineRecord')).toBe(true);
+    expect(models.size).toBe(98);
   });
 
   it('ADR-0005：全表 tenant_id（非空、snake_case 映射）', () => {
@@ -753,6 +777,11 @@ describe('append-only 触发器（若迁移已入库）', () => {  const migrati
     expect(guarded.has('maintenance_tasks')).toBe(false);
     expect(guarded.has('maintenance_activities')).toBe(true);
     expect(guarded.has('maintenance_operations')).toBe(false);
+    // T 波 S5 能力子集三表（配置数据/收件箱：菜单与审批配置可改可停用、通知
+    // 已读标记 = UPDATE；均非 append-only 业务事实，不得被触发器拦截）。
+    expect(guarded.has('menu_configs')).toBe(false);
+    expect(guarded.has('approval_flow_configs')).toBe(false);
+    expect(guarded.has('notifications')).toBe(false);
   });
 });
 

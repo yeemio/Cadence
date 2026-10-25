@@ -58,6 +58,15 @@ export interface ApprovalServiceOptions {
    * 由此从 submitted 落到 in_review 待审态）；null = 不跳步（停在设计态）。
    */
   readonly reviewEvent: string | null;
+  /**
+   * 租户级配置解析器（T1 接线 #102）：返回该租户当前启用的持久化审批流配置
+   * （approval-config 模块的 active 行），null/undefined = 回落静态 options.config。
+   * 每次发起/决策按租户现解析——配置页"启用指定版本"后新案即按新配置驱动；
+   * 在途案件由引擎重放守卫兜底（配置换代导致重放不一致即状态冲突，不静默漂移）。
+   */
+  readonly flowConfigResolver?:
+    | ((tenant: TenantId) => Promise<ApprovalFlowConfig | null>)
+    | undefined;
 }
 
 export interface ApprovalStartResult {
@@ -93,15 +102,26 @@ export class ApprovalService {
     },
   ) {}
 
+  /**
+   * 本次操作的生效配置：租户级解析器优先（持久化 active 行），无解析器/
+   * 未命中回落静态 options.config（缺省 DEFAULT_APPROVAL_FLOW_CONFIG）。
+   */
+  private async configFor(tenant: TenantId): Promise<ApprovalFlowConfig> {
+    if (this.options.flowConfigResolver === undefined) return this.options.config;
+    const resolved = await this.options.flowConfigResolver(tenant);
+    return resolved ?? this.options.config;
+  }
+
   /** 发起审批：建案 + 提交流程（+ 进审跳步）→ 逐审批人派待办。 */
   async start(tenant: TenantId, actor: UserId, input: unknown): Promise<ApprovalStartResult> {
     const payload = parseStartApprovalInput(input);
+    const config = await this.configFor(tenant);
     const caseId = `case-${randomUUID()}`;
     const subject: ApprovalSubjectRef = {
       aggregate: { id: caseId, type: APPROVAL_CASE_AGGREGATE_TYPE },
       initialObjectVersion: 1,
     };
-    const runtime = startApprovalFlow({ config: this.options.config, subject });
+    const runtime = startApprovalFlow({ config, subject });
     try {
       const submitInput: ApprovalDecisionInput = { by: actor, reason: payload.reason };
       this.mustTransition(runtime.send(this.options.submitEvent, submitInput), '发起提交');
@@ -120,7 +140,7 @@ export class ApprovalService {
       const created = await this.cases.create({
         tenant,
         id: caseId,
-        flowConfigId: this.options.config.flowId,
+        flowConfigId: config.flowId,
         state: runtime.state(),
         objectVersion: runtime.objectVersion(),
         subjectRef: payload.subjectRef,
@@ -196,9 +216,10 @@ export class ApprovalService {
     if (found === null) {
       throw new ApprovalNotFoundError(`租户 '${tenant}' 内不存在审批案件 '${caseId}'`);
     }
-    if (found.flowConfigId !== this.options.config.flowId) {
+    const config = await this.configFor(tenant);
+    if (found.flowConfigId !== config.flowId) {
       throw new ApprovalStateError(
-        `案件由配置 '${found.flowConfigId}' 驱动，与当前装配配置 '${this.options.config.flowId}' 不符`,
+        `案件由配置 '${found.flowConfigId}' 驱动，与当前生效配置 '${config.flowId}' 不符`,
       );
     }
     if (payload.objectVersion !== undefined && payload.objectVersion !== found.objectVersion) {
@@ -207,9 +228,9 @@ export class ApprovalService {
       );
     }
 
-    const runtime = await this.replay(found);
+    const runtime = await this.replay(found, config);
     try {
-      const verb = this.decisionVerb(runtime.state(), payload.decision);
+      const verb = this.decisionVerb(runtime.state(), payload.decision, config);
       const sendInput: ApprovalDecisionInput = {
         by: actor,
         reason: payload.reason,
@@ -254,11 +275,14 @@ export class ApprovalService {
   }
 
   /** 重放案件事件账本重建运行时；重放结果必须与案件行一致（事实源 ↔ 投影对账）。 */
-  private async replay(found: ApprovalCase): Promise<ReturnType<typeof startApprovalFlow>> {
+  private async replay(
+    found: ApprovalCase,
+    config: ApprovalFlowConfig,
+  ): Promise<ReturnType<typeof startApprovalFlow>> {
     const aggregate = { id: found.id, type: APPROVAL_CASE_AGGREGATE_TYPE };
     const page = await this.events.readByAggregate(aggregate);
     const runtime = startApprovalFlow({
-      config: this.options.config,
+      config,
       subject: { aggregate, initialObjectVersion: 1 },
     });
     for (const event of page.events) {
@@ -288,8 +312,12 @@ export class ApprovalService {
   }
 
   /** 按决策类反查配置迁移规则取命令动词；当前状态无该类决策 → 状态冲突。 */
-  private decisionVerb(state: string, decision: ApprovalDecisionKind): string {
-    const rule = this.options.config.transitions.find(
+  private decisionVerb(
+    state: string,
+    decision: ApprovalDecisionKind,
+    config: ApprovalFlowConfig,
+  ): string {
+    const rule = config.transitions.find(
       (candidate) => candidate.from === state && candidate.decision === decision,
     );
     if (rule === undefined) {

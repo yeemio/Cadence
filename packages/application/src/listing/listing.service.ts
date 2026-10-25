@@ -1700,6 +1700,50 @@ export class ListingService {
       }));
   }
 
+  /**
+   * A9 下图统计（只读实时汇总，工作令-下图统计-开发文档）：零件清单明细行在
+   * 创建日闭区间内的行数 COUNT——同一图号多次上传按行计（不去重）、不按
+   * 工作令/设备拆分、无分页、**恒一行结果**（无匹配行 drawingCount=0）。
+   * timeRange：起止均有 `${起} ~ ${止}`；均无「全部」；仅一侧（极少——产品
+   * 默认始终传闭区间）只显示已传侧。行存储端口未实现计数（可选成员缺省，
+   * PG 适配器未合流）时显式拒绝，不静默回 0。
+   */
+  async partUploadStats(
+    tenant: TenantId,
+    createTimeStart?: string,
+    createTimeEnd?: string,
+  ): Promise<{ readonly timeRange: string; readonly drawingCount: number }> {
+    const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
+    const bounds = [
+      ['createTimeStart', createTimeStart],
+      ['createTimeEnd', createTimeEnd],
+    ] as const;
+    for (const [name, day] of bounds) {
+      if (day !== undefined && !dayPattern.test(day)) {
+        throw new ListingInputError(`${name} 须为 yyyy-MM-dd（收到 '${day}'）`);
+      }
+    }
+    if (createTimeStart !== undefined && createTimeEnd !== undefined && createTimeStart > createTimeEnd) {
+      throw new ListingInputError(`上传日期范围不正确：起 ${createTimeStart} 大于止 ${createTimeEnd}`);
+    }
+    const drawingCount = await this.lines.countPartLinesCreatedBetween?.(tenant, {
+      ...(createTimeStart !== undefined ? { fromDay: createTimeStart } : {}),
+      ...(createTimeEnd !== undefined ? { toDay: createTimeEnd } : {}),
+    });
+    if (drawingCount === undefined) {
+      throw new ListingStateError(
+        '下图统计端口未接线：lineStore 未实现 countPartLinesCreatedBetween（内存实现已备；PG 适配器合流时补齐）',
+      );
+    }
+    const timeRange =
+      createTimeStart !== undefined && createTimeEnd !== undefined
+        ? `${createTimeStart} ~ ${createTimeEnd}`
+        : createTimeStart === undefined && createTimeEnd === undefined
+          ? '全部'
+          : `${createTimeStart ?? ''}~${createTimeEnd ?? ''}`;
+    return { timeRange, drawingCount };
+  }
+
   // ---- 私有辅助 ----
 
   /** 域事件公共基（eventId/时刻/溯源——全部命令产出共用）。 */

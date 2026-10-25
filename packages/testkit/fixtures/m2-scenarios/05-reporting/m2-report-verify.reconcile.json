@@ -5,13 +5,13 @@
     "description": "05-reporting §7 对账点「verified 工时实时进入工时账」触发侧：report.verify.v1（→hours 归集信号；下游断言面见 08-hours 场景组）。链式场景——录制前替换 __REPORT_ID__ 与 __EXPECTED_REVISION__（报工单须 reported 态）",
     "input": {
       "method": "POST",
-      "path": "/reports/__REPORT_ID__/verify",
+      "path": "/reports/wr-01a1738f-7d43-7c3a-af52-bfbf7fdd8be4/verify",
       "headers": {
         "x-smes-user": "user-seed-admin"
       },
       "body": {
         "operationId": "m2rec-report-verify",
-        "expectedRevision": "__EXPECTED_REVISION__",
+        "expectedRevision": 2,
         "command": {
           "kind": "report.verify.v1",
           "payload": {}
@@ -19,7 +19,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "乐观锁冲突：expectedRevision=2，报工单当前 objectVersion=3"
+    },
+    "recordedAt": "2026-10-25T15:02:45.806Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

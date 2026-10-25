@@ -15,7 +15,7 @@
         "command": {
           "kind": "report.submit.v1",
           "payload": {
-            "dispatchId": "__DISPATCH_ID__",
+            "dispatchId": "dsp-01a1738f-7cbd-763f-98d0-2aa7da17cd00",
             "doneQty": 10,
             "laborMinutes": 90
           }
@@ -23,7 +23,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "操作幂等冲突：operationId 'm2rec-report-submit' 已落账，拒绝重复执行"
+    },
+    "recordedAt": "2026-10-25T15:02:45.574Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

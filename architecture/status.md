@@ -1,6 +1,21 @@
 # 状态快照
 
-更新：2026-10-26 晚（**S 波收口**：后端 10 项清零（109/109）+61 页面挂载（端到端 ~73%）+36 场景基线安全网+baseline 真缺陷修复；四决策待 Owner）
+更新：2026-10-26 深夜（**S3 波五线收口：端到端 ~93/109（85.3%）**——齐套拦截真实栈生效、移动 19 项全就绪、1257 测试全绿；剩余=能力子集 5 项+活系统对账+Owner 四决策）
+
+## S3 波（✅ 10-26 深夜，五线并行）
+
+| 线 | 结果 | agentId |
+|---|---|---|
+| a 前端大线 | 六 CRUD 页+audit 页+四报表页（响应自描述动态列，不引后端包守铁律）；boundary 1116→1132 模块零违规 | agent_0879ad12 |
+| b 命令链 e2e | **10/10 全过**（15 模块真实栈+页面数据通道+五处 PG 取证+双负行为）；**抓出齐套接线缺口** | agent_05a21272 |
+| c 矩阵重排 | 三口径：后端 109/109、桌面 65/80、含移动 74/109（S3 前基线） | agent_d3ad96c3 |
+| d 移动 19 项 | **19/19 全就绪**（15 路由码+11 子页，lead 演示身份；7+14 项能力子集与 e2e 深度项如实留档） | agent_b3eec54f |
+| e 齐套接线修复 | cross-module-wiring #25/#26 迟到绑定+注册两行；**齐套拦截从"真实栈不生效"到完整缺口驱动拦截**；RUN_E2E 10/10 复证 | agent_d232f81f |
+
+合流终态：`pnpm verify` exit 0——**1132 模块/3574 边零违规、1257 测试全绿**。
+
+**"完整重构成功"剩余**：能力子集 5 项（总览/菜单 CRUD×2/通知中心/审批配置）+浏览器级 e2e 深度+**活系统行为等价对账**（36 场景基线+手册就绪）+Owner 四决策（活系统访问/R7/R8/版本锚 ee16599）。
+
 
 ## S 波（✅ 10-26 晚，满窗口三线+总控微修）
 
@@ -112,7 +127,7 @@
 - **对账阶段取消**：新系统为全新产品，不做与活系统的行为等价比对（交接文档清洁室纪律 3 的对账条款就此作废）；**R7 同步失效**（live 清单 9 项不再相关）。规格依据=本仓开发文档体系（m2/m3-drafts 合同+四件套规格源）；73 份雇主文档 IP 红线不变
 - **重构工程完成（Owner 定义口径）**：M0~M5 全部实施验收，main=3782c1d，16 包 verify exit 0，两 worktree 线已并入
 - 仅余部署期动作：D8 `pnpm approve-builds`（push 启 CI 前交互确认）+ 远端仓库与 push（待 Owner 提供远端/指令）
-- **待办合并（给 M1/M4 线）**：worktree 两线成果在分支 `lane/m4-final`（HEAD 3782c1d，含 M4 部署期收尾+M5 收尾双 commit+合并 commit，全仓 verify exit 0 已验）——main 合并被本会话在途 WIP（server/web 同文件）阻挡属正常协调；**你线波次 commit 后请执行 `git merge lane/m4-final`**（预期快进或仅 main.ts/app-registry 少量冲突，冲突时租户错误处理取分支版本——已含 421 中间件+reason 结构化+18 工厂 RLS；分支验证记录见上方"Worktree 两线收口"节），合并后跑全仓 verify 并删两分支
+- **待办合并（给 M1/M4 线）**：worktree 两线成果在分支 `lane/m4-final`（HEAD 3782c1d，含 M4 部署期收尾+M5 收尾双 commit+合并 commit，全仓 verify exit 0 已验）——main 合并被本会话在途 WIP（server/web 同文件）阻挡属正常协调；**你线波次 commit 后请执行 `git merge lane/m4-final`**（**重叠面已预检：仅 3 文件**——①apps/server/src/main.ts：保留你线版本为底，合入分支的 tenantResolutionErrorHandler import+app.use 注册+healthcheck-probe 的 parseKnownTenants 复用（租户错误=分支 421 机制，活体实证过）；②packages/business-store/src/baseline/pg-baseline-stores.ts：**必须取分支的 orderBy 数组形态**（多键对象 Prisma 校验必拒的潜伏缺陷修复，容器路径实证）；③deploy/scripts/rls-proof.mjs：取分支版（改引 harness.mjs 共享脚手架），若你线也动了它则以 harness 引用方式手工合成。分支验证记录见上方"Worktree 两线收口"节），合并后跑全仓 verify 并删两分支
 
 ## 待 Owner 决策清单（一站式，2026-10-26 晨；两线自有工作穷尽，全部阻塞于此）
 

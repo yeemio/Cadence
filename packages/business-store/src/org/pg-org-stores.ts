@@ -14,14 +14,22 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { TenantId, UserId } from '@smes/business-core';
 import {
   OrgConflictError,
+  type CreateDepartmentInput,
+  type CreatePositionInput,
   type CreateSessionInput,
+  type DepartmentMaster,
+  type DepartmentStore,
   type PolicyRule,
   type PolicyStore,
+  type PositionMaster,
+  type PositionStore,
   type RoleDefinition,
   type RoleName,
   type RoleStore,
   type SessionRecord,
   type SessionStore,
+  type UpdateDepartmentInput,
+  type UpdatePositionInput,
   type UserAccount,
   type UserCredentials,
   type UserStore,
@@ -255,17 +263,188 @@ export class PgRoleStore implements RoleStore {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 机构/岗位主数据 PG 实现（S1 backfill：0920 #3/#7）——与 PgItemStore 同形态：
+// P2002 → OrgConflictError、update 复合 where + P2025 → null（用例层转 404）。
+// parent_id/department_ref 不设外键（schema 注释取舍），引用完整性由
+// OrgService 守卫；本层只做存取，不带层级语义。
+// ---------------------------------------------------------------------------
+
+interface DepartmentDbRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly parentId: string | null;
+  readonly active: boolean;
+}
+
+function toDepartmentMaster(row: DepartmentDbRow): DepartmentMaster {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenantId),
+    code: row.code,
+    name: row.name,
+    parentId: row.parentId,
+    active: row.active,
+  };
+}
+
+export class PgDepartmentStore implements DepartmentStore {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async create(input: CreateDepartmentInput): Promise<DepartmentMaster> {
+    try {
+      const row = await this.prisma.departmentRecord.create({
+        data: {
+          id: uuidv7(),
+          tenantId: input.tenant,
+          code: input.code,
+          name: input.name,
+          parentId: input.parentId ?? null,
+          active: input.active ?? true,
+        },
+      });
+      return toDepartmentMaster(row);
+    } catch (error) {
+      throw toOrgConflict(error, `机构 code '${input.code}' 在租户 '${input.tenant}' 内已存在`);
+    }
+  }
+
+  async list(tenant: TenantId): Promise<readonly DepartmentMaster[]> {
+    const rows = await this.prisma.departmentRecord.findMany({
+      where: { tenantId: tenant },
+      orderBy: { code: 'asc' },
+    });
+    return rows.map(toDepartmentMaster);
+  }
+
+  async find(tenant: TenantId, id: string): Promise<DepartmentMaster | null> {
+    const row = await this.prisma.departmentRecord.findFirst({
+      where: { tenantId: tenant, id },
+    });
+    return row === null ? null : toDepartmentMaster(row);
+  }
+
+  async update(
+    tenant: TenantId,
+    id: string,
+    input: UpdateDepartmentInput,
+  ): Promise<DepartmentMaster | null> {
+    try {
+      const row = await this.prisma.departmentRecord.update({
+        where: { id, tenantId: tenant },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+        },
+      });
+      return toDepartmentMaster(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        return null;
+      }
+      throw error;
+    }
+  }
+}
+
+interface PositionDbRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly departmentRef: string | null;
+  readonly active: boolean;
+}
+
+function toPositionMaster(row: PositionDbRow): PositionMaster {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenantId),
+    code: row.code,
+    name: row.name,
+    departmentRef: row.departmentRef,
+    active: row.active,
+  };
+}
+
+export class PgPositionStore implements PositionStore {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async create(input: CreatePositionInput): Promise<PositionMaster> {
+    try {
+      const row = await this.prisma.positionRecord.create({
+        data: {
+          id: uuidv7(),
+          tenantId: input.tenant,
+          code: input.code,
+          name: input.name,
+          departmentRef: input.departmentRef ?? null,
+          active: input.active ?? true,
+        },
+      });
+      return toPositionMaster(row);
+    } catch (error) {
+      throw toOrgConflict(error, `岗位 code '${input.code}' 在租户 '${input.tenant}' 内已存在`);
+    }
+  }
+
+  async list(tenant: TenantId): Promise<readonly PositionMaster[]> {
+    const rows = await this.prisma.positionRecord.findMany({
+      where: { tenantId: tenant },
+      orderBy: { code: 'asc' },
+    });
+    return rows.map(toPositionMaster);
+  }
+
+  async find(tenant: TenantId, id: string): Promise<PositionMaster | null> {
+    const row = await this.prisma.positionRecord.findFirst({
+      where: { tenantId: tenant, id },
+    });
+    return row === null ? null : toPositionMaster(row);
+  }
+
+  async update(
+    tenant: TenantId,
+    id: string,
+    input: UpdatePositionInput,
+  ): Promise<PositionMaster | null> {
+    try {
+      const row = await this.prisma.positionRecord.update({
+        where: { id, tenantId: tenant },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.departmentRef !== undefined ? { departmentRef: input.departmentRef } : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+        },
+      });
+      return toPositionMaster(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        return null;
+      }
+      throw error;
+    }
+  }
+}
+
 export interface BusinessStoreOptions {
   /** 显式覆盖数据源（缺省读 DATABASE_URL 环境变量，Prisma 原生行为）。 */
   readonly datasourceUrl?: string;
 }
 
-/** 组合根装配句柄：四端口实现 + 优雅断连。 */
+/** 组合根装配句柄：六端口实现（users/roles/policies/sessions + S1 机构/岗位）+ 优雅断连。 */
 export interface BusinessStoreHandle {
   readonly policyStore: PolicyStore;
   readonly userStore: UserStore;
   readonly roleStore: RoleStore;
   readonly sessionStore: SessionStore;
+  /** 机构/部门主数据存储（S1 backfill：0920 #3）。 */
+  readonly departmentStore: DepartmentStore;
+  /** 岗位主数据存储（S1 backfill：0920 #7）。 */
+  readonly positionStore: PositionStore;
   disconnect(): Promise<void>;
 }
 
@@ -288,6 +467,8 @@ export function connectBusinessStore(options: BusinessStoreOptions = {}): Busine
     userStore: new PgUserStore(client),
     roleStore: new PgRoleStore(client),
     sessionStore: new PgSessionStore(client),
+    departmentStore: new PgDepartmentStore(client),
+    positionStore: new PgPositionStore(client),
     async disconnect(): Promise<void> {
       await client.$disconnect();
     },

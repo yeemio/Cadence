@@ -5,13 +5,13 @@
     "description": "02-workorder §7 对账点 3「齐套判定（三类清单×库存可用量）与活系统同输入同输出」：kit.refresh 刷新生成不可变快照（载荷空对象合法）。链式场景——占位符同上",
     "input": {
       "method": "POST",
-      "path": "/workorder/work-orders/__WORK_ORDER_ID__/kit-checks",
+      "path": "/workorder/work-orders/wo-01a1738f-7c86-7723-85a2-95c9da0f3b79/kit-checks",
       "headers": {
         "x-smes-user": "user-seed-admin"
       },
       "body": {
         "operationId": "m2rec-workorder-kit-refresh",
-        "expectedRevision": "__EXPECTED_REVISION__",
+        "expectedRevision": 1,
         "command": {
           "kind": "workorder.kit.refresh.v1",
           "payload": {}
@@ -19,7 +19,15 @@
       }
     }
   },
-  "reference": null,
+  "reference": {
+    "status": 201,
+    "body": {
+      "status": "rejected",
+      "reason": "乐观锁冲突：expectedRevision=1，工作令当前 objectVersion=2"
+    },
+    "recordedAt": "2026-10-25T15:02:07.594Z",
+    "recordedFrom": "http://127.0.0.1:3000"
+  },
   "compare": {
     "ignore": [
       "id",

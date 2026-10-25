@@ -1,8 +1,8 @@
 # M2 对账操作手册（活系统行为等价 · R2 线）
 
-版本：v0.1（2026-10-25，骨架版——活系统未接入，映射表为**待验证草案**）｜
+版本：v0.2（2026-10-25，骨架版 + 新系统侧基线已固化（§9 结果登记）；活系统未接入，映射表为**待验证草案**）｜
 定位：`@smes/testkit` README「M2 九模块施工时的对账工作流」第 2 步活系统腿的落地手册。
-配套资产：`fixtures/m2-scenarios/`（九模块 36 场景骨架）+ `scripts/record-m2.mjs`（批量录制入口）。
+配套资产：`fixtures/m2-scenarios/`（九模块 36 场景骨架 + 已录制 reference + 库快照 `baseline-snapshot-20261025.sql.gz`）+ `scripts/record-m2.mjs`（批量录制入口）。
 
 本手册回答一个问题：**怎么把"与活系统同输入同输出黑盒比对"（清洁室纪律 #3 /
 ADR-0002 #3，行为等价）从口号变成可执行的两侧夹具对跑。**
@@ -344,3 +344,75 @@ ADR-0010（领域内核通用性纪律）三层：状态集与迁移语义属内
 - reference 录制来源必须在 `recordedFrom` 可追溯（`http://localhost:3000` = 新系统
   自我一致基线；`live-sieracMes` = 活系统行为基线）；两种来源不要混在同一轮对跑
   的解读里——先活系统基线（行为等价），后新系统基线（回归防漂移）。
+
+---
+
+## 9. 结果登记：新系统侧基线首录（S4 线，2026-10-25）
+
+### 9.1 录制结果
+
+**36/36 场景全部录制成功**（自含 19 + 链式 17，无 SKIP 无失败）；同库自洽对跑
+（§4.5 九模块目录循环）**36 通过 / 0 失败**——新系统自我一致基线成立。
+
+录制环境与身份：一次性 docker `postgres:16`（端口 55495，容器 `cadence-m2-rec`）
++ `prisma migrate deploy` + 组织种子；server :3000（`SMES_DEV_AUTH=on`，十模块=
+core+九环节）。真实登录链路实证：`POST /auth/login`（admin）→ 201 签发 43 字符
+opaque token → `GET /auth/me` Bearer 200（user-seed-admin，admin=true）——准备链
+A–F 全程走该 Bearer；场景录制走夹具固定的 `x-smes-user: user-seed-admin` dev 头
+（同一 seed 管理员，dev 边界）。
+
+环境指纹：migrate **31 条**入库（最新 `20261026121000_rls_tenant_isolation_replay`）
+；seed 完成于 **2026-10-25T14:52:24Z**（users +4 / policies +6，tenant `default`）
+；录制窗口 2026-10-25T14:55–15:07Z。库行数快照（录制完成后）：work_orders=2、
+dispatch_orders=6、work_reports=4、inspections=2、nonconformities=1、warehouses=2、
+purchase_orders=1、listing_lines=2、kit_checks=1、stocktakes=1、labor_entries=3。
+
+### 9.2 录制口径：写类两遍录制法（防误读，重要）
+
+全模块幂等冲突回 `rejected`（application 层统一形态"operationId 已落账，拒绝重复
+执行"），与首次 `committed` 响应**不同形**——同库对跑重放写命令必然得到回放态。
+因此本轮对 25 个写类场景执行**两遍录制**：首录建实体（committed / 业务拒 / 输入
+校验拒），二录把 reference 定格为**幂等回放态**（同输入可无限次重放、零 diff）。
+推论：写类场景的 reference 语义 = "命令已落账后的重放行为"，不是首次创建面；
+11 个读类场景的 reference = 库终态读值（录制后库不再变更，对跑稳定）。
+
+三个列表场景（m2-workorder-list-by-state / m2-dispatch-list-by-state /
+m2-report-mine）用 `--keep-values` 不脱敏录制：comparator 的无 key 无序数组按
+canonical 全值配对（ignore 不参与配对），脱敏 reference（无 id/objectVersion）与
+实际元素（含）永不配对。库固定值 id/时间戳同库稳定，比对时 ignore 仍生效。
+`--keep-values` 为 record-m2.mjs 本轮新增 flag（透传 recordFixtures.keepValues）。
+
+### 9.3 首录暴露的真实行为发现（reference 如实固化，修复后将由对跑报警）
+
+1. **baseline 三命令 + 路线读 500**（m2-baseline-process-define /
+   outsourcing-rule-set / routing-define 500，routing-query 500）：
+   `PgVersionedMasterStore.versions()`（business-store
+   `src/baseline/pg-baseline-stores.ts:108` 附近）`orderBy` 用对象形态
+   （`{code:'asc', objectVersion:'asc'}`），Prisma 6.19.3 校验要求数组——
+   首命令与版本读路径全炸。属新系统真缺陷（工序库维护 Done-when 不可达），
+   修复后这 4 个场景对跑将 500→2xx 报警（安全网预期行为）。
+2. **costing 口径错位**（m2-costing-rebuild 201+`rejected`，m2-costing-summary
+   404）：骨架 model.publish 用 code=`m2reconcile`，而 rebuild 载荷无 modelCode
+   （默认 `standard` 未发布）——三分类汇总对账面在当前骨架 input 形态下不可达，
+   需 Owner 裁定骨架修订（publish 改 `standard` 或 rebuild 带 modelCode）后重录。
+3. **assembly 拦截面不可达**（m2-dispatch-create-assembly-blocked 400
+   "装配派工必须携带工序"）：输入校验（operationCode 必填）先于齐套判定——
+   骨架载荷无 operationCode，齐套拦截负行为未被触发；4xx 拒绝面成立但拒绝
+   原因与骨架意图（齐套拦截）不同，骨架修订后重录可覆盖真实拦截面。
+4. **inspection-summary 的 `generatedAt` 滚动时间字段**：骨架 compare 未 ignore
+   它，60s 容差内对跑须紧跟重录（本轮即如此）；任何 >60s 后的对跑该场景必
+   FAIL（非行为漂移）。建议 Owner 裁定在 compare.ignore 增补 `**.generatedAt`
+   （一行，属"首录后校准"范畴，本轮按"不改比对策略"红线未动）。
+
+### 9.4 诚实边界与复跑方法
+
+- **基线已固化 ≠ 活系统行为**：本轮全部 reference 的 recordedFrom=
+  `http://127.0.0.1:3000`（新系统自我一致基线，回归防漂移用）；活系统行为
+  对账（行为等价）仍待 Owner 提供访问（§3 前置 2/3），映射表 §5 的 76 项
+  待验证一项未动。
+- 链式 17 场景的 input 已实体化绑定录制库（实体 id 明文在夹具内）；该库完整
+  快照已导出 `fixtures/m2-scenarios/baseline-snapshot-20261025.sql.gz`（31 KB）。
+  复跑对跑：`docker run` 新 PG（任意端口）→ `psql` 恢复快照（或 migrate+seed 后
+  重跑准备链）→ 起 server（同 §4.1 形态指该库）→ §4.5 九模块循环（inspection-
+  summary 须先重录，见 9.3.4）。
+- 录制库容器已于本轮收尾清理（手册口径：录完即跑、跑完即弃；快照即回放凭据）。
