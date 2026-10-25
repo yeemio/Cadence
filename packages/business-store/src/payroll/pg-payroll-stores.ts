@@ -26,6 +26,7 @@
  *    operationId) 唯一，P2002 = 已落账 → claim false）
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { TenantId, UserId, defineId, type BusinessEvent } from '@smes/business-core';
 import { fromBusinessEventRow, toBusinessEventRow } from '../events/event-row.js';
 import { initialOutboxRow } from '../events/outbox-row.js';
@@ -640,11 +641,13 @@ export function connectPayrollStore(options: PayrollStoreOptions = {}): PayrollS
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const ruleStore = new PgPayrollRuleStore(prisma);
-  const runStore = new PgPayRunStore(prisma);
-  const recordStore = new PgEarningsRecordStore(prisma);
-  const eventStore = new PgPayrollDomainEventStore(prisma);
-  const operationStore = new PgPayrollOperationLedger(prisma);
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const ruleStore = new PgPayrollRuleStore(client);
+  const runStore = new PgPayRunStore(client);
+  const recordStore = new PgEarningsRecordStore(client);
+  const eventStore = new PgPayrollDomainEventStore(client);
+  const operationStore = new PgPayrollOperationLedger(client);
   return {
     ruleStore,
     runStore,
@@ -659,7 +662,7 @@ export function connectPayrollStore(options: PayrollStoreOptions = {}): PayrollS
       operations: operationStore,
     },
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

@@ -27,6 +27,7 @@
  * 口径一致）。
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import {
   EventId,
   TenantId,
@@ -578,14 +579,16 @@ export function connectDispatchStore(options: DispatchStoreOptions = {}): Dispat
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    orderStore: new PgDispatchOrderStore(prisma),
-    outsourcingLineStore: new PgOutsourcingLineStore(prisma),
-    operationStore: new PgDispatchOperationStore(prisma),
-    domainEventStore: new PgDispatchDomainEventStore(prisma),
-    machineEventStore: new PgDispatchMachineEventStore(prisma),
+    orderStore: new PgDispatchOrderStore(client),
+    outsourcingLineStore: new PgOutsourcingLineStore(client),
+    operationStore: new PgDispatchOperationStore(client),
+    domainEventStore: new PgDispatchDomainEventStore(client),
+    machineEventStore: new PgDispatchMachineEventStore(client),
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

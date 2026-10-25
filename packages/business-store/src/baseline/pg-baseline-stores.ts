@@ -26,6 +26,7 @@
  *    唯一，P2002 = 已落账 → claim false）
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { TenantId, type BusinessEvent } from '@smes/business-core';
 import {
   makeApprovalEvent,
@@ -145,7 +146,10 @@ function masterCreateData(input: { readonly tenant: TenantId; readonly objectVer
 
 type PrismaMasterDelegate<DbRow extends MasterDbRow> = {
   create(args: { data: Record<string, unknown> }): Promise<DbRow>;
-  findMany(args: { where: { tenantId: string; code?: string }; orderBy: { code: 'asc'; objectVersion: 'asc' } }): Promise<DbRow[]>;
+  // orderBy 数组形态（M4 收尾波修复）：Prisma 对象形态每对象只允许一个排序键，
+  // 多键对象在真实客户端运行时校验必拒（RLS 容器探针首次走通真实 PG 路径时
+  // 暴露——此前 e2e 全为内存/桩形态故潜伏）。多字段排序的合法写法 = 数组逐键。
+  findMany(args: { where: { tenantId: string; code?: string }; orderBy: [{ code: 'asc' }, { objectVersion: 'asc' }] }): Promise<DbRow[]>;
 };
 
 /** 版本化主数据 PG 内核（三端口共用；列面差异经 toRow/toData 收窄）。 */
@@ -173,7 +177,7 @@ class PgVersionedMasterStore<DbRow extends MasterDbRow, Row, CreateInput> {
   async versions(tenant: TenantId, code: string): Promise<readonly Row[]> {
     const rows = await this.delegate.findMany({
       where: { tenantId: tenant, code },
-      orderBy: { code: 'asc', objectVersion: 'asc' },
+      orderBy: [{ code: 'asc' }, { objectVersion: 'asc' }],
     });
     return rows.map((row) => this.toRow(row));
   }
@@ -181,7 +185,7 @@ class PgVersionedMasterStore<DbRow extends MasterDbRow, Row, CreateInput> {
   async listAll(tenant: TenantId): Promise<readonly Row[]> {
     const rows = await this.delegate.findMany({
       where: { tenantId: tenant },
-      orderBy: { code: 'asc', objectVersion: 'asc' },
+      orderBy: [{ code: 'asc' }, { objectVersion: 'asc' }],
     });
     return rows.map((row) => this.toRow(row));
   }
@@ -745,19 +749,21 @@ export function connectBaselineStore(options: BaselineStoreOptions = {}): Baseli
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    processStore: new PgProcessDefStore(prisma),
-    equipmentStore: new PgEquipmentStore(prisma),
-    outsourcingRuleStore: new PgOutsourcingPriceRuleStore(prisma),
-    validationRunStore: new PgMaterialValidationRunStore(prisma),
-    eventStore: new PgBaselineEventStore(prisma),
-    operationLedger: new PgBaselineOperationLedger(prisma),
-    routingStore: new PgRoutingStore(prisma),
-    standardTimeStore: new PgStandardTimeStore(prisma),
-    faultReportStore: new PgFaultReportStore(prisma),
-    faultEventStore: new PgFaultMachineEventStore(prisma),
+    processStore: new PgProcessDefStore(client),
+    equipmentStore: new PgEquipmentStore(client),
+    outsourcingRuleStore: new PgOutsourcingPriceRuleStore(client),
+    validationRunStore: new PgMaterialValidationRunStore(client),
+    eventStore: new PgBaselineEventStore(client),
+    operationLedger: new PgBaselineOperationLedger(client),
+    routingStore: new PgRoutingStore(client),
+    standardTimeStore: new PgStandardTimeStore(client),
+    faultReportStore: new PgFaultReportStore(client),
+    faultEventStore: new PgFaultMachineEventStore(client),
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

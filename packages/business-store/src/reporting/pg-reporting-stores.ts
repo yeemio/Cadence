@@ -25,6 +25,7 @@
  * outbox_records——跨模块共享的投递记账由单例投递器统一扫（口径一致）。
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import {
   EventId,
   TenantId,
@@ -541,14 +542,16 @@ export function connectReportingStore(options: ReportingStoreOptions = {}): Repo
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    reportStore: new PgWorkReportStore(prisma),
-    auditStore: new PgReportAuditStore(prisma),
-    operationStore: new PgReportOperationStore(prisma),
-    domainEventStore: new PgReportDomainEventStore(prisma),
-    machineEventStore: new PgReportingMachineEventStore(prisma),
+    reportStore: new PgWorkReportStore(client),
+    auditStore: new PgReportAuditStore(client),
+    operationStore: new PgReportOperationStore(client),
+    domainEventStore: new PgReportDomainEventStore(client),
+    machineEventStore: new PgReportingMachineEventStore(client),
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

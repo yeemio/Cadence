@@ -13,6 +13,7 @@
  *  - PgCostingOperationLedger → 命令幂等账本（costing_operations）
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { TenantId, type BusinessEvent } from '@smes/business-core';
 import {
   CostingConflictError,
@@ -456,12 +457,14 @@ export function connectCostingStore(options: CostingStoreOptions = {}): CostingS
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   const stores: CostingStores = {
-    entries: new PgCostEntryStore(prisma),
-    models: new PgCostingModelStore(prisma),
-    snapshots: new PgCostSnapshotStore(prisma),
-    events: new PgCostingDomainEventStore(prisma),
-    operations: new PgCostingOperationLedger(prisma),
+    entries: new PgCostEntryStore(client),
+    models: new PgCostingModelStore(client),
+    snapshots: new PgCostSnapshotStore(client),
+    events: new PgCostingDomainEventStore(client),
+    operations: new PgCostingOperationLedger(client),
   };
   return {
     entryStore: stores.entries,
@@ -471,7 +474,7 @@ export function connectCostingStore(options: CostingStoreOptions = {}): CostingS
     operationStore: stores.operations,
     stores,
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

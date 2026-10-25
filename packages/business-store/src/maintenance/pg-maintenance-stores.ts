@@ -27,6 +27,7 @@
  *    operationId) 唯一，P2002 = 已落账 → claim false）
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { TenantId, UserId, defineId, type BusinessEvent } from '@smes/business-core';
 import { fromBusinessEventRow, toBusinessEventRow } from '../events/event-row.js';
 import { initialOutboxRow } from '../events/outbox-row.js';
@@ -746,11 +747,13 @@ export function connectMaintenanceStore(options: MaintenanceStoreOptions = {}): 
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const planStore = new PgMaintenancePlanStore(prisma);
-  const taskStore = new PgMaintenanceTaskStore(prisma);
-  const activityStore = new PgMaintenanceActivityStore(prisma);
-  const eventStore = new PgMaintenanceDomainEventStore(prisma);
-  const operationStore = new PgMaintenanceOperationLedger(prisma);
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const planStore = new PgMaintenancePlanStore(client);
+  const taskStore = new PgMaintenanceTaskStore(client);
+  const activityStore = new PgMaintenanceActivityStore(client);
+  const eventStore = new PgMaintenanceDomainEventStore(client);
+  const operationStore = new PgMaintenanceOperationLedger(client);
   return {
     planStore,
     taskStore,
@@ -765,7 +768,7 @@ export function connectMaintenanceStore(options: MaintenanceStoreOptions = {}): 
       operations: operationStore,
     },
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }

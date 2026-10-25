@@ -27,6 +27,8 @@ import { hostBasedTenantResolver, type TenantId } from '@smes/business-core';
 import { buildAppModule, parseModulesEnabled } from './app-registry.js';
 import { bindCrossModuleWiring } from './cross-module-wiring.js';
 import { createIntegrationEdgeSinks } from './integration-edge-adapters.js';
+import { parseKnownTenants } from './healthcheck-probe.js';
+import { tenantResolutionErrorHandler } from './tenant-resolution-error.handler.js';
 import { ApprovalErrorFilter } from './approval-error.filter.js';
 import { AuthErrorFilter } from './auth-error.filter.js';
 import { BaselineErrorFilter } from './baseline-error.filter.js';
@@ -227,10 +229,8 @@ async function bootstrap(): Promise<void> {
   let rlsTenantPropagation = false;
   if (tenantMode === 'saas') {
     const domain = process.env['SMES_DOMAIN'] ?? '';
-    const knownTenants = (process.env['SMES_TENANTS'] ?? '')
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
+    // 已知租户解析与镜像内健康探针同源（双写去重：healthcheck-probe.ts 单份）。
+    const knownTenants = parseKnownTenants(process.env['SMES_TENANTS']);
     if (domain.length === 0) {
       throw new Error(
         'SMES_TENANT_MODE=saas 需要 SMES_DOMAIN（子域名解析基域）——缺省拒绝启动（fail-fast）',
@@ -256,16 +256,21 @@ async function bootstrap(): Promise<void> {
     // RLS 电流路径（saas 形态）：请求租户同步传入 business-store 侧 RLS 会话上下文
     // （rls-session 自持独立 TenantContext，ALS 跨实例不可见——不包裹则
     // withRlsTenantSession 读不到请求租户、回落 'default'，见 rls-session.ts 文件头
-    // 取舍）。同一异步链上已接线的连接工厂（org / masterdata / workbench /
-    // approval，ESCALATION-1 裁定）在操作事务内 SET app.current_tenant 生效；
-    // 其余 14 家 connect* 工厂未接 RLS session（ESCALATION-2，泳道后续，诚实缺口）。
-    // 缺省/单机形态不包裹（零行为变化：回落值与解析值同为 'default'）。
+    // 取舍）。同一异步链上已接线的连接工厂（M4 收尾波 ESCALATION-2 起**全部
+    // 18 家 connect\* 工厂**：先例四家 org / masterdata / workbench / approval +
+    // 其余十四家）在操作事务内 SET app.current_tenant 生效；事务/raw 边界
+    // （原子性取舍）见 rls-session.ts 已知边界节。缺省/单机形态不包裹
+    // （零行为变化：回落值与解析值同为 'default'）。
     if (rlsTenantPropagation) {
       runWithRlsTenant(tenant, () => tenantContext.run(tenant, () => next()));
     } else {
       tenantContext.run(tenant, () => next());
     }
   });
+
+  // 租户解析失败 → 421（Express 全局错误中间件形态：中间件层异常不进 Nest
+  // 异常过滤器——机制与状态码取舍见 tenant-resolution-error.handler.ts 文件头）。
+  app.use(tenantResolutionErrorHandler);
 
   const port = Number(process.env['PORT'] ?? DEFAULT_PORT);
   await app.listen(port);

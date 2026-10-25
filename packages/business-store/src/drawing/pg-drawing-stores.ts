@@ -30,6 +30,7 @@
  *    operationId) 唯一，P2002 = 已落账 → claim false）
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { TenantId, UserId, defineId, type BusinessEvent } from '@smes/business-core';
 import { fromBusinessEventRow, toBusinessEventRow } from '../events/event-row.js';
 import { initialOutboxRow } from '../events/outbox-row.js';
@@ -528,11 +529,13 @@ export function connectDrawingStore(options: DrawingStoreOptions = {}): DrawingS
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const revisionStore = new PgDrawingRevisionStore(prisma);
-  const noticeStore = new PgDrawingChangeNoticeStore(prisma);
-  const viewTrailStore = new PgDrawingViewTrailStore(prisma);
-  const eventStore = new PgDrawingDomainEventStore(prisma);
-  const operationStore = new PgDrawingOperationLedger(prisma);
+  // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
+  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const revisionStore = new PgDrawingRevisionStore(client);
+  const noticeStore = new PgDrawingChangeNoticeStore(client);
+  const viewTrailStore = new PgDrawingViewTrailStore(client);
+  const eventStore = new PgDrawingDomainEventStore(client);
+  const operationStore = new PgDrawingOperationLedger(client);
   return {
     revisionStore,
     noticeStore,
@@ -547,7 +550,7 @@ export function connectDrawingStore(options: DrawingStoreOptions = {}): DrawingS
       operations: operationStore,
     },
     async disconnect(): Promise<void> {
-      await prisma.$disconnect();
+      await client.$disconnect();
     },
   };
 }
