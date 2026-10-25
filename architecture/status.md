@@ -1,6 +1,21 @@
 # 状态快照
 
-更新：2026-10-26 午（**覆盖度真相落地**：里程碑口径 M0~M5 完成；109 项端到端口径 13/109——"完整重构成功"缺口清单出炉；R7/R8 决策单+活系统对账 36 场景骨架就绪）
+更新：2026-10-26 晚（**S 波收口**：后端 10 项清零（109/109）+61 页面挂载（端到端 ~73%）+36 场景基线安全网+baseline 真缺陷修复；四决策待 Owner）
+
+## S 波（✅ 10-26 晚，满窗口三线+总控微修）
+
+| 线 | 结果 |
+|---|---|
+| S1 后端 10 项 | 交付→独立验收 REWORK（#91 零工幻影行+ #92 虚假陈述）→返工（口径层根过滤）→总控复证闭环 **ACCEPT**；e2e-backfill 62 断言+四套回归零失败 |
+| S2 九模块页面 | **61/61 挂载**（33 页+28 菜单叶，fetch-stub 钉形状；前次中断残留 25 页审计收编）；构建读回过；页面命令链真实 e2e 留 S3 |
+| S4 对账基线 | **36/36 场景录制+自洽对跑全过**（录制栈实证）——回归安全网成立；发现 baseline 真缺陷 |
+| 总控微修 | **baseline orderBy 缺陷**（泛型 delegate 上 Prisma 6 仅收数组形态→process/routing/outsourcing 读写全 500）：亲测复现→修复→四路径 201/200 复证→baseline 场景重录→5/5 对跑过 |
+
+- **对账基线使用语义**（S4 登记）：reference=录制环境指纹的幂等回放态，重放需按 M2-RECONCILE-GUIDE §4/§9 准备环境（准备链 A–F 或快照恢复）；fresh 栈直跑非回归信号
+- **覆盖度**：后端 109/109（100%）；端到端 ~80/109（~73%）——余 S3 批（六 CRUD 页/四报表页/移动 19 项）+活系统对账
+- **合流 verify exit 0**：1076 模块/3310 边零违规
+
+**待 Owner 四决策**：①活系统访问（对账执行前置）②R7/R8（决策单 coverage/DECISIONS-R7-R8.md）③版本锚 ee16599 处置（22:05 擅自提交的坏中间态：保留+追加干净提交 / amend / 其他）④S3 批次优先级确认（默认下一波执行）
 
 ## R 波（✅ 10-26 午，"完整重构成功"缺口审计与准备）
 
@@ -77,6 +92,27 @@
 
 - **本线认领 M4 首波（双形态部署正式化）与 M5 首波（移动端页面对接）**——Owner 已下"继续/开满"指令，D6 推荐分工（他线承接 M4/M5）就此由本线承接改派；**他线开新 WorkItem 前先对账**（M4 写入面=deploy/**+apps/server Dockerfile+main 租户解析开关；M5 写入面=apps/web/**+product-ui/**）
 - 并行第三线：活库冒烟扩展至 M3 四包（apps/server/scripts/e2e-live-db.mjs）
+
+## 收版与并行加速（✅ 10-25 夜，Owner 授权全部建议后执行）
+
+- **D7 闭环：首次 git commit `ee16599`**（M0~M5 全量初版，16 包 verify exit 0 状态入库，工作树干净）
+- **并行加速（Owner "分出新的主窗口"）**：git worktree 两新主线就绪——`../Cadence-wt-m5`（lane/m5-final：性能验收/PWA 图标/4xx 映射/预研低危）与 `../Cadence-wt-m4`（lane/m4-final：双写去重五项/租户管理骨架/14 工厂 RLS/迁移工具骨架），各带 START-HERE.md；Owner 各开新 ZCode 窗口即独立主线（真隔离零踩踏，收口后并回 main）
+- **剩余硬项不变**：对账阶段（等活系统环境）；R7 清单 9 项内容
+
+## Worktree 两线收口并入 main（✅ 10-25 深夜）
+
+- **wt-m5（agent_b679278f）**：性能验收 PERF-M5.md（组合冷加载 p95 20.6ms/核心 API p95≤2ms/起服 429ms，基线 5~25 倍余量）；PWA 5 PNG 零依赖生成+start_url /m+深链回落修复（mobileRouteFallback+nginx 同形）；business-core reason 结构化+6 锚测试；低危四项清理（precache 15 条唯一+断言锚）
+- **wt-m4（agent_9b7392a3）**：探针单份 healthcheck-probe.ts（Dockerfile/compose/main 同源+二进制 smoke）；harness.mjs 抽取；**18 工厂 RLS session 全接线**（3 态×18 单测+容器双对照 22 PASS）；TenantResolutionError→421（全局错误中间件+e2e 6 用例+活体）；**合同外修复：pg-baseline-stores 两处多键 orderBy 潜伏缺陷**（Prisma 必拒，容器路径首次暴露）；迁移骨架判定基线已满足（25 文件 37/37）
+- **合并前验收 ACCEPT**（agent_85f0c4d9）：全部证据独立复现（容器 proof 全量复跑/双线活体/深链实测/五套测试面）；合并裁定=租户错误取 wt-m4 全局 421 中间件（测试锚定决定性）+reason 结构化保留+wt-m5 窄捕删；合并活体实证 200/421/421
+- **并入 main：`3782c1d`**（ee16599→M4/M5 收尾双 commit→合并 commit）；**全仓 pnpm verify exit 0**（16 包）
+- 登记项：内联 404 分支实证不可达（INFO）；逐家容器电流实证 backlog（按域投产时补）；=on 事务原子性边界（costing/payroll 投产前"事务感知扩展"应先行——验收者优先级建议）
+
+## 终版裁定（2026-10-26 晨，Owner 指令"要什么活系统，我们是完整重构，全新的"）
+
+- **对账阶段取消**：新系统为全新产品，不做与活系统的行为等价比对（交接文档清洁室纪律 3 的对账条款就此作废）；**R7 同步失效**（live 清单 9 项不再相关）。规格依据=本仓开发文档体系（m2/m3-drafts 合同+四件套规格源）；73 份雇主文档 IP 红线不变
+- **重构工程完成（Owner 定义口径）**：M0~M5 全部实施验收，main=3782c1d，16 包 verify exit 0，两 worktree 线已并入
+- 仅余部署期动作：D8 `pnpm approve-builds`（push 启 CI 前交互确认）+ 远端仓库与 push（待 Owner 提供远端/指令）
+- **待办合并（给 M1/M4 线）**：worktree 两线成果在分支 `lane/m4-final`（HEAD 3782c1d，含 M4 部署期收尾+M5 收尾双 commit+合并 commit，全仓 verify exit 0 已验）——main 合并被本会话在途 WIP（server/web 同文件）阻挡属正常协调；**你线波次 commit 后请执行 `git merge lane/m4-final`**（预期快进或仅 main.ts/app-registry 少量冲突，冲突时租户错误处理取分支版本——已含 421 中间件+reason 结构化+18 工厂 RLS；分支验证记录见上方"Worktree 两线收口"节），合并后跑全仓 verify 并删两分支
 
 ## 待 Owner 决策清单（一站式，2026-10-26 晨；两线自有工作穷尽，全部阻塞于此）
 
