@@ -5,7 +5,8 @@
 ## 限额窗口总控接手收口（✅ 16:45，[1308] 5h 上限 16:34 触发/19:53 重置——三线 writer 全中断，总控主线程接手）
 
 - **收口成果**：全仓 `pnpm verify` exit 0。逐项盘点：①D-15 四件套 writer 已全部写完（payload warehouseId/装配 env/compose 透传/seed MAIN 仓）+预告 2 处 tsc 已修——总控验证收口；②大屏线：business-store 197/197+tsc 0（守恒计数收口完成）、engine-reporting pack 就绪、application screen 域层五文件就绪——**唯 module 装配层（ScreenHttpModule/parseDailyTenants）未写**，总控回退 app-registry 装配块（注释留位）保 verify 绿，归 19:53 后续做；③报表线：engine-reporting REPORT_CENTER_PACK+application report-center 就绪（陈旧 dist 假红经重建消除）
-- **验收欠账**（19:53 后补）：D-15 验收、大屏续做+验收、报表续验证+验收；已闭环：D-14（修复+容器复证+验收 ACCEPT）、#38（验收 ACCEPT）、移动端（验收 ACCEPT）、低危三件套（ACCEPT）
+- **大屏装配收口（✅ 17:05，总控接手升级为"提前完成"）**：writer 实已写完 apps/server/src/screen-http.module.ts+screen-broadcast.ts（SSE 推送+A10 日跑批+双控制器），仅 import 源笔误+缺 parseDailyTenants helper——总控修导入/补 helper/恢复装配块，全仓 verify 复跑 exit 0；**宿主零 DB boot 冒烟通过**：server ready + GET /screen/digital-operation → 200 真实聚合快照（topBar/KPI 出数）。提交 f0ac059 已推 GitHub（网络阻断 16:50-17:00 由 Owner 恢复，期间 3d2a57c 已推、f0ac059 延迟推送成功）。Docker 容器级 build 因 VM 内 npm registry 仍断暂缓（宿主 SSH 已通），归 grokbot 复测环境或网络全恢复后
+- **验收欠账**（19:53 限额重置后补）：D-15 验收、大屏验收、报表验收（报表线代码+测试已随 verify 全绿，只差独立验收）；已闭环：D-14（修复+容器复证+验收 ACCEPT）、#38（验收 ACCEPT）、移动端（验收 ACCEPT）、低危三件套（ACCEPT）、大屏装配（总控收口+boot 冒烟）
 - 教训复用：跨包 tsc 假红=兄弟包 dist 陈旧（第二线已登记坑），先 build 再判真红
 
 ## 功能补齐波（进行中，2026-10-26 午③，Owner 指令"并行安排做完"=路线图点向）
