@@ -19,10 +19,21 @@ async function authRequest(path: string, init?: RequestInit): Promise<unknown> {
       ...(init?.headers as Record<string, string> | undefined),
     },
   });
-  if (response.status === 401) {
-    throw new AuthRejectedError('服务端拒绝了当前会话');
-  }
   const body: unknown = await response.json().catch(() => null);
+  if (response.status === 401) {
+    // 登录 401 = 账密错误（2026-10-26 部署实览：此前统一报"服务端拒绝了
+    // 当前会话"误导为会话过期）；其余 401（refresh/me）维持会话拒绝语义。
+    const serverMessage =
+      typeof body === 'object' && body !== null && 'message' in body &&
+      typeof (body as { message: unknown }).message === 'string'
+        ? (body as { message: string }).message
+        : null;
+    throw new AuthRejectedError(
+      path.startsWith('/auth/login')
+        ? (serverMessage ?? '账号或口令不正确')
+        : '服务端拒绝了当前会话',
+    );
+  }
   if (!response.ok) {
     const message =
       typeof body === 'object' && body !== null && 'message' in body &&
