@@ -2,6 +2,13 @@
 
 更新：2026-10-26 午③（**功能补齐波开工（Owner 点向路线图"并行安排做完"）：第一波三线并行——六张报表 metric/数字运营大屏/低危三件套+在途核查预占接线；按写入面互斥分批滚动至 PRD 待实现路线图清完**；上一快照：R 波修复循环全线收口 0b7cd35）
 
+
+## 容器级复证三件套（✅ 18:15，总控，SaaS 栈 27+screen 模块）
+
+- **大屏**：GET /screen/digital-operation → 200；SSE 流 /screen/digital-operation/stream?token= → "stream open"+snapshot 数据帧推送（?token= 认证为设计内形态，EventSource 无 header）；Docker build 随 npm 网络恢复成功
+- **D-15**：全链贯通——采购申请（kind=standard）→订单承接申请→approve→issue→**receipts committed（payload warehouseId 显式路径）**→质检单 `standard_purchase|pending` 自动生成（W3-1 收货→采购质检联动真实落单）。注意口径：无申请来源订单（requestIds 空）不自动建质检单（kind 无法推导跳过，设计内）；建单即 objectVersion=2
+- **D-14**：此前已验（SaaS 入库 201）
+
 ## 限额窗口总控接手收口（✅ 16:45，[1308] 5h 上限 16:34 触发/19:53 重置——三线 writer 全中断，总控主线程接手）
 
 - **收口成果**：全仓 `pnpm verify` exit 0。逐项盘点：①D-15 四件套 writer 已全部写完（payload warehouseId/装配 env/compose 透传/seed MAIN 仓）+预告 2 处 tsc 已修——总控验证收口；②大屏线：business-store 197/197+tsc 0（守恒计数收口完成）、engine-reporting pack 就绪、application screen 域层五文件就绪——**唯 module 装配层（ScreenHttpModule/parseDailyTenants）未写**，总控回退 app-registry 装配块（注释留位）保 verify 绿，归 19:53 后续做；③报表线：engine-reporting REPORT_CENTER_PACK+application report-center 就绪（陈旧 dist 假红经重建消除）
