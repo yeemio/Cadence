@@ -1,0 +1,6 @@
+default.smes.example.com direct:3000=401 proxy:80=401 health80=200
+tenant-a.smes.example.com direct:3000=401 proxy:80=401 health80=200
+rogue.smes.example.com direct:3000=404 proxy:80=404 health80=404
+evil.example.com direct:3000=421 proxy:80=421 health80=421
+a.b.smes.example.com direct:3000=421 proxy:80=421 health80=421
+127.0.0.1 direct:3000=421 proxy:80=421 health80=421

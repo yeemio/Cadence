@@ -1,0 +1,67 @@
+PASS BL-P1 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-0feb9da5-d072-4c90-a301-c83c294be688","eventType":"smes.baseline.v1.process-defined","tenantId":
+PASS BL-P1 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-d94bdbbb-9f92-41d6-bf32-27f847989d40","eventType":"smes.baseline.v1.process-defined","tenantId":
+PASS BL-R1 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-b87f0488-ffed-43be-8a79-f59ff3374ae9","eventType":"smes.baseline.v1.routing-revised","tenantId":
+PASS WO-01 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-9fc9-7ff0-87c0-ca1c0c637562","eventType":"smes.workorder.v1.created","tenantId":"tenant
+PASS WO-02 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-9fd7-70fe-89cf-ab40c8c1e07f","eventType":"smes.workorder.v1.created","tenantId":"tenant
+PASS WO-07 200 {"order":{"id":"wo-01a17714-9f90-7c05-b7d6-0b97c39ab9b2","tenant":"tenant-a","flowConfigId":"work-order","state":"not_started","objectVersion":1,"customerRef":n
+PASS WO-08 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-9ffa-78eb-ab3f-914630debf75","eventType":"smes.workorder.v1.attachment-added","tenantId
+FAIL WO-09 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a007-7a87-af72-417b8d8ceb9a","eventType":"smes.workorder.v1.attachment-added","tenantId
+PASS D7-1 404 {"statusCode":404,"message":"租户 'tenant-a' 内不存在工作令 'not-a-uuid'"}
+PASS BL-02 404 {"statusCode":404,"message":"租户 'tenant-a' 内不存在校验运行 'abc'"}
+PASS D7-x 404 {"message":"Cannot GET /masterdata/items/abc","error":"Not Found","statusCode":404}
+PASS D7-x 404 {"statusCode":404,"message":"租户 'tenant-a' 内不存在质检单 'abc'"}
+PASS D7-x 404 {"statusCode":404,"message":"租户 'tenant-a' 内不存在报工单 'abc'"}
+PASS D7-x 404 {"statusCode":404,"message":"租户 'tenant-a' 内不存在派工单 'abc'"}
+PASS D7-x 404 {"statusCode":404,"message":"租户 'tenant-a' 内不存在采购订单 'abc'"}
+PASS D7-x 404 {"statusCode":404,"message":"租户 'tenant-a' 内不存在审批案件 'abc'"}
+PASS LS-01 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a16c-7ca3-877e-c40297b4153d","eventType":"smes.listing.v1.listing-imported","tenantId":
+PASS LS-01b 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a196-7b64-bd5f-d27a5bfab116","eventType":"smes.listing.v1.listing-imported","tenantId":
+PASS LS-03 200 {"sheets":[{"id":"ls-01a17714-a16a-7f67-ad5a-d23f9620168c","tenant":"tenant-a","workOrderId":"wo-01a17714-9f90-7c05-b7d6-0b97c39ab9b2","kind":"electrical","name
+PASS DP-01 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a1ad-7283-89a7-6b7064fdaa3e","eventType":"smes.dispatch.v1.dispatch-created","tenantId"
+PASS DP-02 201 {"status":"committed","newRevision":2,"events":[{"eventId":"evt-01a17714-a1d5-7413-b838-d3bdf39207fc","eventType":"smes.dispatch.v1.dispatch-assigned","tenantId
+PASS DP-G1 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a251-77d9-a9e1-0a6190d7589c","eventType":"smes.dispatch.v1.dispatch-created","tenantId"
+PASS RP-G1 201 {"status":"rejected","reason":"工序 'UNDEFINED-OP-rt26db30' 不在 baseline 工序库中（报工工序合法性复检拒绝）"}
+PASS RP-01 201 {"status":"committed","newRevision":2,"events":[{"eventId":"evt-01a17714-a297-75f2-9287-f5d0d9a5fe19","eventType":"smes.reporting.v1.report-submitted","tenantId
+PASS RP-02 201 {"status":"rejected","reason":"派工单 'dsp-01a17714-a1a6-72aa-82fe-b2e1adaf6b1d' 报工超量：累计有效报工 6+本次 5 超过派工数量 10"}
+PASS RP-02b 201 {"status":"committed","newRevision":2,"events":[{"eventId":"evt-01a17714-a2bd-7274-8883-bd1ac7fbf9ff","eventType":"smes.reporting.v1.report-submitted","tenantId
+PASS RP-02c 201 {"status":"rejected","reason":"派工单 'dsp-01a17714-a1a6-72aa-82fe-b2e1adaf6b1d' 报工超量：累计有效报工 10+本次 1 超过派工数量 10"}
+PASS RP-03 201 {"status":"committed","newRevision":3,"events":[{"eventId":"evt-01a17714-a2e6-79a4-93c9-843d28806c59","eventType":"smes.reporting.v1.report-verified","tenantId"
+PASS RP-04 201 {"status":"rejected","reason":"乐观锁冲突：expectedRevision=2，报工单当前 objectVersion=3"}
+PASS HR-05 200 {"view":{"workOrderId":"wo-01a17714-9f90-7c05-b7d6-0b97c39ab9b2","totalHours":1,"byTrade":[{"trade":"machining","totalHours":1,"outputQty":6,"entryCount":1}],"b
+PASS CS-02 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-0b9b8a32-159f-4f99-939b-3ded023b7c20","eventType":"smes.costing.v1.costing-model-published","ten
+PASS CS-03 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-0b82230d-7964-48d0-ba3e-f59132e7495b","eventType":"smes.costing.v1.cost-entry-committed","tenant
+PASS CS-04 200 {"summary":{"workOrderId":"wo-01a17714-9f90-7c05-b7d6-0b97c39ab9b2","modelCode":"standard","modelVersion":2,"totals":{"materialMinor":0,"laborMinor":6000,"outso
+PASS CS-07 201 {"status":"rejected","reason":"工作令 'wo-nope-rt26db30' 不存在（归集主体必须有效——workorder 主体端口校验）"}
+PASS RP-06 201 {"status":"committed","newRevision":2,"events":[{"eventId":"evt-01a17714-a453-78b0-a661-9a6192cd85ba","eventType":"smes.reporting.v1.report-submitted","tenantId
+PASS IN-06 200 [{"id": "insp-01a17714-a44b-7ab8-a947-92197b884ae7", "tenant": "tenant-a", "flowConfigId": "inspection-order", "state": "pending", "objectVersion": 1, "kind": "
+PASS IN-01 200 {"order":{"id":"insp-01a17714-a44b-7ab8-a947-92197b884ae7","tenant":"tenant-a","flowConfigId":"inspection-order","state":"pending","objectVersion":1,"kind":"sel
+PASS IN-02 201 {"status":"rejected","reason":"判定数量 10 超过送检数量 6"}
+PASS IN-03 201 {"status":"committed","newRevision":2,"events":[{"eventId":"evt-01a17714-a489-7f04-887b-65cafa8292bc","eventType":"smes.inspection.v1.judged","tenantId":"tenant
+PASS IN-05 200 {"nonconforms":[{"id":"nc-01a17714-a486-7285-8f90-a218ec72bc00","tenant":"tenant-a","inspectionId":"insp-01a17714-a44b-7ab8-a947-92197b884ae7","flowConfigId":"n
+PASS PU-00 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a49b-78bf-b238-4762e9fe1385","eventType":"smes.listing.v1.purchase-requested","tenantId
+PASS PU-01 201 {"status":"committed","newRevision":2,"events":[{"eventId":"evt-01a17714-a4b1-7072-b72b-4dae295b15ee","eventType":"smes.listing.v1.purchase-order-submitted","te
+PASS PU-08 201 {"status":"committed","newRevision":3,"events":[{"eventId":"evt-01a17714-a4ca-762d-b4f7-897efbcf8c10","eventType":"smes.listing.v1.purchase-order-approved","ten
+PASS PU-09 201 {"status":"committed","newRevision":4,"events":[{"eventId":"evt-01a17714-a4e3-7e8e-afa2-51247dc04cd6","eventType":"smes.listing.v1.purchase-order-issued","tenan
+FAIL PU-10 201 {"status":"rejected","reason":"入库指令被拒绝（行 1）：未指定收货仓且未配置默认仓（服务选项 defaultWarehouseId）"}
+FAIL IN-07 200 []
+PASS DP-05 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a501-76f4-bb06-f3857fa04b7b","eventType":"smes.dispatch.v1.dispatch-created","tenantId"
+PASS DP-06 201 {"status":"committed","newRevision":2,"events":[{"eventId":"evt-01a17714-a517-744a-bca3-a48a674b622f","eventType":"smes.dispatch.v1.dispatch-assigned","tenantId
+PASS DP-08 201 {"status":"rejected","reason":"状态 'assigned' 不可完工（COMPLETE 返回 unhandled——仅执行中可完工）"}
+PASS DP-07 201 {"status":"committed","newRevision":3,"events":[{"eventId":"evt-01a17714-a536-7073-a032-7e229624d35e","eventType":"smes.dispatch.v1.dispatch-started","tenantId"
+PASS DP-08b 201 {"status":"committed","newRevision":4,"events":[{"eventId":"evt-01a17714-a569-7ee4-9084-a71be0059c39","eventType":"smes.dispatch.v1.dispatch-completed","tenantI
+PASS IN-08 200 [{"id": "insp-01a17714-a564-7c8f-91b1-3ef0588762d7", "tenant": "tenant-a", "flowConfigId": "inspection-order", "state": "pending", "objectVersion": 1, "kind": "
+PASS DP-09 200 {"lines":[{"lineId":"osl-01a17714-a4fd-7d4a-89d7-8e904d7c6150","dispatchId":"dsp-01a17714-a4fb-7af3-9d5f-6aabbbaac639","workOrderId":"wo-01a17714-9f90-7c05-b7d6
+PASS MT-03 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a5b6-73fe-bec2-27609b1ae491","eventType":"smes.maintenance.v1.task-created","tenantId":
+PASS MT-04 201 {"status":"committed","newRevision":2,"events":[{"eventId":"evt-01a17714-a5c7-7b8e-9854-ef8903246e75","eventType":"smes.maintenance.v1.task-started","tenantId":
+PASS MT-05 201 {"status":"committed","newRevision":3,"events":[{"eventId":"evt-01a17714-a5d8-71c5-89e4-d0d9668ba3e5","eventType":"smes.maintenance.v1.task-completed","tenantId
+PASS MT-01 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a5e7-7c9d-b2ce-9cf1659be1fd","eventType":"smes.maintenance.v1.plan-published","tenantId
+PASS MT-02 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-01a17714-a5f6-7e0a-afe4-d92a92d1e302","eventType":"smes.maintenance.v1.task-created","tenantId":
+PASS DW-01 201 {"status":"committed","newRevision":1,"events":[{"eventId":"evt-df9d5811-2693-4d87-8268-c9f3df789450","eventType":"smes.drawing.v1.drawing-revision-published","
+PASS DW-03 200 [{"id":"dr-01a17714-a700-7678-9d03-7ba101e40a25","drawingId":"rt26db30-DWG","version":1,"changeNote":"首发","classification":"public","changedBy":"user-seed-admin
+PASS MP-02 200 [{"id":"01a17653-d12c-74e2-86c8-4570c143dc7f","packId":"smes-machining-calib","packVersion":1,"title":"机加垂直口径包","metrics":[{"metricId":"drawing-intake-progress"
+PASS NT-01 201 {"id":"01a17714-a74f-70f1-b1d3-ee638ef977a1","tenant":"tenant-a","recipient":"user-seed-admin-a","title":"复测通知","body":"hi","source":"qa-retest","refType":null,
+PASS IV-01 201 {"status":"committed","newRevision":1,"events":[],"warehouse":{"id":"wh-01a17714-a758-761b-8751-2040e4a5f15f","tenant":"tenant-a","code":"WH-rt26db30","name":"复
+FAIL IV-05 500 {"statusCode":500,"message":"Internal server error"}
+PASS AP-D11 400 {"statusCode":400,"message":"审批人 'user-does-not-exist' 不存在或不可用（须为当前租户内活动用户）"}
+PASS AP-01 201 {"case":{"id":"case-6d937e01-5b3f-4d9f-87f0-aac0f528dddb","tenant":"tenant-a","flowConfigId":"general-approval","state":"in_review","objectVersion":3,"subjectRe
+TOTAL 66 PASS 62

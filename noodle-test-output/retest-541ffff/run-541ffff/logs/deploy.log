@@ -1,0 +1,415 @@
+ Image cadence-server Building 
+ Image cadence-web Building 
+ Image cadence-migrate Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.34kB done
+#1 DONE 0.0s
+
+#2 [web internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.20kB done
+#2 DONE 0.0s
+
+#3 [migrate internal] load build definition from Dockerfile
+#3 transferring dockerfile: 8.16kB done
+#3 DONE 0.0s
+
+#4 [web internal] load metadata for docker.io/library/nginx:1.27-alpine
+#4 DONE 0.0s
+
+#5 [server internal] load metadata for docker.io/library/node:24-slim
+#5 DONE 0.2s
+
+#6 [server base 1/2] FROM docker.io/library/node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
+#6 resolve docker.io/library/node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 0.0s done
+#6 DONE 0.0s
+
+#7 [web runtime 1/3] FROM docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+#7 resolve docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 0.0s done
+#7 DONE 0.0s
+
+#8 [web internal] load build context
+#8 transferring context: 1.46MB 0.1s done
+#8 DONE 0.1s
+
+#9 [server internal] load build context
+#9 transferring context: 1.68MB 0.1s done
+#9 DONE 0.1s
+
+#10 [server base 2/2] RUN apt-get update -qq   && apt-get install -y --no-install-recommends openssl ca-certificates   && rm -rf /var/lib/apt/lists/*   && npm install -g pnpm@11.28.5
+#10 CACHED
+
+#11 [server build 1/5] WORKDIR /repo
+#11 CACHED
+
+#12 [web base 2/2] RUN npm install -g pnpm@11.28.5
+#12 CACHED
+
+#13 [web build 1/4] WORKDIR /repo
+#13 CACHED
+
+#14 [web build 2/4] COPY . .
+#14 DONE 0.3s
+
+#15 [server build 2/5] COPY . .
+#15 DONE 0.3s
+
+#16 [server build 3/5] RUN pnpm install --frozen-lockfile --ignore-scripts --filter @smes/server...
+#16 1.281 Scope: 12 of 18 workspace projects
+#16 1.439 ? Verifying lockfile against supply-chain policies (811 entries)...
+#16 1.500 Lockfile is up to date, resolution step is skipped
+#16 1.683 Progress: resolved 1, reused 0, downloaded 0, added 0
+#16 1.740 .                                        | +425 ++++++++++++++++++++++++++++++++
+#16 2.700 Progress: resolved 425, reused 0, downloaded 0, added 0
+#16 3.711 Progress: resolved 425, reused 0, downloaded 53, added 0
+#16 3.783 Packages are hard linked from the content-addressable store to the virtual store.
+#16 3.783   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#16 3.783   Virtual store is at:             node_modules/.pnpm
+#16 4.727 Progress: resolved 425, reused 0, downloaded 136, added 8
+#16 5.757 Progress: resolved 425, reused 0, downloaded 291, added 20
+#16 6.765 Progress: resolved 425, reused 0, downloaded 425, added 162
+#16 ...
+
+#17 [server prod-deps 3/3] RUN pnpm install --frozen-lockfile --ignore-scripts --prod --filter @smes/server...
+#17 1.293 Scope: 12 of 18 workspace projects
+#17 1.463 ? Verifying lockfile against supply-chain policies (811 entries)...
+#17 1.512 Lockfile is up to date, resolution step is skipped
+#17 1.647 Progress: resolved 1, reused 0, downloaded 0, added 0
+#17 1.663 .                                        | +285 +++++++++++++++++++++++++++++
+#17 2.686 Progress: resolved 285, reused 0, downloaded 0, added 0
+#17 3.511 Packages are hard linked from the content-addressable store to the virtual store.
+#17 3.511   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#17 3.511   Virtual store is at:             node_modules/.pnpm
+#17 3.737 Progress: resolved 285, reused 0, downloaded 72, added 4
+#17 4.738 Progress: resolved 285, reused 0, downloaded 223, added 16
+#17 5.746 Progress: resolved 285, reused 0, downloaded 285, added 126
+#17 6.765 Progress: resolved 285, reused 0, downloaded 285, added 284
+#17 6.873 Progress: resolved 285, reused 0, downloaded 285, added 285, done
+#17 7.002 Update available! 11.28.5 → 12.15.0.
+#17 7.002 Changelog: https://pnpm.io/v/12.15.0
+#17 7.002 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#17 ...
+
+#16 [server build 3/5] RUN pnpm install --frozen-lockfile --ignore-scripts --filter @smes/server...
+#16 7.486 Update available! 11.28.5 → 12.15.0.
+#16 7.486 Changelog: https://pnpm.io/v/12.15.0
+#16 7.486 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#16 7.834 Progress: resolved 425, reused 0, downloaded 425, added 378
+#16 8.170 Progress: resolved 425, reused 0, downloaded 425, added 425, done
+#16 ...
+
+#18 [web build 3/4] RUN pnpm install --frozen-lockfile --ignore-scripts --filter @smes/web...
+#18 1.335 Scope: 4 of 18 workspace projects
+#18 1.493 ? Verifying lockfile against supply-chain policies (811 entries)...
+#18 1.557 Lockfile is up to date, resolution step is skipped
+#18 1.733 Progress: resolved 1, reused 0, downloaded 0, added 0
+#18 1.795 .                                        | +526 ++++++++++++++++++++++++++++++++
+#18 2.773 Progress: resolved 526, reused 0, downloaded 20, added 0
+#18 3.216 Packages are hard linked from the content-addressable store to the virtual store.
+#18 3.216   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#18 3.216   Virtual store is at:             node_modules/.pnpm
+#18 3.852 Progress: resolved 526, reused 0, downloaded 121, added 8
+#18 4.886 Progress: resolved 526, reused 0, downloaded 315, added 24
+#18 5.891 Progress: resolved 526, reused 0, downloaded 526, added 52
+#18 6.890 Update available! 11.28.5 → 12.15.0.
+#18 6.890 Changelog: https://pnpm.io/v/12.15.0
+#18 6.890 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#18 6.897 Progress: resolved 526, reused 0, downloaded 526, added 315
+#18 7.554 Progress: resolved 526, reused 0, downloaded 526, added 526, done
+#18 ...
+
+#17 [server prod-deps 3/3] RUN pnpm install --frozen-lockfile --ignore-scripts --prod --filter @smes/server...
+#17 14.17 [WARN] Request took 10311ms: https://registry.npmjs.org/@prisma%2Fget-platform
+#17 14.33 [WARN] Request took 10572ms: https://registry.npmjs.org/@prisma%2Fdebug
+#17 14.56 [WARN] Request took 10726ms: https://registry.npmjs.org/@prisma%2Ffetch-engine
+#17 15.27 [WARN] Request took 11520ms: https://registry.npmjs.org/@prisma%2Fclient
+#17 15.45 ✓ Lockfile passes supply-chain policies (811 entries in 13.9s)
+#17 15.50 Done in 15s using pnpm v11.28.5
+#17 DONE 15.9s
+
+#18 [web build 3/4] RUN pnpm install --frozen-lockfile --ignore-scripts --filter @smes/web...
+#18 14.44 [WARN] Request took 10973ms: https://registry.npmjs.org/@prisma%2Fdebug
+#18 14.57 [WARN] Request took 11081ms: https://registry.npmjs.org/@prisma%2Fget-platform
+#18 14.78 [WARN] Request took 11286ms: https://registry.npmjs.org/@prisma%2Ffetch-engine
+#18 15.44 [WARN] Request took 11977ms: https://registry.npmjs.org/@prisma%2Fclient
+#18 15.58 ✓ Lockfile passes supply-chain policies (811 entries in 14s)
+#18 15.64 Done in 15.1s using pnpm v11.28.5
+#18 DONE 15.9s
+
+#19 [web build 4/4] RUN pnpm --filter @smes/web... run build
+#19 ...
+
+#16 [server build 3/5] RUN pnpm install --frozen-lockfile --ignore-scripts --filter @smes/server...
+#16 14.57 [WARN] Request took 10334ms: https://registry.npmjs.org/@prisma%2Fengines
+#16 14.93 [WARN] Request took 10694ms: https://registry.npmjs.org/@prisma%2Fdebug
+#16 15.04 [WARN] Request took 10770ms: https://registry.npmjs.org/@prisma%2Fget-platform
+#16 15.23 [WARN] Request took 10971ms: https://registry.npmjs.org/@prisma%2Ffetch-engine
+#16 15.84 [WARN] Request took 11652ms: https://registry.npmjs.org/@prisma%2Fclient
+#16 16.00 ✓ Lockfile passes supply-chain policies (811 entries in 14.5s)
+#16 16.07 Done in 15.5s using pnpm v11.28.5
+#16 DONE 16.4s
+
+#20 [migrate build 4/5] RUN pnpm --filter @smes/server... run build
+#20 1.534 Scope: 12 of 18 workspace projects
+#20 ...
+
+#21 [server runtime 2/8] RUN apt-get update -qq   && apt-get install -y --no-install-recommends openssl ca-certificates   && rm -rf /var/lib/apt/lists/*
+#21 CACHED
+
+#20 [migrate build 4/5] RUN pnpm --filter @smes/server... run build
+#20 1.571 packages/business-core build$ tsc -p tsconfig.build.json
+#20 ...
+
+#22 [server runtime 3/8] WORKDIR /repo
+#22 CACHED
+
+#19 [web build 4/4] RUN pnpm --filter @smes/web... run build
+#19 1.993 Scope: 4 of 18 workspace projects
+#19 2.036 $ tsc -p tsconfig.build.json
+#19 2.980 $ tsc -p tsconfig.build.json
+#19 ...
+
+#23 [server runtime 4/8] COPY --from=prod-deps /repo ./
+#23 DONE 1.3s
+
+#20 [migrate build 4/5] RUN pnpm --filter @smes/server... run build
+#20 2.527 packages/business-core build: Done
+#20 2.529 packages/engine-reporting build$ tsc -p tsconfig.build.json
+#20 2.530 packages/engine-flow build$ tsc -p tsconfig.build.json
+#20 2.530 packages/integration-im build$ tsc -p tsconfig.build.json
+#20 2.531 packages/drawing build$ tsc -p tsconfig.build.json
+#20 3.853 packages/engine-reporting build: Done
+#20 3.854 packages/payroll build$ tsc -p tsconfig.build.json
+#20 3.910 packages/integration-im build: Done
+#20 3.912 packages/metric-pack build$ tsc -p tsconfig.build.json
+#20 3.912 packages/drawing build: Done
+#20 4.414 packages/engine-flow build: Done
+#20 4.417 packages/application build$ tsc -p tsconfig.build.json
+#20 4.418 packages/maintenance build$ tsc -p tsconfig.build.json
+#20 5.194 packages/metric-pack build: Done
+#20 5.348 packages/payroll build: Done
+#20 5.692 packages/maintenance build: Done
+#20 8.527 packages/application build: Done
+#20 8.528 packages/business-store build$ prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json
+#20 8.528 packages/integration-print build$ tsc -p tsconfig.build.json
+#20 9.306 packages/integration-print build: Done
+#20 9.652 packages/business-store build: Prisma schema loaded from prisma/schema.prisma
+#20 ...
+
+#19 [web build 4/4] RUN pnpm --filter @smes/web... run build
+#19 4.102 $ vite build
+#19 4.469 vite v7.3.7 building client environment for production...
+#19 4.542 transforming...
+#19 8.518 ✓ 2497 modules transformed.
+#19 8.774 rendering chunks...
+#19 8.943 computing gzip size...
+#19 8.962 dist/manifest.webmanifest         0.70 kB
+#19 8.962 dist/index.html                   0.84 kB │ gzip:   0.47 kB
+#19 8.962 dist/login.html                   0.97 kB │ gzip:   0.61 kB
+#19 8.962 dist/assets/index-BfcNJ7Th.css   39.91 kB │ gzip:   7.61 kB
+#19 8.962 dist/assets/login-COxdnnSq.js     2.41 kB │ gzip:   1.21 kB
+#19 8.962 dist/assets/index-CEVo836L.js   211.25 kB │ gzip:  69.78 kB
+#19 8.962 dist/assets/index-DQUXunrM.js   375.14 kB │ gzip: 110.56 kB
+#19 8.962 dist/assets/main-DussdjkY.js    550.32 kB │ gzip: 142.96 kB
+#19 8.962 
+#19 8.962 (!) Some chunks are larger than 500 kB after minification. Consider:
+#19 8.962 - Using dynamic import() to code-split the application
+#19 8.962 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+#19 8.962 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#19 8.962 ✓ built in 4.46s
+#19 10.45 
+#19 10.45 PWA v2.0.0
+#19 10.45 mode      generateSW
+#19 10.45 precache  15 entries (1155.79 KiB)
+#19 10.45 files generated
+#19 10.45   dist/sw.js
+#19 10.45   dist/workbox-17dc2a4e.js
+#19 DONE 10.6s
+
+#7 [web runtime 1/3] FROM docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+#7 CACHED
+
+#24 [web runtime 2/3] COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
+#24 DONE 0.0s
+
+#25 [web runtime 3/3] COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+#25 DONE 0.0s
+
+#26 [web] exporting to image
+#26 exporting layers 0.1s done
+#26 exporting manifest sha256:b8e4c6305d0739b22218cd46ead069bb59c9f53d8276fffd80530f50a47a7295 done
+#26 exporting config sha256:ccb0db38c8949bfd7c3e3499b13ecb23c743b7bb8c316d3fc4959212470f92d3 done
+#26 exporting attestation manifest sha256:a7edf2eb7b9a534f60778a6278e1e173fa6230b031f802077ec564544cde05b0 done
+#26 exporting manifest list sha256:c84448f911d76cb49baf4edc67f90c2c17a587d45c0f9ceb72ccbca975142186 done
+#26 naming to docker.io/library/cadence-web:latest done
+#26 unpacking to docker.io/library/cadence-web:latest 0.0s done
+#26 DONE 0.1s
+
+#27 [web] resolving provenance for metadata file
+#27 DONE 0.0s
+
+#20 [migrate build 4/5] RUN pnpm --filter @smes/server... run build
+#20 10.30 packages/business-store build: ✔ Generated Prisma Client (v6.19.3) to ./../../node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 385ms
+#20 10.30 packages/business-store build: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+#20 10.30 packages/business-store build: Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+#20 17.32 packages/business-store build: Done
+#20 17.32 apps/server build$ tsc -p tsconfig.build.json
+#20 19.35 apps/server build: Done
+#20 DONE 19.4s
+
+#28 [migrate build 5/5] RUN gen_entry="$(ls -d /repo/node_modules/.pnpm/@prisma+client@* | head -1)"   && cp -R "$gen_entry" /generated-prisma-client
+#28 DONE 0.5s
+
+#29 [migrate] exporting to image
+#29 exporting layers
+#29 ...
+
+#30 [server runtime 5/8] COPY --from=build /generated-prisma-client /tmp/generated-prisma-client
+#30 DONE 0.4s
+
+#31 [server runtime 6/8] COPY --from=build /repo/packages /tmp/built-packages
+#31 DONE 0.2s
+
+#29 [migrate] exporting to image
+#29 ...
+
+#32 [server runtime 7/8] COPY --from=build /repo/apps/server/dist /repo/apps/server/dist
+#32 DONE 0.0s
+
+#33 [server runtime 8/8] RUN set -eux   && for pkg_dir in /tmp/built-packages/*; do        if [ -d "$pkg_dir/dist" ]; then          name="$(basename "$pkg_dir")";          rm -rf "/repo/packages/$name/dist";          cp -R "$pkg_dir/dist" "/repo/packages/$name/dist";        fi;      done   && rm -rf /tmp/built-packages   && client_dir="$(realpath /repo/packages/business-store/node_modules/@prisma/client)"   && entry_node_modules="$(dirname "$(dirname "$client_dir")")"   && rm -rf "$entry_node_modules/.prisma"   && cp -R /tmp/generated-prisma-client/node_modules/.prisma "$entry_node_modules/"   && cp -R /tmp/generated-prisma-client/node_modules/@prisma/client/. "$client_dir/"   && rm -rf /tmp/generated-prisma-client   && mkdir -p /repo/node_modules/@nestjs   && ln -sfn "$(ls -d /repo/node_modules/.pnpm/@nestjs+common@*/node_modules/@nestjs/common | head -1)" /repo/node_modules/@nestjs/common   && ln -sfn "$(ls -d /repo/node_modules/.pnpm/rxjs@*/node_modules/rxjs | head -1)" /repo/node_modules/rxjs   && cd /repo/packages/business-store   && node --input-type=module -e "import('@prisma/client').then((m)=>{ if (typeof m.PrismaClient!=='function') process.exit(1); })"   && cd /repo/apps/server   && node --input-type=module -e "import('reflect-metadata').then(()=>import('/repo/packages/application/dist/index.js')).catch((e)=>{ console.error(e); process.exit(1); })"
+#33 0.134 + [ -d /tmp/built-packages/application/dist ]
+#33 0.134 + basename /tmp/built-packages/application
+#33 0.136 + name=application
+#33 0.136 + rm -rf /repo/packages/application/dist
+#33 0.138 + cp -R /tmp/built-packages/application/dist /repo/packages/application/dist
+#33 0.162 + [ -d /tmp/built-packages/business-core/dist ]
+#33 0.162 + basename /tmp/built-packages/business-core
+#33 0.163 + name=business-core
+#33 0.163 + rm -rf /repo/packages/business-core/dist
+#33 0.163 + cp -R /tmp/built-packages/business-core/dist /repo/packages/business-core/dist
+#33 0.166 + [ -d /tmp/built-packages/business-store/dist ]
+#33 0.166 + basename /tmp/built-packages/business-store
+#33 0.167 + name=business-store
+#33 0.167 + rm -rf /repo/packages/business-store/dist
+#33 0.168 + cp -R /tmp/built-packages/business-store/dist /repo/packages/business-store/dist
+#33 0.175 + [ -d /tmp/built-packages/drawing/dist ]
+#33 0.175 + basename /tmp/built-packages/drawing
+#33 0.176 + name=drawing
+#33 0.176 + rm -rf /repo/packages/drawing/dist
+#33 0.176 + cp -R /tmp/built-packages/drawing/dist /repo/packages/drawing/dist
+#33 0.178 + [ -d /tmp/built-packages/engine-flow/dist ]
+#33 0.179 + basename /tmp/built-packages/engine-flow
+#33 0.179 + name=engine-flow
+#33 0.179 + rm -rf /repo/packages/engine-flow/dist
+#33 0.180 + cp -R /tmp/built-packages/engine-flow/dist /repo/packages/engine-flow/dist
+#33 0.181 + [ -d /tmp/built-packages/engine-reporting/dist ]
+#33 0.182 + basename /tmp/built-packages/engine-reporting
+#33 0.182 + name=engine-reporting
+#33 0.182 + rm -rf /repo/packages/engine-reporting/dist
+#33 0.183 + cp -R /tmp/built-packages/engine-reporting/dist /repo/packages/engine-reporting/dist
+#33 0.184 + [ -d /tmp/built-packages/integration-connect/dist ]
+#33 0.184 + [ -d /tmp/built-packages/integration-im/dist ]
+#33 0.185 + basename /tmp/built-packages/integration-im
+#33 0.185 + name=integration-im
+#33 0.185 + rm -rf /repo/packages/integration-im/dist
+#33 0.186 + cp -R /tmp/built-packages/integration-im/dist /repo/packages/integration-im/dist
+#33 0.188 + [ -d /tmp/built-packages/integration-print/dist ]
+#33 0.188 + basename /tmp/built-packages/integration-print
+#33 0.188 + name=integration-print
+#33 0.188 + rm -rf /repo/packages/integration-print/dist
+#33 0.189 + cp -R /tmp/built-packages/integration-print/dist /repo/packages/integration-print/dist
+#33 0.191 + [ -d /tmp/built-packages/integration-scan/dist ]
+#33 0.191 + [ -d /tmp/built-packages/maintenance/dist ]
+#33 0.191 + basename /tmp/built-packages/maintenance
+#33 0.191 + name=maintenance
+#33 0.191 + rm -rf /repo/packages/maintenance/dist
+#33 0.192 + cp -R /tmp/built-packages/maintenance/dist /repo/packages/maintenance/dist
+#33 0.194 + [ -d /tmp/built-packages/metric-pack/dist ]
+#33 0.194 + basename /tmp/built-packages/metric-pack
+#33 0.194 + name=metric-pack
+#33 0.194 + rm -rf /repo/packages/metric-pack/dist
+#33 0.195 + cp -R /tmp/built-packages/metric-pack/dist /repo/packages/metric-pack/dist
+#33 0.197 + [ -d /tmp/built-packages/payroll/dist ]
+#33 0.197 + basename /tmp/built-packages/payroll
+#33 0.197 + name=payroll
+#33 0.197 + rm -rf /repo/packages/payroll/dist
+#33 0.198 + cp -R /tmp/built-packages/payroll/dist /repo/packages/payroll/dist
+#33 0.200 + [ -d /tmp/built-packages/product-ui/dist ]
+#33 0.200 + [ -d /tmp/built-packages/testkit/dist ]
+#33 0.200 + rm -rf /tmp/built-packages
+#33 0.282 + realpath /repo/packages/business-store/node_modules/@prisma/client
+#33 0.283 + client_dir=/repo/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client
+#33 0.284 + dirname /repo/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client
+#33 0.285 + dirname /repo/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma
+#33 0.285 + entry_node_modules=/repo/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules
+#33 0.285 + rm -rf /repo/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/.prisma
+#33 0.286 + cp -R /tmp/generated-prisma-client/node_modules/.prisma /repo/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/
+#33 0.306 + cp -R /tmp/generated-prisma-client/node_modules/@prisma/client/. /repo/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/
+#33 0.349 + rm -rf /tmp/generated-prisma-client
+#33 0.353 + mkdir -p /repo/node_modules/@nestjs
+#33 0.356 + head -1
+#33 0.356 + ls -d /repo/node_modules/.pnpm/@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2_supports-color@7.2.0/node_modules/@nestjs/common
+#33 0.357 + ln -sfn /repo/node_modules/.pnpm/@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2_supports-color@7.2.0/node_modules/@nestjs/common /repo/node_modules/@nestjs/common
+#33 0.359 + head -1
+#33 0.359 + ls -d /repo/node_modules/.pnpm/rxjs@7.8.2/node_modules/rxjs
+#33 0.360 + ln -sfn /repo/node_modules/.pnpm/rxjs@7.8.2/node_modules/rxjs /repo/node_modules/rxjs
+#33 0.360 + cd /repo/packages/business-store
+#33 0.360 + node --input-type=module -e import('@prisma/client').then((m)=>{ if (typeof m.PrismaClient!=='function') process.exit(1); })
+#33 0.418 + cd /repo/apps/server
+#33 0.418 + node --input-type=module -e import('reflect-metadata').then(()=>import('/repo/packages/application/dist/index.js')).catch((e)=>{ console.error(e); process.exit(1); })
+#33 DONE 0.8s
+
+#29 [migrate] exporting to image
+#29 ...
+
+#34 [server] exporting to image
+#34 exporting layers 6.1s done
+#34 exporting manifest sha256:e817c7ef65a782415b70a161da186631f30643a5b7112a38fe9fb71325aabb6a done
+#34 exporting config sha256:9ded3621e3b905235f698f57389a2b0249d99ecd1eb1e477118fa7d1194e5c2e done
+#34 exporting attestation manifest sha256:12c3901905ce61603610615c443d0530bdd8822793fdea3dee5d006d89194b24 done
+#34 exporting manifest list sha256:dbe6661c7ceb0aed59e72a62518d273f0622cf69e4a6b5b3207b6076454a95c8 done
+#34 naming to docker.io/library/cadence-server:latest done
+#34 unpacking to docker.io/library/cadence-server:latest
+#34 unpacking to docker.io/library/cadence-server:latest 2.8s done
+#34 DONE 8.9s
+
+#35 [server] resolving provenance for metadata file
+#35 DONE 0.0s
+
+#29 [migrate] exporting to image
+#29 exporting layers 20.6s done
+#29 exporting manifest sha256:266e9a583e076eff860e4f2a8d6789ef58be3845b43479502844e83cc983496f done
+#29 exporting config sha256:8eda452a13517c2decc2b5e0641ec5299107437918f7f713cfab387fc386f6fe done
+#29 exporting attestation manifest sha256:4d7f0caf1908aeb8b47e258f5e0ada71488251f1bef8a168dd58f7c5c54b69a5 done
+#29 exporting manifest list sha256:f778c423335b9df3c55836c3101aeb24b6b69fd809efe24194040decccfa9f4b done
+#29 naming to docker.io/library/cadence-migrate:latest done
+#29 unpacking to docker.io/library/cadence-migrate:latest
+#29 unpacking to docker.io/library/cadence-migrate:latest 6.6s done
+#29 DONE 27.3s
+
+#36 [migrate] resolving provenance for metadata file
+#36 DONE 0.0s
+ Image cadence-migrate Built 
+ Image cadence-server Built 
+ Image cadence-web Built 
+ Container cadence-pg-1 Running 
+ Container cadence-proxy-1 Running 
+ Container cadence-migrate-1 Recreate 
+ Container cadence-migrate-1 Recreated 
+ Container cadence-server-1 Recreate 
+ Container cadence-server-1 Recreated 
+ Container cadence-web-1 Recreate 
+ Container cadence-web-1 Recreated 
+ Container cadence-pg-1 Waiting 
+ Container cadence-pg-1 Healthy 
+ Container cadence-migrate-1 Starting 
+ Container cadence-migrate-1 Started 
+ Container cadence-pg-1 Waiting 
+ Container cadence-migrate-1 Waiting 
+ Container cadence-pg-1 Healthy 
+ Container cadence-migrate-1 Exited 
+ Container cadence-server-1 Starting 
+ Container cadence-server-1 Started 
+ Container cadence-server-1 Waiting 
+ Container cadence-server-1 Healthy 
+ Container cadence-web-1 Starting 
+ Container cadence-web-1 Started 

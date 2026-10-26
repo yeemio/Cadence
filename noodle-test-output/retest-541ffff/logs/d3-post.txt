@@ -1,0 +1,4 @@
+old url after restart 404 {"statusCode":404,"message":"附件只读引用无效或已过期"}
+list 200 {"attachments":[{"id":"atc-01a1771a-59f5-730a-b674-29ba3fd227dc","fileName":"d3.txt","contentType":null,"fileUrl":null,"
+new ref 200
+new url after restart 200 D3-persist-check

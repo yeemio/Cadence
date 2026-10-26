@@ -1,0 +1,20 @@
+PASS D2-01 201 {"id":"01a17716-6e72-717c-b6a6-fe7832c807bc","tenant":"tenant-a","username":"qa-907dd1","displayName":"复测用户","active":true}
+PASS D2-02 201 {"token":"Hn3v5ANrpNtzhW0sb_3Bst_NMGiGSyjN-UKu7PxVu6k","expiresAt":"2026-10-26T1
+PASS D2-03 200 {"expiresAt":"2026-10-26T15:22:01.240Z","user":{"id":"01a17716-6e72-717c-b6a6-fe7832c807bc","tenant":"tenant-a","username":"qa-907dd1","displayName":"
+PASS D2-04 401 {"statusCode":401,"message":"用户名或口令不正确"}
+FAIL D2-05 200 {"id":"01a17716-6e72-717c-b6a6-fe7832c807bc","tenant":"tenant-a","username":"qa-907dd1","displayName":"复测用户","active":true}
+PASS D2-06 403 {"message":"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'user:write'","error":"Forbidden","statusCode":403}
+PASS D2-07 200 {"id":"01a17716-6e72-717c-b6a6-fe7832c807bc","tenant":"tenant-a","username":"qa-907dd1","displayName":"复测用户","active":true}
+PASS D2-08 401 {"statusCode":401,"message":"用户名或口令不正确"}
+PASS D2-09 201 {"token":"Csw0oHcuKyumo_qUMgtShsVO2d-BXeBvp0sRWXpFveI","expiresAt":"2026-10-26T1
+PASS D2-10 401 {"statusCode":401,"message":"会话已失效"}
+PASS D2-11 404 {"statusCode":404,"message":"租户 'tenant-b' 内不存在用户 '01a17716-6e72-717c-b6a6-fe7832c807bc'"}
+PASS D2-12 401 {"message":"缺少或无效的访问令牌（Authorization: Bearer；dev/test 回落需 SMES_DEV_AUTH=on）","error":"Unauthorized","statusCode":401}
+PASS D2-13 401 {"statusCode":401,"message":"用户名或口令不正确"}
+PASS D2-14 401 {"statusCode":401,"message":"用户名或口令不正确"}
+PASS D2-15 404 {"statusCode":404,"message":"租户 'tenant-a' 内不存在用户 'nope-id'"}
+FAIL D4-01 400 {"statusCode":400,"message":"查询参数 'bizId' 必填"}
+FAIL D4-02 404 {"statusCode":404,"message":"附件只读引用无效或已过期"}
+PASS D4-03 404 {"statusCode":404,"message":"附件只读引用无效或已过期"}
+PASS D4-04 404 {"statusCode":404,"message":"附件只读引用无效或已过期"}
+19 16

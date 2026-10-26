@@ -1,0 +1,523 @@
+[
+{
+"persona": "admin",
+"id": "PA-01",
+"desc": "创建部门",
+"req": "POST /org/departments",
+"expect": 201,
+"actual": 201,
+"ok": true,
+"body": "{\"id\": \"01a17718-3a67-7604-a703-eb4aa7665a54\", \"tenant\": \"tenant-a\", \"code\": \"qa152358-D1\", \"name\": \"QA部门\", \"parentId\": null, \"active\": true}"
+},
+{
+"persona": "admin",
+"id": "PA-02",
+"desc": "部门 code 重复",
+"req": "POST /org/departments",
+"expect": [
+400,
+409
+],
+"actual": 409,
+"ok": true,
+"body": "{\"statusCode\": 409, \"message\": \"机构 code 'qa152358-D1' 在租户 'tenant-a' 内已存在\"}"
+},
+{
+"persona": "admin",
+"id": "PA-03",
+"desc": "部门缺必填 name",
+"req": "POST /org/departments",
+"expect": 400,
+"actual": 400,
+"ok": true,
+"body": "{\"statusCode\": 400, \"message\": \"显示名必须是字符串：undefined\"}"
+},
+{
+"persona": "admin",
+"id": "PA-04",
+"desc": "创建岗位",
+"req": "POST /org/positions",
+"expect": 201,
+"actual": 201,
+"ok": true,
+"body": "{\"id\": \"01a17718-3a8e-7495-aa7a-0626ab66d0e7\", \"tenant\": \"tenant-a\", \"code\": \"qa152358-P1\", \"name\": \"QA岗位\", \"departmentRef\": null, \"active\": true}"
+},
+{
+"persona": "admin",
+"id": "PA-05",
+"desc": "创建角色 qa-clerk",
+"req": "POST /org/roles",
+"expect": 201,
+"actual": 201,
+"ok": true,
+"body": "{\"tenant\": \"tenant-a\", \"name\": \"qa152358-clerk\", \"displayName\": \"QA文员\"}"
+},
+{
+"persona": "admin",
+"id": "PA-06",
+"desc": "给角色授予 customer:read",
+"req": "PUT /org/roles/qa152358-clerk/permissions",
+"expect": [
+200,
+201
+],
+"actual": 200,
+"ok": true,
+"body": "{\"granted\": 1, \"revoked\": 0}"
+},
+{
+"persona": "admin",
+"id": "PA-07",
+"desc": "创建用户",
+"req": "POST /org/users",
+"expect": 201,
+"actual": 201,
+"ok": true,
+"body": "{\"id\": \"01a17718-3ab0-74cf-9ee3-1eeed84cec66\", \"tenant\": \"tenant-a\", \"username\": \"qa152358-u1\", \"displayName\": \"QA用户\", \"active\": true}"
+},
+{
+"persona": "admin",
+"id": "PA-08",
+"desc": "用户名重复",
+"req": "POST /org/users",
+"expect": [
+400,
+409
+],
+"actual": 409,
+"ok": true,
+"body": "{\"statusCode\": 409, \"message\": \"用户名 'qa152358-u1' 在租户 'tenant-a' 内已存在\"}"
+},
+{
+"persona": "admin",
+"id": "PA-09",
+"desc": "分配角色给用户",
+"req": "PUT /org/users/01a17718-3ab0-74cf-9ee3-1eeed84cec66/roles",
+"expect": [
+200,
+201
+],
+"actual": 200,
+"ok": true,
+"body": "{\"granted\": 1, \"revoked\": 0}"
+},
+{
+"persona": "admin",
+"id": "PA-10",
+"desc": "停用用户",
+"req": "PUT /org/users/01a17718-3ab0-74cf-9ee3-1eeed84cec66/status",
+"expect": [
+200,
+201
+],
+"actual": 200,
+"ok": true,
+"body": "{\"id\": \"01a17718-3ab0-74cf-9ee3-1eeed84cec66\", \"tenant\": \"tenant-a\", \"username\": \"qa152358-u1\", \"displayName\": \"QA用户\", \"active\": false}"
+},
+{
+"persona": "admin",
+"id": "PA-11",
+"desc": "创建物品",
+"req": "POST /masterdata/items",
+"expect": 201,
+"actual": 201,
+"ok": true,
+"body": "{\"id\": \"01a17718-3b00-71b8-bd70-f9b9d4647441\", \"tenant\": \"tenant-a\", \"code\": \"qa152358-I1\", \"name\": \"QA物品\", \"spec\": null, \"unit\": \"pcs\", \"category\": null, \"active\": true}"
+},
+{
+"persona": "admin",
+"id": "PA-12",
+"desc": "列表可见新建物品",
+"req": "GET /masterdata/items",
+"expect": "含新物品",
+"actual": true,
+"ok": true,
+"body": ""
+},
+{
+"persona": "admin",
+"id": "PA-13",
+"desc": "物品 code 超长(300)",
+"req": "POST /masterdata/items",
+"expect": 400,
+"actual": 400,
+"ok": true,
+"body": "{\"statusCode\": 400, \"message\": \"物品 code '\\\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+},
+{
+"persona": "admin",
+"id": "PA-14",
+"desc": "物品空字符串 name",
+"req": "POST /masterdata/items",
+"expect": 400,
+"actual": 400,
+"ok": true,
+"body": "{\"statusCode\": 400, \"message\": \"名称须为 1~128 个非空白字符：\\\"\\\"\"}"
+},
+{
+"persona": "admin",
+"id": "PA-15",
+"desc": "创建供应商",
+"req": "POST /masterdata/suppliers",
+"expect": 201,
+"actual": 201,
+"ok": true,
+"body": "{\"id\": \"01a17718-3b2c-7321-b58c-5f8a7e15f32f\", \"tenant\": \"tenant-a\", \"code\": \"qa152358-S1\", \"name\": \"QA供应商\", \"active\": true}"
+},
+{
+"persona": "admin",
+"id": "PA-16",
+"desc": "审批流配置列表",
+"req": "GET /approval-config/flows",
+"expect": 200,
+"actual": 200,
+"ok": true,
+"body": "{\"flows\": []}"
+},
+{
+"persona": "admin",
+"id": "PA-17",
+"desc": "菜单配置读取",
+"req": "GET /menu-config/configs",
+"expect": 200,
+"actual": 200,
+"ok": true,
+"body": "{\"configs\": []}"
+},
+{
+"persona": "admin",
+"id": "PA-18",
+"desc": "审计日志可读",
+"req": "GET /audit/logs",
+"expect": 200,
+"actual": 200,
+"ok": true,
+"body": "{\"logs\": [{\"id\": \"01a17718-3b31-74f1-b194-66d39c2de5ae\", \"tenant\": \"tenant-a\", \"userId\": \"user-seed-admin-a\", \"method\": \"POST\", \"path\": \"/masterdata/suppliers\", \"summary\": \"POST /m"
+},
+{
+"persona": "demo-admin(提交人)",
+"id": "PS-01",
+"desc": "发起审批案件(引用物品)",
+"req": "POST /approval/cases",
+"expect": 201,
+"actual": 201,
+"ok": true,
+"body": "{\"case\": {\"id\": \"case-d7ca0eed-847a-4980-a493-13a88981d81d\", \"tenant\": \"tenant-a\", \"flowConfigId\": \"general-approval\", \"state\": \"in_review\", \"objectVersion\": 3, \"subjectRef\": {\"typ"
+},
+{
+"persona": "demo-admin(提交人)",
+"id": "PS-02",
+"desc": "空审批人被拒",
+"req": "POST /approval/cases",
+"expect": 400,
+"actual": 400,
+"ok": true,
+"body": "{\"statusCode\": 400, \"message\": \"审批人清单 approvers 须为非空数组：[]\"}"
+},
+{
+"persona": "demo-admin(提交人)",
+"id": "PS-03",
+"desc": "发起第二个案件(用于驳回)",
+"req": "POST /approval/cases",
+"expect": 201,
+"actual": 201,
+"ok": true,
+"body": "{\"case\": {\"id\": \"case-44569bb6-983f-42aa-a4f9-de0f203a4877\", \"tenant\": \"tenant-a\", \"flowConfigId\": \"general-approval\", \"state\": \"in_review\", \"objectVersion\": 3, \"subjectRef\": {\"typ"
+},
+{
+"persona": "demo-admin(提交人)",
+"id": "PS-04",
+"desc": "发起审批:不存在的审批人",
+"req": "POST /approval/cases",
+"expect": [
+400,
+404,
+422
+],
+"actual": 400,
+"ok": true,
+"body": "{\"statusCode\": 400, \"message\": \"审批人 'no-such-user' 不存在或不可用（须为当前租户内活动用户）\"}"
+},
+{
+"persona": "demo-admin(提交人)",
+"id": "PS-05",
+"desc": "提交采购申请",
+"req": "POST /purchase/requests",
+"expect": [
+201,
+400
+],
+"actual": 400,
+"ok": true,
+"body": "{\"statusCode\": 400, \"message\": \"operationId必须是字符串：undefined\"}"
+},
+{
+"persona": "approver",
+"id": "PP-01",
+"desc": "工作台汇总可读",
+"req": "GET /workbench/summary",
+"expect": 200,
+"actual": 200,
+"ok": true,
+"body": "{\"user\": \"user-seed-approver-a\", \"openTotal\": 4, \"bySource\": [{\"source\": \"approval\", \"open\": 3}, {\"source\": \"manual\", \"open\": 1}]}"
+},
+{
+"persona": "approver",
+"id": "PP-02",
+"desc": "待办列表可读",
+"req": "GET /workbench/todos",
+"expect": 200,
+"actual": 200,
+"ok": true,
+"body": "{\"todos\": [{\"id\": \"01a17718-3bcf-7323-8bea-4a49d24720c2\", \"tenant\": \"tenant-a\", \"assignee\": \"user-seed-approver-a\", \"title\": \"qa152358第二件\", \"source\": \"approval\", \"refType\": \"approv"
+},
+{
+"persona": "approver",
+"id": "PP-03",
+"desc": "审批案件列表",
+"req": "GET /approval/cases",
+"expect": 200,
+"actual": 200,
+"ok": true,
+"body": "{\"cases\": [{\"id\": \"case-44569bb6-983f-42aa-a4f9-de0f203a4877\", \"tenant\": \"tenant-a\", \"flowConfigId\": \"general-approval\", \"state\": \"in_review\", \"objectVersion\": 3, \"subjectRef\": {\"t"
+},
+{
+"persona": "approver",
+"id": "PP-04",
+"desc": "批准 case1(错误 objectVersion)",
+"req": "POST /approval/cases/case-d7ca0eed-847a-4980-a493-13a88981d81d/decisions",
+"expect": 409,
+"actual": 409,
+"ok": true,
+"body": "{\"statusCode\": 409, \"message\": \"版本冲突：决策声明 objectVersion=999，案件当前 3\"}"
+},
+{
+"persona": "approver",
+"id": "PP-05",
+"desc": "批准 case1",
+"req": "POST /approval/cases/case-d7ca0eed-847a-4980-a493-13a88981d81d/decisions",
+"expect": [
+200,
+201
+],
+"actual": 201,
+"ok": true,
+"body": "{\"case\": {\"id\": \"case-d7ca0eed-847a-4980-a493-13a88981d81d\", \"tenant\": \"tenant-a\", \"flowConfigId\": \"general-approval\", \"state\": \"approved\", \"objectVersion\": 4, \"subjectRef\": {\"type"
+},
+{
+"persona": "approver",
+"id": "PP-06",
+"desc": "重复审批已结案件",
+"req": "POST /approval/cases/case-d7ca0eed-847a-4980-a493-13a88981d81d/decisions",
+"expect": [
+400,
+409
+],
+"actual": 409,
+"ok": true,
+"body": "{\"statusCode\": 409, \"message\": \"状态 'approved' 不支持决策 'approve'\"}"
+},
+{
+"persona": "approver",
+"id": "PP-07",
+"desc": "驳回 case2",
+"req": "POST /approval/cases/case-44569bb6-983f-42aa-a4f9-de0f203a4877/decisions",
+"expect": [
+200,
+201
+],
+"actual": 201,
+"ok": true,
+"body": "{\"case\": {\"id\": \"case-44569bb6-983f-42aa-a4f9-de0f203a4877\", \"tenant\": \"tenant-a\", \"flowConfigId\": \"general-approval\", \"state\": \"rejected\", \"objectVersion\": 4, \"subjectRef\": {\"type"
+},
+{
+"persona": "approver",
+"id": "PP-08",
+"desc": "非法决策值",
+"req": "POST /approval/cases/case-44569bb6-983f-42aa-a4f9-de0f203a4877/decisions",
+"expect": 400,
+"actual": 400,
+"ok": true,
+"body": "{\"statusCode\": 400, \"message\": \"决策 decision 非法：须为 approve/reject/escalate/withdraw 之一，得到 \\\"maybe\\\"\"}"
+},
+{
+"persona": "approver",
+"id": "PP-09",
+"desc": "案件详情含事件与记录",
+"req": "GET /approval/cases/case-d7ca0eed-847a-4980-a493-13a88981d81d",
+"expect": 200,
+"actual": 200,
+"ok": true,
+"body": "{\"state\": \"approved\", \"events\": [null, null, null], \"records\": 1}"
+},
+{
+"persona": "approver",
+"id": "PP-10",
+"desc": "越权:创建物品",
+"req": "POST /masterdata/items",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-approver-a' 无权限码 'item:write'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "approver",
+"id": "PP-11",
+"desc": "越权:读用户",
+"req": "GET /org/users",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-approver-a' 无权限码 'user:read'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "approver",
+"id": "PP-12",
+"desc": "越权:读审计",
+"req": "GET /audit/logs",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-approver-a' 无权限码 'audit:read'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-01",
+"desc": "无策略访客 GET /approval/cases 应被拒",
+"req": "GET /approval/cases",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'approval:read'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-02",
+"desc": "无策略访客 GET /masterdata/items 应被拒",
+"req": "GET /masterdata/items",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'item:read'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-03",
+"desc": "无策略访客 GET /org/users 应被拒",
+"req": "GET /org/users",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'user:read'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-04",
+"desc": "无策略访客 POST /masterdata/items 应被拒",
+"req": "POST /masterdata/items",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'item:write'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-05",
+"desc": "无策略访客 POST /approval/cases/case-44569bb6-983f-42aa-a4f9-de0f203a4877/decisions 应被拒",
+"req": "POST /approval/cases/case-44569bb6-983f-42aa-a4f9-de0f203a4877/decisions",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'approval:write'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-06",
+"desc": "无策略访客 PUT /org/users/01a17718-3ab0-74cf-9ee3-1eeed84cec66/status 应被拒",
+"req": "PUT /org/users/01a17718-3ab0-74cf-9ee3-1eeed84cec66/status",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'user:write'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-07",
+"desc": "无策略访客 POST /org/roles 应被拒",
+"req": "POST /org/roles",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'role:write'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-08",
+"desc": "无策略访客 GET /workbench/summary 应被拒",
+"req": "GET /workbench/summary",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": "{\"message\": \"租户 'tenant-a' 内用户 'user-seed-viewer-a' 无权限码 'workbench:read'\", \"error\": \"Forbidden\", \"statusCode\": 403}"
+},
+{
+"persona": "viewer",
+"id": "PV-09",
+"desc": "/auth/me 可用且 admin=false",
+"req": "GET /auth/me",
+"expect": 200,
+"actual": 200,
+"ok": true,
+"body": "{\"expiresAt\": \"2026-10-26T15:22:45.113Z\", \"user\": {\"id\": \"user-seed-viewer-a\", \"tenant\": \"tenant-a\", \"username\": \"viewer\", \"displayName\": \"种子访客（无策略） tenant-a\", \"active\": true}, \"ad"
+},
+{
+"persona": "跨角色",
+"id": "PX-01",
+"desc": "提交→审批→提交人可见 approved",
+"req": "GET /approval/cases/case-d7ca0eed-847a-4980-a493-13a88981d81d as demo-admin",
+"expect": "approved",
+"actual": "approved",
+"ok": true,
+"body": ""
+},
+{
+"persona": "跨角色",
+"id": "PX-02",
+"desc": "驳回后提交人可见 rejected",
+"req": "GET /approval/cases/case-44569bb6-983f-42aa-a4f9-de0f203a4877",
+"expect": "rejected",
+"actual": "rejected",
+"ok": true,
+"body": ""
+},
+{
+"persona": "跨角色",
+"id": "PX-03",
+"desc": "审批完成后审批人待办清空",
+"req": "GET /workbench/summary as approver",
+"expect": "approval open=0",
+"actual": "{\"user\": \"user-seed-approver-a\", \"openTotal\": 2, \"bySource\": [{\"source\": \"approval\", \"open\": 1}, {\"source\": \"manual\", \"o",
+"ok": false,
+"body": ""
+},
+{
+"persona": "跨角色",
+"id": "PX-04",
+"desc": "审批结果对 viewer(无策略)不可见",
+"req": "GET case as viewer",
+"expect": 403,
+"actual": 403,
+"ok": true,
+"body": ""
+},
+{
+"persona": "跨角色",
+"id": "PX-05",
+"desc": "审计日志记录审批写操作",
+"req": "GET /audit/logs",
+"expect": ">=4 条 approval 记录",
+"actual": 10,
+"ok": true,
+"body": ""
+}
+]

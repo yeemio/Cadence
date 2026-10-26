@@ -1,0 +1,283 @@
+$ pnpm build && pnpm typecheck && pnpm boundary && pnpm boundary:selftest && pnpm test
+$ pnpm -r --if-present run build
+Scope: 17 of 18 workspace projects
+packages/business-core build$ tsc -p tsconfig.build.json
+packages/business-core build: Done
+packages/drawing build$ tsc -p tsconfig.build.json
+packages/engine-flow build$ tsc -p tsconfig.build.json
+packages/engine-reporting build$ tsc -p tsconfig.build.json
+packages/integration-im build$ tsc -p tsconfig.build.json
+packages/drawing build: Done
+packages/integration-scan build$ tsc -p tsconfig.build.json
+packages/integration-im build: Done
+packages/payroll build$ tsc -p tsconfig.build.json
+packages/engine-reporting build: Done
+packages/metric-pack build$ tsc -p tsconfig.build.json
+packages/engine-flow build: Done
+packages/application build$ tsc -p tsconfig.build.json
+packages/integration-scan build: Done
+packages/maintenance build$ tsc -p tsconfig.build.json
+packages/metric-pack build: Done
+apps/web build$ vite build
+packages/payroll build: Done
+apps/web build: vite v7.3.7 building client environment for production...
+apps/web build: transforming...
+packages/maintenance build: Done
+packages/application build: Done
+packages/business-store build$ prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json
+packages/integration-print build$ tsc -p tsconfig.build.json
+packages/integration-print build: Done
+packages/business-store build: Prisma schema loaded from prisma/schema.prisma
+apps/web build: ✓ 2497 modules transformed.
+apps/web build: rendering chunks...
+apps/web build: computing gzip size...
+apps/web build: dist/manifest.webmanifest         0.70 kB
+apps/web build: dist/index.html                   0.84 kB │ gzip:   0.47 kB
+apps/web build: dist/login.html                   0.97 kB │ gzip:   0.61 kB
+apps/web build: dist/assets/index-BfcNJ7Th.css   39.91 kB │ gzip:   7.61 kB
+apps/web build: dist/assets/login-COxdnnSq.js     2.41 kB │ gzip:   1.21 kB
+apps/web build: dist/assets/index-CEVo836L.js   211.25 kB │ gzip:  69.78 kB
+apps/web build: dist/assets/index-DQUXunrM.js   375.14 kB │ gzip: 110.56 kB
+apps/web build: dist/assets/main-DussdjkY.js    550.32 kB │ gzip: 142.96 kB
+apps/web build: ✓ built in 3.57s
+apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+apps/web build: - Using dynamic import() to code-split the application
+apps/web build: - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+packages/business-store build: ✔ Generated Prisma Client (v6.19.3) to ./../../node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 393ms
+packages/business-store build: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+packages/business-store build: Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+apps/web build: PWA v2.0.0
+apps/web build: mode      generateSW
+apps/web build: precache  15 entries (1155.79 KiB)
+apps/web build: files generated
+apps/web build:   dist/sw.js
+apps/web build:   dist/workbox-17dc2a4e.js
+apps/web build: Done
+packages/business-store build: Done
+apps/server build$ tsc -p tsconfig.build.json
+packages/testkit build$ tsc -p tsconfig.build.json
+packages/testkit build: Done
+apps/server build: Done
+$ pnpm -r --if-present run typecheck
+Scope: 17 of 18 workspace projects
+packages/business-core typecheck$ tsc -p tsconfig.json
+packages/business-core typecheck: Done
+packages/drawing typecheck$ tsc -p tsconfig.json
+packages/engine-flow typecheck$ tsc -p tsconfig.json
+packages/engine-reporting typecheck$ tsc -p tsconfig.json
+packages/integration-im typecheck$ tsc -p tsconfig.json
+packages/integration-im typecheck: Done
+packages/integration-scan typecheck$ tsc -p tsconfig.json
+packages/engine-reporting typecheck: Done
+packages/payroll typecheck$ tsc -p tsconfig.json
+packages/drawing typecheck: Done
+packages/product-ui typecheck$ tsc -p tsconfig.json
+packages/engine-flow typecheck: Done
+packages/metric-pack typecheck$ tsc -p tsconfig.json
+packages/integration-scan typecheck: Done
+packages/application typecheck$ tsc -p tsconfig.json
+packages/payroll typecheck: Done
+packages/maintenance typecheck$ tsc -p tsconfig.json
+packages/metric-pack typecheck: Done
+packages/product-ui typecheck: Done
+apps/web typecheck$ tsc -p tsconfig.json
+packages/maintenance typecheck: Done
+packages/application typecheck: Done
+packages/business-store typecheck$ prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json
+packages/integration-print typecheck$ tsc -p tsconfig.json
+packages/business-store typecheck: Prisma schema loaded from prisma/schema.prisma
+packages/integration-print typecheck: Done
+apps/web typecheck: Done
+packages/business-store typecheck: ┌─────────────────────────────────────────────────────────┐
+packages/business-store typecheck: │  Update available 6.19.3 -> 8.0.0-rc.27                 │
+packages/business-store typecheck: │                                                         │
+packages/business-store typecheck: │  This is a major update - please follow the guide at    │
+packages/business-store typecheck: │  https://pris.ly/d/major-version-upgrade                │
+packages/business-store typecheck: │                                                         │
+packages/business-store typecheck: │  Run the following to update                            │
+packages/business-store typecheck: │    npm i --save-dev prisma@latest                       │
+packages/business-store typecheck: │    npm i @prisma/client@latest                          │
+packages/business-store typecheck: └─────────────────────────────────────────────────────────┘
+packages/business-store typecheck: ✔ Generated Prisma Client (v6.19.3) to ./../../node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 334ms
+packages/business-store typecheck: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+packages/business-store typecheck: Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+packages/business-store typecheck: Done
+apps/server typecheck$ tsc -p tsconfig.json
+packages/testkit typecheck$ tsc -p tsconfig.json
+packages/testkit typecheck: Done
+apps/server typecheck: Done
+$ depcruise packages apps --config .dep-cruiser.cjs
+
+✔ no dependency violations found (1358 modules, 4546 dependencies cruised)
+
+$ node scripts/boundary-selftest.mjs
+boundary selftest OK: packages/business-core/tests/boundary-fixtures 被拦下（core-no-internal-deps）
+boundary selftest OK: packages/payroll/tests/boundary-fixtures 被拦下（pro-pack-tier-edges）
+boundary selftest OK: packages/maintenance/tests/boundary-fixtures 被拦下（pro-pack-tier-edges）
+boundary selftest OK: packages/drawing/tests/boundary-fixtures 被拦下（pro-pack-tier-edges）
+boundary selftest OK: packages/metric-pack/tests/boundary-fixtures 被拦下（pro-pack-tier-edges）
+boundary selftest OK: packages/engine-reporting/tests/boundary-fixtures 被拦下（engine-tier-edges）
+$ pnpm -r --if-present run test
+Scope: 17 of 18 workspace projects
+packages/business-core test$ vitest run --reporter=dot
+packages/business-core test:  RUN  v3.2.7 /tmp/clean/packages/business-core
+packages/business-core test: ·······························
+packages/business-core test:  Test Files  4 passed (4)
+packages/business-core test:       Tests  31 passed (31)
+packages/business-core test:    Start at  15:18:11
+packages/business-core test:    Duration  275ms (transform 163ms, setup 0ms, collect 282ms, tests 13ms, environment 0ms, prepare 226ms)
+packages/business-core test: Done
+packages/drawing test$ vitest run --reporter=dot
+packages/engine-flow test$ vitest run --reporter=dot
+packages/integration-im test$ vitest run --reporter=dot
+packages/engine-reporting test$ vitest run --reporter=dot
+packages/drawing test:  RUN  v3.2.7 /tmp/clean/packages/drawing
+packages/engine-flow test:  RUN  v3.2.7 /tmp/clean/packages/engine-flow
+packages/integration-im test:  RUN  v3.2.7 /tmp/clean/packages/integration-im
+packages/engine-reporting test:  RUN  v3.2.7 /tmp/clean/packages/engine-reporting
+packages/drawing test: ····················
+packages/drawing test:  Test Files  2 passed (2)
+packages/drawing test:       Tests  20 passed (20)
+packages/drawing test:    Start at  15:18:11
+packages/drawing test:    Duration  881ms (transform 338ms, setup 0ms, collect 554ms, tests 34ms, environment 4ms, prepare 405ms)
+packages/integration-im test: ································
+packages/integration-im test:  Test Files  7 passed (7)
+packages/integration-im test:       Tests  32 passed (32)
+packages/integration-im test:    Start at  15:18:11
+packages/integration-im test:    Duration  946ms (transform 815ms, setup 0ms, collect 2.06s, tests 68ms, environment 1ms, prepare 1.15s)
+packages/engine-flow test: ···························································
+packages/engine-flow test:  Test Files  7 passed (7)
+packages/engine-flow test:       Tests  59 passed (59)
+packages/engine-flow test:    Start at  15:18:11
+packages/engine-flow test:    Duration  1.04s (transform 799ms, setup 0ms, collect 2.05s, tests 131ms, environment 1ms, prepare 1.41s)
+packages/drawing test: Done
+packages/integration-scan test$ vitest run --reporter=dot
+packages/engine-reporting test: ·················································
+packages/engine-reporting test:  Test Files  6 passed (6)
+packages/engine-reporting test:       Tests  49 passed (49)
+packages/engine-reporting test:    Start at  15:18:11
+packages/engine-reporting test:    Duration  1.14s (transform 787ms, setup 0ms, collect 1.93s, tests 254ms, environment 1ms, prepare 1.04s)
+packages/integration-im test: Done
+packages/payroll test$ vitest run --reporter=dot
+packages/engine-flow test: Done
+packages/product-ui test$ vitest run --reporter=dot
+packages/engine-reporting test: Done
+packages/maintenance test$ vitest run --reporter=dot
+packages/integration-scan test:  RUN  v3.2.7 /tmp/clean/packages/integration-scan
+packages/payroll test:  RUN  v3.2.7 /tmp/clean/packages/payroll
+packages/product-ui test:  RUN  v3.2.7 /tmp/clean/packages/product-ui
+packages/maintenance test:  RUN  v3.2.7 /tmp/clean/packages/maintenance
+packages/integration-scan test: ····························································
+packages/integration-scan test:  Test Files  6 passed (6)
+packages/integration-scan test:       Tests  60 passed (60)
+packages/integration-scan test:    Start at  15:18:13
+packages/integration-scan test:    Duration  858ms (transform 866ms, setup 0ms, collect 2.16s, tests 168ms, environment 1ms, prepare 895ms)
+packages/integration-scan test: Done
+packages/application test$ vitest run --reporter=dot
+packages/payroll test: ······················
+packages/payroll test:  Test Files  2 passed (2)
+packages/payroll test:       Tests  22 passed (22)
+packages/payroll test:    Start at  15:18:13
+packages/payroll test:    Duration  915ms (transform 442ms, setup 0ms, collect 802ms, tests 32ms, environment 1ms, prepare 341ms)
+packages/payroll test: Done
+packages/metric-pack test$ vitest run --reporter=dot
+packages/maintenance test: ····················
+packages/maintenance test:  Test Files  2 passed (2)
+packages/maintenance test:       Tests  20 passed (20)
+packages/maintenance test:    Start at  15:18:13
+packages/maintenance test:    Duration  903ms (transform 395ms, setup 0ms, collect 812ms, tests 60ms, environment 0ms, prepare 175ms)
+packages/application test:  RUN  v3.2.7 /tmp/clean/packages/application
+packages/maintenance test: Done
+packages/metric-pack test:  RUN  v3.2.7 /tmp/clean/packages/metric-pack
+packages/product-ui test: ··································································································································
+packages/product-ui test:  Test Files  18 passed (18)
+packages/product-ui test:       Tests  130 passed (130)
+packages/product-ui test:    Start at  15:18:13
+packages/product-ui test:    Duration  1.60s (transform 1.04s, setup 0ms, collect 3.09s, tests 189ms, environment 5ms, prepare 2.03s)
+packages/product-ui test: Done
+apps/web test$ vitest run --reporter=dot
+packages/metric-pack test: ·····························
+packages/metric-pack test:  Test Files  2 passed (2)
+packages/metric-pack test:       Tests  29 passed (29)
+packages/metric-pack test:    Start at  15:18:14
+packages/metric-pack test:    Duration  596ms (transform 236ms, setup 0ms, collect 337ms, tests 66ms, environment 0ms, prepare 142ms)
+apps/web test:  RUN  v3.2.7 /tmp/clean/apps/web
+packages/metric-pack test: Done
+packages/application test: stderr | tests/listing/listing.test.ts > 采购订单五态全链（提交-审核-下发-收货） > 全链 submit→approve→issue→receive：版本 2→5，申请 draft→approved→converted，里程碑
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17712-fe17-7a32-88cf-eeac14d608a2' 行 2：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > 采购订单五态全链（提交-审核-下发-收货） > receive 守门：入库拒绝 → rejected 不落账；超收 / 伪行号 / 重复行号 rejected
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17712-fe20-7495-9575-a7139f75eeb7' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.return（退货单 + 订单退货回退） > 建退货单：open@v1 + 订单回退 received→issued@v6 + PurchaseReturned；可重收
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17712-fe26-751f-bb2e-926ce4dab9d4' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.return（退货单 + 订单退货回退） > 建退货单：open@v1 + 订单回退 received→issued@v6 + PurchaseReturned；可重收
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17712-fe26-751f-bb2e-926ce4dab9d4' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.return（退货单 + 订单退货回退） > 守门：非 received 态退货 rejected；超收货数量 rejected；撤销 → revoked@v2
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17712-fe2c-732d-8992-5e089d014ef6' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.overdue（逾期事实：交期对比） > 扫描：仅 未收货∧交期已过 的订单出 PurchaseOverdue + 催货待办；重复扫描不重复派待办
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17712-fe32-776a-bcfc-02ff33c8d9ad' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.overdue（逾期事实：交期对比） > 收货消催货：receive 完成 buyer 名下该订单催货待办
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17712-fe34-7d70-b3ae-5bff1618559b' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/overdue-lines.test.ts > U8 逾期未交明细行 · service > 一行一明细行：未收齐行纳入（含已收货态部分收货）、已收齐行退出、未到期剔除、手工行 null 组、交期升序稳定序
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17713-036e-7ff8-87a7-8cb31175fc6a' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/overdue-lines.test.ts > U8 逾期未交明细行 · service > 一行一明细行：未收齐行纳入（含已收货态部分收货）、已收齐行退出、未到期剔除、手工行 null 组、交期升序稳定序
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a17713-036e-7ff8-87a7-8cb31175fc6a' 行 2：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+apps/web test: --------------···············································································································································
+apps/web test:  Test Files  16 passed | 2 skipped (18)
+apps/web test:       Tests  143 passed | 14 skipped (157)
+apps/web test:    Start at  15:18:15
+apps/web test:    Duration  2.56s (transform 2.07s, setup 0ms, collect 8.95s, tests 175ms, environment 2ms, prepare 1.21s)
+apps/web test: Done
+packages/application test: ·································································································································································································································································································································································································································································································································································································
+packages/application test:  Test Files  41 passed (41)
+packages/application test:       Tests  577 passed (577)
+packages/application test:    Start at  15:18:14
+packages/application test:    Duration  4.69s (transform 4.79s, setup 0ms, collect 19.29s, tests 2.21s, environment 5ms, prepare 2.82s)
+packages/application test: Done
+packages/business-store test$ vitest run --reporter=dot
+packages/integration-print test$ vitest run --reporter=dot
+packages/business-store test:  RUN  v3.2.7 /tmp/clean/packages/business-store
+packages/integration-print test:  RUN  v3.2.7 /tmp/clean/packages/integration-print
+packages/integration-print test: ···············································
+packages/integration-print test:  Test Files  7 passed (7)
+packages/integration-print test:       Tests  47 passed (47)
+packages/integration-print test:    Start at  15:18:19
+packages/integration-print test:    Duration  780ms (transform 238ms, setup 0ms, collect 746ms, tests 402ms, environment 1ms, prepare 581ms)
+packages/integration-print test: Done
+packages/business-store test: ··························································································································································································
+packages/business-store test:  Test Files  18 passed (18)
+packages/business-store test:       Tests  186 passed (186)
+packages/business-store test:    Start at  15:18:19
+packages/business-store test:    Duration  2.18s (transform 1.73s, setup 0ms, collect 7.82s, tests 196ms, environment 2ms, prepare 1.20s)
+packages/business-store test: Done
+apps/server test$ vitest run --reporter=dot
+packages/testkit test$ vitest run --reporter=dot --exclude 'e2e/**'
+packages/testkit test:  RUN  v3.2.7 /tmp/clean/packages/testkit
+apps/server test:  RUN  v3.2.7 /tmp/clean/apps/server
+packages/testkit test: stderr | tests/run.test.ts > reconcile CLI：--filter 空命中防护 > main 空命中退出码非零（走夹具加载失败通道，返回 2）
+packages/testkit test: 夹具加载失败（fail-fast）：/tmp/testkit-run-bEDH2A: filter 'no-such-scenario' 未命中任何场景
+packages/testkit test: ·············································································
+packages/testkit test:  Test Files  5 passed (5)
+packages/testkit test:       Tests  77 passed (77)
+packages/testkit test:    Start at  15:18:21
+packages/testkit test:    Duration  371ms (transform 380ms, setup 0ms, collect 676ms, tests 101ms, environment 1ms, prepare 250ms)
+packages/testkit test: Done
+apps/server test: stderr | tests/u-wave-wiring.test.ts > U6 #29：dispatch→issue 派工生成钩子（store 装饰） > assembly advance→assigned 触发归拢同步；electrical/非 assigned 不触发；同步异常不回滚派工
+apps/server test: [smes] 派工→发料任务同步失败（通知式合同，不回滚派工；POST /issue/tasks/sync 可补触发）: issue 服务不可用（模拟）
+apps/server test: ······················stdout | tests/boot.e2e.test.ts > boot smoke（真实 HTTP 起停，零 DB 装配）
+apps/server test: [boot.e2e] 5 个应用起停（listen(0) 随机端口），套件耗时 264ms
+apps/server test: ······stdout | tests/cross-module-wiring.e2e.test.ts > 跨模块端口接线组合态（九模块零 DB 全装配） > 故障联动 #22：baseline 上报→组合根建议→触发建维修任务（faultRef 挂接）→重触发幂等零重建
+apps/server test: {"channel":"smes-im-wiring","kind":"card","to":"smes-ops","title":"设备故障派修","fields":[{"name":"正文","value":"设备 EQ-LATHE-02 故障已派给维修人员：主轴异响，需停机检查"},{"name":"租户","value":"default"},{"name":"业务类型","value":"baseline-fault-report"},{"name":"业务单据","value":"fr-01a17713-2165-7268-9975-07ba0964ceaf"}]}
+apps/server test: stderr | tests/integration-edge-adapters.test.ts > integration-im 渠道装配（#18） > wecom 配置不全 → undefined（部署错误降级可见，不抛出）
+apps/server test: [smes] SMES_IM_PLATFORM=wecom 但凭据不全（CORP_ID/AGENT_ID/CORP_SECRET/CALLBACK_TOKEN），IM 降级 console 日志
+apps/server test: stderr | tests/integration-edge-adapters.test.ts > integration-im 渠道装配（#18） > 未识别平台值 → undefined（降级）
+apps/server test: [smes] SMES_IM_PLATFORM 未识别（sms，须为 wecom/feishu），IM 降级 console 日志
+apps/server test: stderr | tests/integration-edge-adapters.test.ts > IM sink 渠道适配（卡片消息形状映射） > 卡片字段映射 + 换行压空格（可逆 codec 约束）；ok:false 透传
+apps/server test: [smes] IM 渠道投递失败（wecom.transport-error）：unreachable
+apps/server test: ··········································
+apps/server test:  Test Files  12 passed (12)
+apps/server test:       Tests  70 passed (70)
+apps/server test:    Start at  15:18:22
+apps/server test:    Duration  3.50s (transform 2.65s, setup 0ms, collect 16.36s, tests 1.72s, environment 2ms, prepare 1.27s)
+apps/server test: Done
+VERIFY_EXIT=0
