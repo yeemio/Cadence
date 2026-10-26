@@ -21,6 +21,8 @@ import {
 import { getKitBoard } from '../../data/workorderApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, RowDetail } from '../../components/ModuleTable';
+// D-WO-05：工作令详情挂图纸清单入口（钉版引用三态 + 图纸库跳转——行级改动）。
+import { WorkOrderDrawingsCard } from '../drawing/WorkOrderDrawingsCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -305,6 +307,9 @@ function WorkOrderDetailPanel({
         <QueryState isPending={assemblyQuery.isPending} error={assemblyQuery.error} isEmpty={false}>
           <RowDetail row={assemblyQuery.data ?? {}} title="装配调试进度（工序上卷）" />
         </QueryState>
+
+        {/* D-WO-05：图纸清单入口（消费 drawing 域端点；查看动作经图纸库留痕路径）。 */}
+        <WorkOrderDrawingsCard workOrderId={id} />
       </CardContent>
     </Card>
   );

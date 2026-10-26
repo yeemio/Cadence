@@ -6,14 +6,17 @@
  *  - 裁决 2（快照无鉴权）：两端点零凭据 → 401、无策略身份 → 403（修复前公开 200）；
  *  - SSE 通道真实读回：无凭据/?token= 坏值 → 401 JSON；dev 身份 → 200
  *    text/event-stream，preamble + 帧周期内 data: 数据帧（SMES_SCREEN_FRAME_
- *    INTERVAL_MS=200 放大观察窗）。
+ *    INTERVAL_MS=200 放大观察窗）；
+ *  - D-21（流通道权限缺失）：viewer/approver 订阅流 → 403 JSON（dev 头与
+ *    ?token= 两路径同判 report:read——修复前任意有效会话即 200，快照 403 而流
+ *    200 的分叉闭合）；admin → 200（既有 SSE 用例身份改带权）。
  * 体例沿 boot.e2e.test.ts / capability-modules.e2e.test.ts。
  */
 import 'reflect-metadata';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NestFactory } from '@nestjs/core';
-import { InMemoryUserStore, TenantContext } from '@smes/application';
+import { hashPassword, InMemoryUserStore, TenantContext } from '@smes/application';
 import { TenantId } from '@smes/business-core';
 import { buildAppModule, parseModulesEnabled } from '../src/app-registry.js';
 import { AuthErrorFilter } from '../src/auth-error.filter.js';
@@ -22,9 +25,13 @@ import { DomainErrorFilter } from '../src/domain-error.filter.js';
 const OPERATOR = 'u-op-screen';
 let AUTH_HEADERS: Record<string, string> = { 'content-type': 'application/json' };
 const VIEWER_HEADERS = { 'content-type': 'application/json', 'x-smes-user': 'u-viewer-screen' };
+/** D-21：approver = 有效身份 + 显式角色（有 todo:read、无 report:read）。 */
+const APPROVER = 'u-approver-screen';
+const APPROVER_HEADERS = { 'content-type': 'application/json', 'x-smes-user': APPROVER };
 
 describe('大屏 HTTP/SSE 组合态（零 DB，core+screen）', () => {
   let baseUrl = '';
+  let viewerToken = '';
   let app: Awaited<ReturnType<typeof NestFactory.create>> | undefined;
   const savedEnv = new Map<string, string | undefined>();
 
@@ -47,6 +54,14 @@ describe('大屏 HTTP/SSE 组合态（零 DB，core+screen）', () => {
       username: 'op-screen',
       displayName: '大屏e2e操作员',
     });
+    // D-21：viewer 造真实登录会话（?token= 路径的证据同构复现形态）——有账号
+    // 有口令但零策略（无角色无权限码）。
+    await sharedUserStore.create({
+      tenant: TenantId.create('default'),
+      username: 'viewer-screen',
+      displayName: '大屏e2e只读访客',
+      passwordHash: hashPassword('viewer-screen-pass'),
+    });
     app = await NestFactory.create(
       buildAppModule(enabled, { devPolicyEndpoint: true, userStore: sharedUserStore }),
       { logger: ['error', 'warn'] },
@@ -60,16 +75,37 @@ describe('大屏 HTTP/SSE 组合态（零 DB，core+screen）', () => {
     const { port } = app.getHttpServer().address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${port}`;
 
-    // 策略注入钩子：grant admin（全权限码 bypass）——capability e2e 同体例
+    // 策略注入钩子：grant admin（全权限码 bypass）——capability e2e 同体例；
+    // D-21：approver 造显式角色（todo:read ≠ report:read，证明判定链取的是
+    // 权限码而非"有任意角色"）。
     const granted = await fetch(`${baseUrl}/dev/policies`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-smes-user': OPERATOR },
       body: JSON.stringify({
-        rules: [{ kind: 'grant-role', tenant: 'default', user: seededUser.id, role: 'admin' }],
+        rules: [
+          { kind: 'grant-role', tenant: 'default', user: seededUser.id, role: 'admin' },
+          {
+            kind: 'grant-permission',
+            tenant: 'default',
+            role: 'approver-screen',
+            resource: 'todo',
+            action: 'read',
+          },
+          { kind: 'grant-role', tenant: 'default', user: APPROVER, role: 'approver-screen' },
+        ],
       }),
     });
     expect(granted.status).toBe(200);
     AUTH_HEADERS = { 'content-type': 'application/json', 'x-smes-user': seededUser.id };
+
+    // viewer 真实会话 token（D-21 ?token= 路径用）
+    const viewerLogin = await fetch(`${baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'viewer-screen', password: 'viewer-screen-pass' }),
+    });
+    expect(viewerLogin.status).toBe(201);
+    viewerToken = ((await viewerLogin.json()) as { token: string }).token;
   }, 60_000);
 
   afterAll(async () => {
@@ -143,9 +179,36 @@ describe('大屏 HTTP/SSE 组合态（零 DB，core+screen）', () => {
     expect(badToken.headers.get('content-type')).toContain('application/json');
   });
 
-  it('SSE 通道：dev 身份 → 200 event-stream，preamble 后帧周期内收到 data: 数据帧', async () => {
+  it('D-21：viewer/approver 订阅流 → 403 JSON（dev 头与 ?token= 两路径同判 report:read；修复前 200 推帧）', async () => {
+    // dev 头路径：viewer（零策略）——修复前任意非空头即 200
+    const viewerHeader = await fetch(`${baseUrl}/screen/digital-operation/stream`, {
+      headers: VIEWER_HEADERS,
+    });
+    expect(viewerHeader.status).toBe(403);
+    expect(viewerHeader.headers.get('content-type')).toContain('application/json');
+    const viewerBody = (await viewerHeader.json()) as { statusCode: number; message: string };
+    expect(viewerBody.statusCode).toBe(403);
+    expect(viewerBody.message).toContain('report:read');
+
+    // dev 头路径：approver（有 todo:read、无 report:read）——判定取权限码非角色有无
+    const approverHeader = await fetch(`${baseUrl}/screen/digital-operation/stream`, {
+      headers: APPROVER_HEADERS,
+    });
+    expect(approverHeader.status).toBe(403);
+    expect(approverHeader.headers.get('content-type')).toContain('application/json');
+
+    // ?token= 路径（证据同构形态：viewer 真实登录会话）——快照 403 而流 200 的分叉闭合
+    const viewerStream = await fetch(
+      `${baseUrl}/screen/digital-operation/stream?token=${encodeURIComponent(viewerToken)}`,
+    );
+    expect(viewerStream.status).toBe(403);
+    expect(viewerStream.headers.get('content-type')).toContain('application/json');
+    expect(viewerStream.headers.get('content-type')).not.toContain('text/event-stream');
+  });
+
+  it('SSE 通道：带权身份（admin bypass）→ 200 event-stream，preamble 后帧周期内收到 data: 数据帧', async () => {
     const response = await fetch(`${baseUrl}/screen/digital-operation/stream`, {
-      headers: { 'x-smes-user': OPERATOR },
+      headers: AUTH_HEADERS,
     });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/event-stream');

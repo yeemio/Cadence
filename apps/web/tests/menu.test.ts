@@ -65,6 +65,9 @@ describe('演示注册表装配数据', () => {
       '/costing',
       // 标准报表（S3-a：口径四选一单页）
       '/standard-reports',
+      // 图纸文档（D-WO-05：图纸库 + 查看留痕审计）
+      '/drawings',
+      '/drawings/view-audit',
       // 工艺与设备（S2）
       '/baseline/processes',
       '/baseline/routings',
@@ -219,6 +222,7 @@ describe('演示注册表装配数据', () => {
       'warehouse',
       'costing',
       'standard-reports',
+      'drawing',
       'baseline',
       'system',
     ]);
@@ -232,6 +236,9 @@ describe('演示注册表装配数据', () => {
       'outsourcing-lines',
       'scan',
     ]);
+    // D-WO-05：admin 全量可见图纸文档组两页
+    const drawing = sidebar.find((node) => node.code === 'drawing');
+    expect(drawing?.children?.map((child) => child.code)).toEqual(['drawing-library', 'drawing-audit']);
     const baseline = sidebar.find((node) => node.code === 'baseline');
     expect(baseline?.children?.map((child) => child.code)).toEqual([
       'baseline-processes',

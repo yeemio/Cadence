@@ -3,7 +3,9 @@
  * web 大屏页补建）。
  *
  * == 路由与菜单取舍（写明） ==
- * 独立路由 /screen/digital-operation，**不进业务菜单**：墙挂展示页按 1920x1080
+ * 独立路由 /bigscreen/digital-operation（O-1 修复：旧 /screen/digital-operation
+ * 与后端 API 同路径，直接打开/刷新被 nginx 反代打到后端回 401 JSON——前缀
+ * 取舍见 screenRoutes.ts 文件头），**不进业务菜单**：墙挂展示页按 1920x1080
  * 全屏呈现（等比缩放），进 ShellLayout 侧栏壳会破坏全屏形态；且大屏是展示面
  * 不是业务操作面，混入业务菜单组（报工管理/标准报表）会误导日常操作动线。
  * main.tsx 路由表注册于 ShellLayout 外（同移动路由组 /m/* 先例——独立导航面）。

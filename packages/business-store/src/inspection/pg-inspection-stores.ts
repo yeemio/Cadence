@@ -7,7 +7,10 @@
  * 五个实现（表 ↔ 端口分工见 prisma/schema.prisma inspection 节与迁移头注）：
  *  - PgInspectionOrderStore        → inspections 投影行（advance = object_version
  *                                    条件更新 + 判定字段；updateJudgment 无迁移
- *                                    路径同乐观检查；(tenant, source_type,
+ *                                    路径同乐观检查；revertJudgment = 撤销判定
+ *                                    投影清理（D-24 补齐，6a-2 验收登记的
+ *                                    fail-closed 缺口——纯 UPDATE 列全既有，
+ *                                    无迁移）；(tenant, source_type,
  *                                    source_ref_id) 唯一 = 来源幂等 DB 防线）
  *  - PgNonconformStore             → nonconformities 投影行（advance 可回填处置/
  *                                    闭环字段）
@@ -345,6 +348,48 @@ export class PgInspectionOrderStore implements InspectionOrderStore {
       data: { overdueNotifiedAt: isoToDate(notifiedAt, 'overdueNotifiedAt'), updatedAt: new Date() },
     });
     if (updated.count === 0) return null;
+    const row = await this.prisma.inspectionOrderRecord.findFirstOrThrow({ where: { tenantId: tenant, id } });
+    return rowToInspectionOrder(row);
+  }
+
+  /**
+   * 撤销判定投影清理（inspection.revoke.v1 专用；D-24 补齐——6a-2 验收登记的
+   * PG 适配器缺位，此前部署形态撤销恒拒）。端口合同（inspection-stores.ts
+   * revertJudgment 头注，对照内存实现）：不存在 → null（404 语义由用例层
+   * 翻译）；版本不符 → InspectionConflictError（同 updateJudgment）；命中则
+   * state/版本推进 + 判定五字段与 closeDueAt/overdueNotifiedAt 全清空
+   * （RQ-037"清空合格/不合格/质检人/时间"；点名标记随判定清空——再判不合格
+   * 重新起时限）。纯条件 UPDATE，列全既有（无迁移）。
+   */
+  async revertJudgment(
+    tenant: TenantId,
+    id: InspectionId,
+    expectedObjectVersion: number,
+    nextState: string,
+    nextObjectVersion: number,
+  ): Promise<InspectionOrder | null> {
+    const existing = await this.prisma.inspectionOrderRecord.findFirst({ where: { tenantId: tenant, id } });
+    if (existing === null) return null;
+    const updated = await this.prisma.inspectionOrderRecord.updateMany({
+      where: { tenantId: tenant, id, objectVersion: expectedObjectVersion },
+      data: {
+        state: nextState,
+        objectVersion: nextObjectVersion,
+        passedQty: null,
+        failedQty: null,
+        judgeRemark: null,
+        judgedBy: null,
+        judgedAt: null,
+        closeDueAt: null,
+        overdueNotifiedAt: null,
+        updatedAt: new Date(),
+      },
+    });
+    if (updated.count === 0) {
+      throw new InspectionConflictError(
+        `质检单 '${id}' 版本推进冲突：期望 ${expectedObjectVersion}，实际 ${existing.objectVersion}`,
+      );
+    }
     const row = await this.prisma.inspectionOrderRecord.findFirstOrThrow({ where: { tenantId: tenant, id } });
     return rowToInspectionOrder(row);
   }

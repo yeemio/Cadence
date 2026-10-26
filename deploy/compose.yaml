@@ -107,6 +107,12 @@ services:
       # MAIN 即开箱回落各租户自己的 MAIN。空串/未配 = 无默认仓，收货载荷须
       # 显式传 warehouseId（显式仓优先于 env 默认仓）。
       SMES_DEFAULT_WAREHOUSE_CODE: ${SMES_DEFAULT_WAREHOUSE_CODE-MAIN}
+      # D-25：S6 配件审批链级数（1|2|3，缺省/空 = 1 单级零回归）；>1 时须配
+      # SMES_PARTS_LEVEL2_ROLE（levels=3 另须 SMES_PARTS_LEVEL3_ROLE，角色码
+      # 单段小写）——配错启动即炸（fail-fast，不静默回落单级）。
+      SMES_PARTS_APPROVAL_LEVELS: ${SMES_PARTS_APPROVAL_LEVELS:-}
+      SMES_PARTS_LEVEL2_ROLE: ${SMES_PARTS_LEVEL2_ROLE:-}
+      SMES_PARTS_LEVEL3_ROLE: ${SMES_PARTS_LEVEL3_ROLE:-}
       # 模块启停透传（缺省=注册表 DEFAULT_MODULES_ENABLED 基础六模块；全量演示
       # 用 MODULES_ENABLED 显式传全清单——注册表 MODULE_DEFINITIONS 键，core 恒必装）。
       MODULES_ENABLED: ${MODULES_ENABLED:-}

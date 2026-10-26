@@ -50,6 +50,9 @@ import { StandardTimesPage } from './baseline/StandardTimesPage';
 import { OutsourcingRulesPage } from './baseline/OutsourcingRulesPage';
 import { FaultReportsPage } from './baseline/FaultReportsPage';
 import { MaterialValidationsPage } from './baseline/MaterialValidationsPage';
+// ---- D-WO-05：图纸文档组两页（drawing 域桌面呈现面） ----
+import { DrawingLibraryPage } from './drawing/DrawingLibraryPage';
+import { DrawingAuditPage } from './drawing/DrawingAuditPage';
 import { MobileWorkbenchPage } from './m/WorkbenchPage';
 import { MobileReportPage } from './m/ReportPage';
 import { MobileHoursPage } from './m/HoursPage';
@@ -104,6 +107,9 @@ export const PAGE_BY_CODE: Record<string, ComponentType> = {
   'baseline-outsourcing-rules': OutsourcingRulesPage,
   'baseline-fault-reports': FaultReportsPage,
   'baseline-material-validations': MaterialValidationsPage,
+  // ---- D-WO-05：图纸文档组两页挂接（菜单码 drawing-library/drawing-audit） ----
+  'drawing-library': DrawingLibraryPage,
+  'drawing-audit': DrawingAuditPage,
   // ---- S3-a：主数据/审计/标准报表七页（S1 backfill 端点接页面） ----
   'masterdata-customer': CustomersPage,
   'masterdata-supplier': SuppliersPage,

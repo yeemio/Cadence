@@ -292,6 +292,31 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
     menuConfig: { title: '标准报表', permission: pc('report:read') },
   },
   {
+    // 图纸文档组（D-WO-05 图纸页面呈现面）：drawing 域桌面页。独立成组裁量：
+    // drawing 有独立权限码族（drawing:read / drawing:audit-read），无码角色
+    // 整组空壳隐藏，不与工艺基线组（baseline=工序/路线/设备台账）混语义。
+    // 菜单码与后端控制器实态同码（drawing-http.module.ts @RequirePermission）。
+    code: 'drawing',
+    marketCategory: 'base',
+    menuConfig: { title: '图纸文档' },
+    children: [
+      {
+        code: 'drawing-library',
+        routePath: '/drawings',
+        marketCategory: 'base',
+        entryPoint: 'drawing/library.tsx',
+        menuConfig: { title: '图纸库', permission: pc('drawing:read') },
+      },
+      {
+        code: 'drawing-audit',
+        routePath: '/drawings/view-audit',
+        marketCategory: 'base',
+        entryPoint: 'drawing/view-audit.tsx',
+        menuConfig: { title: '查看留痕审计', permission: pc('drawing:audit-read') },
+      },
+    ],
+  },
+  {
     code: 'baseline',
     marketCategory: 'base',
     menuConfig: { title: '工艺与设备' },

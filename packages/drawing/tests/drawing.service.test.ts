@@ -388,6 +388,103 @@ describe('变更通知读取与按工作令图纸清单', () => {
   });
 });
 
+// ---- 图号索引（P1-c / O3 裁定=最小索引端点） ----
+
+describe('drawingsIndex：租户级图号索引（前缀检索+保密过滤+分页）', () => {
+  /** 三图号装配：dwg-001 链尾受限 / dwg-002 全公开 / dwg-003 全链受限（本租户）。 */
+  async function publishIndexFixture(h: Harness): Promise<void> {
+    await publishChain(h, 'dwg-001'); // v1/v2 public → v3/v4 restricted
+    await publish(h, { drawingId: 'dwg-002', fileRef: 'f://002-1', changeNote: '首发（止于公开）' });
+    await publish(h, { drawingId: 'dwg-003', fileRef: 'f://003-1', changeNote: '首发即受限', classification: 'restricted' });
+  }
+
+  /** 他租户落一张图（租户收口反证用）。 */
+  async function publishOtherTenant(h: Harness): Promise<void> {
+    opCounter += 1;
+    const other = makeCommandEnvelope({
+      tenantId: TenantId.create('t-drawing-other'),
+      issuedBy: TECH,
+      operationId: OperationId.create(`op-drawing-other-${String(opCounter).padStart(4, '0')}`),
+      expectedRevision: 'initial',
+      issuedAt: '2026-11-01T08:00:00.000Z',
+      command: { kind: 'drawing.publish.v1' as const, payload: { drawingId: 'dwg-001', fileRef: 'f://ot-1', changeNote: '他租户同名图' } },
+    });
+    const result = await h.service.execute(TenantId.create('t-drawing-other'), other);
+    expect(result.status).toBe('committed');
+  }
+
+  it('restricted 许可：全库可见图纸（drawingId 升序），latestVersion=真链尾，status 全 current', async () => {
+    const h = makeHarness();
+    await publishIndexFixture(h);
+    const index = await h.service.drawingsIndex(TENANT, techViewer, { page: 1, pageSize: 20 });
+    expect(index.drawings.map((d) => `${d.drawingId}@v${d.latestVersion}:${d.status}`)).toEqual([
+      'dwg-001@v4:current',
+      'dwg-002@v1:current',
+      'dwg-003@v1:current',
+    ]);
+    expect(index.total).toBe(3);
+    // 元数据口径：索引条目不含 fileRef（内容一律走查看留痕路径）
+    expect(Object.keys(index.drawings[0]!)).not.toContain('fileRef');
+  });
+
+  it('public 许可：全链超许可图纸不进索引；混合链呈现许可内链尾+status=restricted', async () => {
+    const h = makeHarness();
+    await publishIndexFixture(h);
+    const index = await h.service.drawingsIndex(TENANT, lineViewer, { page: 1, pageSize: 20 });
+    expect(index.drawings).toEqual([
+      { drawingId: 'dwg-001', latestVersion: 2, classification: 'public', status: 'restricted' },
+      { drawingId: 'dwg-002', latestVersion: 1, classification: 'public', status: 'current' },
+    ]);
+    expect(index.total).toBe(2); // dwg-003 全链受限——不计数（不泄漏存在性）
+  });
+
+  it('前缀检索 + 分页：prefix 过滤、page/pageSize 切页、越界页空行不空 total', async () => {
+    const h = makeHarness();
+    await publishIndexFixture(h);
+    const prefix = await h.service.drawingsIndex(TENANT, techViewer, { search: 'dwg-00', page: 1, pageSize: 2 });
+    expect(prefix.drawings.map((d) => d.drawingId)).toEqual(['dwg-001', 'dwg-002']);
+    expect(prefix.total).toBe(3); // dwg-003 匹配前缀但被 pageSize 截页
+    const page2 = await h.service.drawingsIndex(TENANT, techViewer, { search: 'dwg-00', page: 2, pageSize: 2 });
+    expect(page2.drawings.map((d) => d.drawingId)).toEqual(['dwg-003']);
+    const beyond = await h.service.drawingsIndex(TENANT, techViewer, { search: 'dwg-00', page: 3, pageSize: 2 });
+    expect(beyond.drawings).toEqual([]);
+    expect(beyond.total).toBe(3);
+    const exact = await h.service.drawingsIndex(TENANT, lineViewer, { search: 'dwg-003', page: 1, pageSize: 20 });
+    expect(exact.drawings).toEqual([]); // 精确检索全受限图号=同形空（不区分不存在/不可见）
+  });
+
+  it('租户收口：他租户图纸（同名图号）不进本租户索引；索引查询不产生查看留痕', async () => {
+    const h = makeHarness();
+    await publishIndexFixture(h);
+    await publishOtherTenant(h); // 他租户 dwg-001 v1
+    const index = await h.service.drawingsIndex(TENANT, techViewer, { page: 1, pageSize: 20 });
+    // 本租户三图在册；他租户同名 dwg-001 不叠加（租户谓词收口）
+    expect(index.drawings.map((d) => `${d.drawingId}@v${d.latestVersion}`)).toEqual([
+      'dwg-001@v4',
+      'dwg-002@v1',
+      'dwg-003@v1',
+    ]);
+    expect(await h.allViews()).toHaveLength(0); // 索引=元数据面，不落查看留痕
+  });
+
+  it('入参守界：page/pageSize/search/clearance 非法 fail-fast（不默认放行）', async () => {
+    const h = makeHarness();
+    await publishIndexFixture(h);
+    await expect(h.service.drawingsIndex(TENANT, techViewer, { page: 0, pageSize: 20 })).rejects.toBeInstanceOf(
+      DrawingInputError,
+    );
+    await expect(h.service.drawingsIndex(TENANT, techViewer, { page: 1, pageSize: 101 })).rejects.toBeInstanceOf(
+      DrawingInputError,
+    );
+    await expect(
+      h.service.drawingsIndex(TENANT, techViewer, { search: 'x'.repeat(129), page: 1, pageSize: 20 }),
+    ).rejects.toBeInstanceOf(DrawingInputError);
+    await expect(
+      h.service.drawingsIndex(TENANT, { userId: LINE, clearance: 'top-secret' }, { page: 1, pageSize: 20 }),
+    ).rejects.toBeInstanceOf(DrawingInputError);
+  });
+});
+
 // ---- 边缘参数解析（组合根 HTTP 面复用的门禁） ----
 
 describe('边缘参数解析（drawing-input）', () => {

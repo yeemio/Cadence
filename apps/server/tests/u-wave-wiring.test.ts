@@ -50,6 +50,7 @@ import {
   ListingService,
   NOOP_ISSUE_MATERIAL_PORT,
   createInventoryAvailabilityAdapter,
+  type DispatchOrderStore,
   type InventoryCommand,
   type IssueSyncTrigger,
 } from '@smes/application';
@@ -617,6 +618,108 @@ describe('U6 #29：dispatch→issue 派工生成钩子（store 装饰）', () =>
     });
     expect(survived.state).toBe('assigned');
     expect(survived.objectVersion).toBe(2);
+  });
+});
+
+describe('D-23：#29 装饰器透传 transfer（全模块形态转单可用）', () => {
+  /** 直构 executing 单（draft→assigned→executing 两跳，v3）。 */
+  async function executingOrder(
+    orders: InstanceType<typeof InMemoryDispatchOrderStore>,
+    id: string,
+  ) {
+    await orders.create({
+      tenant,
+      id,
+      workOrderId: null,
+      kind: 'part',
+      flowConfigId: 'fc-1',
+      state: 'draft',
+      objectVersion: 1,
+      title: '转单透传（D-23）',
+      drawingNo: null,
+      operationCode: 'OP-A',
+      material: null,
+      sizeSpec: null,
+      quantity: 4,
+      assignee: null,
+      dueAt: null,
+      remark: null,
+    });
+    await orders.advance(tenant, id, 1, 'assigned', 2, { assignee: UserId.create('u-d23-a') });
+    await orders.advance(tenant, id, 2, 'executing', 3, undefined);
+  }
+
+  it('装饰态 transfer 可用：字段重写落底层、版本不推进、乐观未命中返 null', async () => {
+    const orders = new InMemoryDispatchOrderStore();
+    await executingOrder(orders, 'dsp-d23-1');
+    const wrapped = createIssueSyncDispatchStore(orders, () => undefined);
+
+    // D-23 修复面：可选能力按底层有无透传（此前装饰器丢 transfer →
+    // dispatch.transfer.v1 在全模块形态恒拒"不支持转单写入"）。
+    expect(wrapped.transfer).toBeDefined();
+    const transferred = await wrapped.transfer!(tenant, 'dsp-d23-1', 3, {
+      assignee: UserId.create('u-d23-b'),
+      operationCode: 'OP-B',
+    });
+    expect(transferred).not.toBeNull();
+    expect(String(transferred!.assignee)).toBe('u-d23-b');
+    expect(transferred!.operationCode).toBe('OP-B');
+    expect(transferred!.objectVersion).toBe(3); // 转单非状态机迁移：版本不推进
+    // 落底层：原 store 读回同一行（透传真转发非旁路副本）。
+    const stored = await orders.find(tenant, 'dsp-d23-1');
+    expect(String(stored!.assignee)).toBe('u-d23-b');
+    // 乐观未命中（旧版本号）→ null（底层合同不回归）。
+    expect(await wrapped.transfer!(tenant, 'dsp-d23-1', 2, { assignee: UserId.create('u-d23-c') })).toBeNull();
+  });
+
+  it('底层无 transfer 能力 → 装饰态保持缺省（服务侧既有 fail-closed 拒绝不回归）', () => {
+    const orders = new InMemoryDispatchOrderStore();
+    const bare: Pick<DispatchOrderStore, 'create' | 'find' | 'list' | 'advance'> = {
+      create: (input) => orders.create(input),
+      find: (t, id) => orders.find(t, id),
+      list: (t, filter) => orders.list(t, filter),
+      advance: (t, id, eov, next, nov, extra) => orders.advance(t, id, eov, next, nov, extra),
+    };
+    const wrapped = createIssueSyncDispatchStore(bare, () => undefined);
+    expect(wrapped.transfer).toBeUndefined();
+  });
+
+  it('组合态装配面：dispatch+issue 同装 → storeOverrides.dispatchOrders.transfer 可用', async () => {
+    const context = await NestFactory.create(
+      buildAppModule(['core', 'dispatch', 'issue'], {}),
+      { logger: ['error', 'warn'] },
+    );
+    contexts.push(context);
+    bindCrossModuleWiring(context);
+    const wiring = context.get(CROSS_MODULE_WIRING, { strict: false });
+    const wrapped = wiring.storeOverrides.dispatchOrders!;
+    expect(wrapped).toBeDefined();
+    expect(wrapped.transfer).toBeDefined(); // D-23：装饰态不再丢可选能力
+    await wrapped.create({
+      tenant,
+      id: 'dsp-d23-w',
+      workOrderId: null,
+      kind: 'part',
+      flowConfigId: 'fc-1',
+      state: 'draft',
+      objectVersion: 1,
+      title: '组合态转单（D-23）',
+      drawingNo: null,
+      operationCode: 'OP-A',
+      material: null,
+      sizeSpec: null,
+      quantity: 2,
+      assignee: null,
+      dueAt: null,
+      remark: null,
+    });
+    await wrapped.advance(tenant, 'dsp-d23-w', 1, 'assigned', 2, { assignee: UserId.create('u-d23-w') });
+    await wrapped.advance(tenant, 'dsp-d23-w', 2, 'executing', 3, undefined);
+    const transferred = await wrapped.transfer!(tenant, 'dsp-d23-w', 3, {
+      operationCode: 'OP-W2',
+    });
+    expect(transferred?.operationCode).toBe('OP-W2');
+    await context.close();
   });
 });
 

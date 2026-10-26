@@ -167,7 +167,9 @@
  *     不回滚派工。W3-2 扩展：advance→'cancelled'（撤销派工）且 kind=assembly
  *     且挂工作令时同装饰器触发 issue.cleanup.v1 清理发料任务（目标任务集按
  *     issue 现存任务推导，确定性 operationId 幂等，清理被拒/异常 console.warn
- *     不回滚撤销——机制与取舍见 createIssueSyncDispatchStore 头注）。
+ *     不回滚撤销——机制与取舍见 createIssueSyncDispatchStore 头注）。D-23：
+ *     装饰器同时透传可选 transfer 能力（按底层有无——否则全模块形态转单恒拒，
+ *     细节见 createIssueSyncDispatchStore 头注）。
  * 30. aftercare-claim.reportPort ← reporting 审批通过报工读
  *     机制：service 级迟到绑定——createAftercareReportPort(ReportingService
  *     .listReports)（投影 application 已备，此处只粘迟到引用）。
@@ -227,13 +229,54 @@
  *     可用+本令预占)（listing 侧算）；拒绝则 gap.check 整单 rejected 不落任何
  *     账（端口先行，体例同 #14）。equipment 类目不入（外购设备四数量不走
  *     预占账，PRD 17 RREQ-RQ-042 ④）。
+ *
+ * D-24 第二层（质检撤销组合根接线——6a-2 交付后撤销在部署形态被缺省
+ * fail-closed 恒拒，"撤销闸门端口未接线"）：
+ * 39. inspection.revokeGuardPort ← 撤销三闸门（RQ-037：IV 入库完成 /
+ *     reporting+baseline 紧邻下一道已报工或已质检 / HC 工时已审）
+ *     机制：service+store 混级——闸门①读 ReleaseFactStore.listByInspection
+ *     （放行 Σ）× StockMovementStore(kind=inspection-in, sourceRefId=
+ *     inspectionId)（已入 Σ，与 inventory receive 放行咬合同一口径），已入 ≥
+ *     放行 = 入库完成拒撤（"关联入库未入库完成方可撤"，撤时删待入库行的
+ *     清理面归 InspectionRevoked 消费侧）；闸门②先经 workReports/dispatchOrders
+ *     解析来源工序（report→WorkReportStore.find / dispatch→DispatchOrderStore
+ *     .find），再经 BaselineService.getRouting 取紧邻下一道（seq 升序后继；
+ *     service 级迟到绑定），下一道已有报工（reported/verified）或已有质检
+ *     判定（同图质检单来源解析工序命中下一道且非 pending）拒撤；闸门③ HC
+ *     工时已审——我方 hours 条目只从 verified 报工联动产生、恒 verified 无
+ *     人工审核环节（hours-config 明示），无"已审核"状态面可读且 inspection
+ *     撤销不写 hours 账目 → 恒放行（19 册 HC 增审核面后在适配器补接线点）。
+ *     未启用域裁量（per-gate permissive，零模块形态撤销可用）：IV/reporting/
+ *     dispatch/baseline 任一未装配 = 该读面无事实可存在 = 对应闸门无约束，
+ *     放行——与模块缺省 fail-closed（未接线=不可见=拒）的区别在"组合根已
+ *     接线、且该域确认不在场"，不是盲放。来源不可解析（store 缺/来源行不
+ *     存在/无工艺路线/已是末道）= 无可护工序链，闸门②放行。
+ *
+ * 图文档管理 P1-a（DrawingRevisionPublished 全仓零消费——drawing-module
+ * CONTRACT P1-1 / RESEARCH G3 接线缺口收口）：
+ * 40. drawing 发布 → 挂接方待办桥（workorder manager 待办+通知双通道）
+ *     机制：store 级装饰——drawingStores.events.append 落账后过滤
+ *     DrawingRevisionPublished（#29 派工装饰同体例单点包一层，不动 drawing
+ *     源码），反查挂接该 drawingId 钉版附件的在途工作令（#23 同一钉版解析：
+ *     kind='drawing' + ref='drawingId@vN'），对每个工作令 manager 建一条待办
+ *     （沿 workorder 流转待办/齐套催办同形态：source=workorder、refType=
+ *     work-order、refId=工作令 id——工作令关闭时 completeTodosFor 按同键销账，
+ *     RREQ-WO-009 先例自动咬合）。通知面不在本层：组合根传入的 todoStore 即
+ *     #27 桥装饰态 effectiveTodoStore（notifications 装配时创建待办即投收件
+ *     箱——一点双通道，不逐模块加钩子）。通知式合同：联动失败 catch +
+ *     console.warn 不外抛（drawing.service.commitOutcome 会把 append 异常翻
+ *     indeterminate——本装饰保证联动故障不污染发布结果）。未启用域零副作用：
+ *     drawing/workorder/todoStore 任一缺位 = 不装饰（模块回落原生存储）；
+ *     notifications 未装配 = effectiveTodoStore 无装饰层 = 只建待办零收件箱
+ *     行。在途口径：state ∈ {completed, closed} 之外（completed 后无"确认
+ *     生产使用版本"决策可做；closed 是 final——与关闭清待办同一边界）。
  */
 import { randomUUID } from 'node:crypto';
 import type { INestApplicationContext, Type } from '@nestjs/common';
 import { ExcelJsExcelPort } from './exceljs-excel-port.js';
 import type { PayrollExportPort, PayrollSource, VerifiedLaborFact } from '@smes/payroll';
 import { MaintenanceService, type FaultTaskSuggestion } from '@smes/maintenance';
-import type { DrawingRefInput } from '@smes/drawing';
+import { DRAWING_EVENT_TYPES, type DrawingRefInput, type DrawingStores } from '@smes/drawing';
 import type { MetricPackExportPort, MetricSourceSet } from '@smes/metric-pack';
 import {
   ALL_OPERATIONS_VALID,
@@ -288,6 +331,7 @@ import {
   type ProjectIssueSegmentLine,
   REPORT_EVENT_TYPES,
   WORKORDER_EVENT_TYPES,
+  WORKORDER_TODO_SOURCE,
   WORK_ORDER_AGGREGATE_TYPE,
   WORK_REPORT_AGGREGATE_TYPE,
   toDispatchFactForReport,
@@ -302,6 +346,9 @@ import {
   type DispatchPrintPort,
   type ExcelPort,
   type InspectionIntakePort,
+  type InspectionOrderStore,
+  type InspectionRevokeGuardPort,
+  type RevokeGuardTarget,
   type IssueStockCommand,
   type IssueStockReceipt,
   type KitCheckReadPort,
@@ -322,6 +369,7 @@ import {
   type ReportEventFeedPort,
   type ReportEventMessage,
   type LaborEntryStore,
+  type ReleaseFactStore,
   type StockMovementStore,
   type StockMovement,
   type StockReleasePort,
@@ -399,6 +447,17 @@ export interface CrossModuleWiringStores {
   readonly processMaterialLinks?: ProcessMaterialLinkStore | undefined;
   /** dispatch 售后报销投影（U7 #33：projectAftercareSource 四费事实源）。 */
   readonly aftercareClaims?: AftercareClaimStore | undefined;
+  /** inventory 放行事实（D-24 #39：撤销闸门①放行 Σ 读面，与 InventoryModule 同源）。 */
+  readonly inventoryReleaseFacts?: ReleaseFactStore | undefined;
+  /** inspection 质检单投影（D-24 #39：撤销闸门②"已质检"支线读面，与 InspectionModule 同源）。 */
+  readonly inspectionOrders?: InspectionOrderStore | undefined;
+  /** drawing 五存储束（图文档 P1-a #40：发布→挂接方待办桥的事件装饰底座，与 DrawingHttpModule 同源）。 */
+  readonly drawingStores?: DrawingStores | undefined;
+  /**
+   * 共享待办（图文档 P1-a #40）：app-registry 裁决的 effectiveTodoStore——
+   * #27 桥装饰态实例（notifications 装配时创建待办即投收件箱，一点双通道）。
+   */
+  readonly todoStore?: TodoStore | undefined;
 }
 
 /** 各模块 register 的跨模块端口注入面（形状与 *ModuleOptions 对应字段同构）。 */
@@ -478,6 +537,8 @@ export interface CrossModuleRegisterPorts {
   readonly inspection?: {
     readonly stockReleasePort?: StockReleasePort | undefined;
     readonly notifyChannel?: NotifyChannel | undefined;
+    /** D-24 #39：撤销三闸门（本 wiring 构造；缺省回落模块 FAIL_CLOSED）。 */
+    readonly revokeGuardPort?: InspectionRevokeGuardPort | undefined;
   };
   readonly baseline?: {
     readonly notifyChannel?: NotifyChannel | undefined;
@@ -818,6 +879,13 @@ class BaselineFaultLinkageAdapter implements MaintenanceFaultLinkagePort {
  */
 const PINNED_DRAWING_REF_PATTERN = /^(.+)@v([1-9]\d*)$/;
 
+/** 钉版编码解析（`drawingId@vN` → 结构同形字段；不匹配返回 null——#23/#40 共用）。 */
+function parsePinnedDrawingRef(ref: string): { readonly drawingId: string; readonly version: number } | null {
+  const match = PINNED_DRAWING_REF_PATTERN.exec(ref);
+  if (match === null) return null;
+  return { drawingId: match[1]!, version: Number(match[2]) };
+}
+
 class WorkOrderAttachmentDrawingRefsAdapter implements WorkOrderDrawingRefsPort {
   constructor(private readonly attachments: WorkOrderAttachmentStore) {}
 
@@ -826,9 +894,9 @@ class WorkOrderAttachmentDrawingRefsAdapter implements WorkOrderDrawingRefsPort 
     const refs: DrawingRefInput[] = [];
     for (const row of rows) {
       if (row.kind !== 'drawing') continue;
-      const match = PINNED_DRAWING_REF_PATTERN.exec(row.ref);
-      if (match === null) continue;
-      refs.push({ drawingId: match[1]!, version: Number(match[2]) });
+      const parsed = parsePinnedDrawingRef(row.ref);
+      if (parsed === null) continue;
+      refs.push({ drawingId: parsed.drawingId, version: parsed.version });
     }
     return refs;
   }
@@ -1252,6 +1320,69 @@ export function createTodoNotifyingStore(
   };
 }
 
+/**
+ * drawing 发布 → 挂接方待办桥（图文档 P1-a，接线 #40）：装饰 DrawingStores 的
+ * events.append——DrawingRevisionPublished 落账后反查挂接该 drawingId 钉版附件
+ * 的在途工作令（#23 同一钉版解析），对每个工作令 manager 建一条待办（沿
+ * workorder 流转待办/齐套催办同形态：source=workorder、refType=work-order、
+ * refId=工作令 id——工作令关闭时 completeTodosFor 按同键销账，RREQ-WO-009
+ * 先例自动咬合）。通知面不在本层：组合根传入的 todoStore 即 #27 桥装饰态
+ * effectiveTodoStore（notifications 装配时创建待办即投收件箱——一点双通道）。
+ *
+ * 通知式合同：联动失败 catch + console.warn 不外抛——drawing.service
+ * .commitOutcome 会把 append 异常翻成 indeterminate（修订行/变更通知已落账
+ * 但事件追加失败），本装饰保证联动故障不污染发布结果。去重防线 = 事件存储
+ * eventId 冲突锚点（端口合同：重复 append 抛 DrawingConflictError，不进联动
+ * 面）——装饰器只看活流量，无扫描重放面，不需自持消费位。在途口径：
+ * state ∈ {completed, closed} 之外（completed 后无"确认生产使用版本"决策
+ * 可做；closed 是 final——与关闭清待办同一边界）。
+ */
+export function createDrawingRevisionTodoBridgeStores(deps: {
+  readonly drawing: DrawingStores;
+  readonly workOrders: WorkOrderStore;
+  readonly workOrderAttachments: WorkOrderAttachmentStore;
+  readonly todos: TodoStore;
+}): DrawingStores {
+  return {
+    ...deps.drawing,
+    events: {
+      append: async (event) => {
+        await deps.drawing.events.append(event);
+        if (event.eventType !== DRAWING_EVENT_TYPES.drawingRevisionPublished) return;
+        const payload = (event.payload ?? {}) as Record<string, unknown>;
+        const drawingId = readString(payload['drawingId']);
+        const version = payload['version'];
+        if (drawingId === null || typeof version !== 'number') return; // 形状不符不投递（防御）
+        try {
+          for (const order of await deps.workOrders.list(event.tenantId)) {
+            if (order.state === 'completed' || order.state === 'closed') continue; // 在途口径见头注
+            if (order.manager === null) continue; // 无项目经理 = 无投递对象
+            const attachments = await deps.workOrderAttachments.listByWorkOrder(event.tenantId, order.id);
+            const pinned = attachments.some(
+              (row) => row.kind === 'drawing' && parsePinnedDrawingRef(row.ref)?.drawingId === drawingId,
+            );
+            if (!pinned) continue; // 未升级钉版的普通附件不入通知面（#23 同口径）
+            await deps.todos.create({
+              tenant: event.tenantId,
+              assignee: order.manager,
+              title: `图纸 ${drawingId} 已发布新版本 v${version}，请确认生产使用版本`,
+              source: WORKORDER_TODO_SOURCE,
+              refType: WORK_ORDER_AGGREGATE_TYPE,
+              refId: order.id,
+            });
+          }
+        } catch (error) {
+          console.warn(
+            '[smes] 图纸发布→挂接方待办投递失败（通知式合同，不阻塞发布）:',
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      },
+      list: (tenant) => deps.drawing.events.list(tenant),
+    },
+  };
+}
+
 // ---- U6 #28/#29：issue 库存/预占联动 + 派工触发生成（组合根适配器） ----
 
 /**
@@ -1666,6 +1797,11 @@ export function createInventoryUseReservationPort(
  *    `wiring-issue-cleanup:<dispatchId>`（重复撤销/重试由 issue 侧 operations.record
  *    拒重复）。通知式合同：清理被拒（目标任务已发料非未开始等）或异常仅
  *    console.warn 留痕，不回滚撤销（显式清理面 POST /issue/tasks/cleanup 兜底）。
+ *  - transfer 透传（D-23，retest-59c9f8d）：可选能力按底层 store 有无透传——
+ *    有则直转发（转单非状态机迁移，无派工生成/清理语义，不进钩子逻辑）；
+ *    无则保持缺省（服务侧既有 fail-closed 拒绝不回归）。此前装饰器只转发
+ *    create/find/list/advance，全模块形态（dispatch+issue 同装）下装饰态
+ *    store 丢 transfer 能力 → dispatch.transfer.v1 恒拒。
  */
 export function createIssueSyncDispatchStore(
   store: DispatchOrderStore,
@@ -1675,6 +1811,16 @@ export function createIssueSyncDispatchStore(
     create: (input) => store.create(input),
     find: (tenant, id) => store.find(tenant, id),
     list: (tenant, filter) => store.list(tenant, filter),
+    ...(store.transfer === undefined
+      ? {}
+      : {
+          transfer: (
+            tenant: TenantId,
+            id: string,
+            expectedObjectVersion: number,
+            fields: { readonly assignee?: UserId | null; readonly operationCode?: string | null },
+          ) => store.transfer!(tenant, id, expectedObjectVersion, fields),
+        }),
     advance: async (tenant, id, expectedObjectVersion, nextState, nextObjectVersion, extra) => {
       const before =
         nextState === 'assigned' || nextState === 'cancelled' ? await store.find(tenant, id) : null;
@@ -1772,6 +1918,165 @@ export function createIssueSyncDispatchStore(
   };
 }
 
+// ---- D-24 #39：inspection.revokeGuard 撤销三闸门适配（service+store 混级） ----
+
+/** 撤销闸门依赖（对应域未装配的字段 undefined = 该闸门无约束，per-gate permissive）。 */
+export interface InspectionRevokeGuardDeps {
+  /** 闸门①放行事实读面（inventory；缺 = 无放行事实可存在）。 */
+  readonly releaseFacts?: ReleaseFactStore | undefined;
+  /** 闸门①已入量读面（inventory；缺 = 无入库流水可存在）。 */
+  readonly movements?: StockMovementStore | undefined;
+  /** 闸门②来源工序解析（report 来源）+ 下一道报工读面（reporting）。 */
+  readonly workReports?: WorkReportStore | undefined;
+  /** 闸门②来源工序解析（dispatch 来源；dispatch）。 */
+  readonly dispatchOrders?: DispatchOrderStore | undefined;
+  /** 闸门②"已质检"支线读面（inspection 质检单投影）。 */
+  readonly inspections?: InspectionOrderStore | undefined;
+  /** 闸门②工艺路线（baseline service 迟到绑定；缺/未绑定 = 无工序链可护）。 */
+  readonly baseline?: (() => BaselineService | undefined) | undefined;
+}
+
+/** 来源工序锚（闸门②解析产物：图号×工序×工作令三键定位在工艺链上的位置）。 */
+interface SourceOperationAnchor {
+  readonly drawingNo: string | null;
+  readonly workOrderId: string | null;
+  readonly operationCode: string | null;
+}
+
+/**
+ * 经来源对象解析被检工序锚（report→报工单快照 / dispatch→派工单快照；receipt
+ * 采购质检与手工建单无工序位）。来源行不存在或读面未装配返回 null = 无可护
+ * 工序链（闸门②放行——来源事实缺位时该闸门无事可护，不是盲放跨域状态）。
+ */
+async function resolveSourceAnchor(
+  deps: InspectionRevokeGuardDeps,
+  tenant: TenantId,
+  sourceType: string | null,
+  sourceRefId: string | null,
+): Promise<SourceOperationAnchor | null> {
+  if (sourceType === null || sourceRefId === null) return null;
+  if (sourceType === 'report' && deps.workReports !== undefined) {
+    const report = await deps.workReports.find(tenant, sourceRefId);
+    if (report === null) return null;
+    return {
+      drawingNo: report.drawingNo,
+      workOrderId: report.workOrderId,
+      operationCode: report.operationCode,
+    };
+  }
+  if (sourceType === 'dispatch' && deps.dispatchOrders !== undefined) {
+    const order = await deps.dispatchOrders.find(tenant, sourceRefId);
+    if (order === null) return null;
+    return {
+      drawingNo: order.drawingNo,
+      workOrderId: order.workOrderId,
+      operationCode: order.operationCode,
+    };
+  }
+  return null;
+}
+
+/**
+ * 闸门②：紧邻下一道已出现报工或已质检禁撤（RQ-037"下一道闸门"）。
+ * 工序链 = baseline 当前版路线 seq 升序；已报工 = reported/verified（pending
+ * 草稿与 revoked 冲销不算事实）；已质检 = 同图质检单来源解析工序命中下一道
+ * 且状态非 pending（passed/failed/closed 均已有判定）。工作令口径：双方均有
+ * 工作令时不等 = 不同令不同批不拦；任一侧缺工作令 = 无法区分时倾向拦截。
+ */
+async function assertNextOperationIdle(
+  deps: InspectionRevokeGuardDeps,
+  tenant: TenantId,
+  target: RevokeGuardTarget,
+): Promise<string | null> {
+  const baseline = deps.baseline?.();
+  if (baseline === undefined) return null; // baseline 未装配/未绑定 = 无工序链可护
+  const source = await resolveSourceAnchor(deps, tenant, target.sourceType, target.sourceRefId);
+  if (source === null || source.drawingNo === null || source.operationCode === null) return null;
+  let steps: readonly { readonly seq: number; readonly processCode: string }[];
+  try {
+    steps = (await baseline.getRouting(tenant, source.drawingNo)).current.steps;
+  } catch (error) {
+    if (error instanceof BaselineNotFoundError) return null; // 无工艺路线 → 无下一道可护
+    throw error;
+  }
+  const sorted = [...steps].sort((a, b) => a.seq - b.seq);
+  const index = sorted.findIndex((step) => step.processCode === source.operationCode);
+  if (index === -1 || index === sorted.length - 1) return null; // 不在链上 / 已是末道
+  const next = sorted[index + 1]!;
+  const sameWorkOrder = (other: string | null): boolean =>
+    source.workOrderId === null || other === null || other === source.workOrderId;
+  // (a) 下一道已有报工（list 按 drawingNo 过滤——图号口径同链）。
+  if (deps.workReports !== undefined) {
+    const reports = await deps.workReports.list(tenant, { drawingNo: source.drawingNo });
+    const blocking = reports.find(
+      (report) =>
+        report.operationCode === next.processCode &&
+        (report.state === 'reported' || report.state === 'verified') &&
+        sameWorkOrder(report.workOrderId),
+    );
+    if (blocking !== undefined) {
+      return `紧邻下一道工序 '${next.processCode}' 已有报工（报工单 '${blocking.id}'，状态 ${blocking.state}），判定回退将破坏下游事实`;
+    }
+  }
+  // (b) 下一道已质检（同图已判定质检单经来源解析工序命中下一道；list 无图号
+  //     过滤面——租户量级收口逐单解析，撤销是低频人工命令，正确性优先）。
+  if (deps.inspections !== undefined) {
+    for (const inspection of await deps.inspections.list(tenant)) {
+      if (inspection.id === target.inspectionId) continue;
+      if (inspection.state === 'pending') continue; // 已质检 = 有判定（passed/failed/closed）
+      if (inspection.sourceType === null || inspection.sourceType === 'receipt') continue; // 采购/手工无工序位
+      const anchor = await resolveSourceAnchor(
+        deps,
+        tenant,
+        inspection.sourceType,
+        inspection.sourceRefId,
+      );
+      if (anchor === null || anchor.drawingNo !== source.drawingNo) continue;
+      if (anchor.operationCode !== next.processCode) continue;
+      if (!sameWorkOrder(anchor.workOrderId)) continue;
+      return `紧邻下一道工序 '${next.processCode}' 已有质检判定（质检单 '${inspection.id}'，状态 ${inspection.state}），判定回退将破坏下游事实`;
+    }
+  }
+  return null;
+}
+
+/**
+ * 撤销三闸门适配器（#39）：逐闸门裁量语义见文件头清单；关键取舍——
+ *  - 闸门①已入口径与 inventory receive 放行咬合（validateReceiveStock）同一
+ *    读面（kind=inspection-in 流水按 sourceRefId=inspectionId 汇总），两侧
+ *    不可能口径漂移；入库完成 = 已入 ≥ 放行（放行 Σ=0 时无约束）。
+ *  - 闸门③恒放行：我方 HC 无人工审核环节（hours 条目只从 verified 报工联动
+ *    产生、恒 verified），无"已审核"状态可读；inspection 撤销亦不写 hours。
+ *    19 册 HC 域若增报工工时审核面，接线点在本适配器补 hours 读面。
+ * 返回 null=可撤；reason=拒绝原因（service 侧拼"撤销质检闸门拦截"前缀）。
+ */
+export function createInspectionRevokeGuard(deps: InspectionRevokeGuardDeps): InspectionRevokeGuardPort {
+  return {
+    assertRevokable: async (tenant, target) => {
+      // 闸门①：关联入库未入库完成方可撤（IV 放行事实/入库事实读面）。
+      if (deps.releaseFacts !== undefined && deps.movements !== undefined) {
+        const facts = await deps.releaseFacts.listByInspection(tenant, target.inspectionId);
+        const releasedTotal = facts.reduce((sum, fact) => sum + fact.quantity, 0);
+        if (releasedTotal > 0) {
+          const receivedRows = await deps.movements.list(tenant, {
+            kind: 'inspection-in',
+            sourceRefId: target.inspectionId,
+          });
+          const receivedTotal = receivedRows.reduce((sum, row) => sum + row.quantity, 0);
+          if (receivedTotal >= releasedTotal) {
+            return `关联入库已完成（放行 ${releasedTotal}，已入 ${receivedTotal}），判定回退将使已入账库存失去放行锚点`;
+          }
+        }
+      }
+      // 闸门②：紧邻下一道已报工/已质检禁撤（reporting+baseline 工序链）。
+      const chainFault = await assertNextOperationIdle(deps, tenant, target);
+      if (chainFault !== null) return chainFault;
+      // 闸门③：工时已审禁撤——我方 HC 恒 verified 无审核态，恒放行（头注取舍）。
+      return null;
+    },
+  };
+}
+
 // ---- wiring 装配 ----
 
 /** wiring 构造入参。 */
@@ -1816,7 +2121,15 @@ export interface CrossModuleWiring {
    * 派工成功时触发发料任务同步——app-registry 的 dispatch/aftercare-claim
    * 工厂读本字段拿实例（未接线形态 = undefined，回落原 store）。
    */
-  readonly storeOverrides: { readonly dispatchOrders?: DispatchOrderStore | undefined };
+  readonly storeOverrides: {
+    readonly dispatchOrders?: DispatchOrderStore | undefined;
+    /**
+     * 图文档 P1-a #40：drawing 发布→挂接方待办桥装饰态五存储束
+     * （DrawingHttpModule 经 app-registry 读此实例——events.append 联动 manager
+     * 待办；未接线形态 = undefined，回落原生存储）。
+     */
+    readonly drawingStores?: DrawingStores | undefined;
+  };
 }
 
 /** 组装全部跨模块接线（清单见文件头；两侧装配才接，机制各见条目注释）。 */
@@ -2302,6 +2615,42 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
         })
       : undefined;
 
+  // D-24 #39 inspection.revokeGuardPort（service+store 混级：IV 放行/流水 +
+  // reporting/dispatch 来源解析 + baseline 迟到绑定 + inspection 投影；三闸门
+  // 裁量语义见文件头与适配器头注——未启用域 per-gate permissive）。
+  const revokeGuardPort: InspectionRevokeGuardPort | undefined = has('inspection')
+    ? createInspectionRevokeGuard({
+        ...(has('inventory')
+          ? {
+              releaseFacts: stores.inventoryReleaseFacts,
+              movements: stores.inventoryMovements,
+            }
+          : {}),
+        ...(has('reporting') ? { workReports: stores.workReports } : {}),
+        ...(has('dispatch') ? { dispatchOrders: stores.dispatchOrders } : {}),
+        ...(has('inspection') ? { inspections: stores.inspectionOrders } : {}),
+        ...(has('baseline') ? { baseline: () => lateBaseline.resolve() } : {}),
+      })
+    : undefined;
+
+  // 图文档 P1-a #40 drawing 发布→挂接方待办桥（store 级装饰：events.append 落账
+  // 后反查在途挂接令建 manager 待办；机制与取舍见 createDrawingRevisionTodoBridgeStores
+  // 头注——drawing/workorder/todoStore 任一缺位不装饰，模块回落原生存储零副作用）。
+  const drawingTodoBridgeStores: DrawingStores | undefined =
+    has('drawing') &&
+    has('workorder') &&
+    stores.drawingStores !== undefined &&
+    stores.workOrders !== undefined &&
+    stores.workOrderAttachments !== undefined &&
+    stores.todoStore !== undefined
+      ? createDrawingRevisionTodoBridgeStores({
+          drawing: stores.drawingStores,
+          workOrders: stores.workOrders,
+          workOrderAttachments: stores.workOrderAttachments,
+          todos: stores.todoStore,
+        })
+      : undefined;
+
   // U6 #29 dispatch→issue 派工生成钩子（store 装饰——advance→assigned 触发；
   // DispatchModule 经 app-registry 读 storeOverrides.dispatchOrders 拿装饰态实例）。
   const issueSyncDispatchOrders: DispatchOrderStore | undefined =
@@ -2464,11 +2813,14 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
             },
           }
         : {}),
-      ...(stockReleasePort !== undefined || (has('inspection') && notifyChannel !== undefined)
+      ...(stockReleasePort !== undefined ||
+      revokeGuardPort !== undefined ||
+      (has('inspection') && notifyChannel !== undefined)
         ? {
             inspection: {
               ...(stockReleasePort !== undefined ? { stockReleasePort } : {}),
               ...(has('inspection') && notifyChannel !== undefined ? { notifyChannel } : {}),
+              ...(revokeGuardPort !== undefined ? { revokeGuardPort } : {}),
             },
           }
         : {}),
@@ -2529,7 +2881,7 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
       }
     },
     hoursIngestTrigger,
-    storeOverrides: { dispatchOrders: issueSyncDispatchOrders },
+    storeOverrides: { dispatchOrders: issueSyncDispatchOrders, drawingStores: drawingTodoBridgeStores },
   };
 }
 

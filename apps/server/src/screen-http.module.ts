@@ -16,9 +16,13 @@
  *    report:read 已随报表角色面存在，最小权限集变更）；
  *  - GET /screen/digital-operation/stream —— SSE 推送通道（EventSource 不能
  *    带 Authorization 头 → 会话 token 经 ?token= 查询参传入；校验语义与
- *    AuthGuard 同源：resolveSession + 会话租户 = 请求租户。开放访问部署形态
- *    SMES_SCREEN_PUBLIC_STREAM=on 显式解锁——源契约通道无鉴权（OQ-3 待定），
- *    Cadence 缺省收紧为带 token，取舍写明不静默）；
+ *    AuthGuard 同源：resolveSession + 会话租户 = 请求租户，**且同样判定
+ *    report:read**（D-21 修复：修复前只校会话+租户，viewer/approver 快照 403
+ *    而流 200——SSE 帧与快照同构，权限面必须同码；401/403 分离同 AuthGuard
+ *    合同：会话缺失/无效/跨租户 = 401，身份有效但无权限码 = 403）。开放访问
+ *    部署形态 SMES_SCREEN_PUBLIC_STREAM=on 显式解锁——该形态是部署侧对整条
+ *    通道（含权限面）的显式放弃，不静默；源契约通道无鉴权（OQ-3 待定），
+ *    Cadence 缺省收紧为带 token + 权限码，取舍写明不静默）；
  *  - GET /screen/machining-daily-stats —— A10 日表最近 N 天（?days=30 上限
  *    366；report:read，同快照端点取舍）。
  *
@@ -36,8 +40,10 @@ import {
   AuthService,
   DigitalOperationScreenService,
   MachiningDailyStatsService,
+  PermissionService,
   RequirePermission,
   TenantContext,
+  permissionCode,
   type DigitalOperationScreenConfig,
   type MachiningDailyStatsStore,
   type ScreenSourceStores,
@@ -68,6 +74,13 @@ interface ScreenStreamResponse {
 const DEV_AUTH_FLAG = 'SMES_DEV_AUTH';
 const DEV_USER_HEADER = 'x-smes-user';
 
+/**
+ * 大屏读权限码（三端点同码，单一事实源）：快照 / SSE 流 / A10 日表都是只读
+ * 报表面（文件头权限码取舍）。品牌类型形态供流通道手动判定（不走装饰器——
+ * EventSource 场景鉴权在 handler 内自持，见 ScreenStreamController.authorized）。
+ */
+const SCREEN_READ_CODE = permissionCode('report:read');
+
 @Controller('screen')
 export class ScreenQueriesController {
   constructor(
@@ -77,14 +90,14 @@ export class ScreenQueriesController {
   ) {}
 
   /** 全屏数据帧快照（按需聚合一帧；report:read——文件头权限码取舍）。 */
-  @RequirePermission('report:read')
+  @RequirePermission(SCREEN_READ_CODE)
   @Get('digital-operation')
   async snapshot(): Promise<unknown> {
     return this.screen.buildFrame(this.tenantContext.current());
   }
 
   /** A10 日统计最近 N 天（降序；?days 缺省 30、上限 366；report:read）。 */
-  @RequirePermission('report:read')
+  @RequirePermission(SCREEN_READ_CODE)
   @Get('machining-daily-stats')
   async dailyStats(@Query('days') days?: string): Promise<unknown> {
     const parsed = days === undefined ? 30 : Number(days);
@@ -106,6 +119,7 @@ export class ScreenStreamController {
     private readonly tenantContext: TenantContext,
     private readonly broadcaster: ScreenFrameBroadcaster,
     private readonly auth: AuthService,
+    private readonly permissions: PermissionService,
     private readonly access: ScreenStreamAccess,
   ) {}
 
@@ -119,12 +133,21 @@ export class ScreenStreamController {
     @Req() request: ScreenStreamRequest,
     @Res() response: ScreenStreamResponse,
   ): Promise<void> {
-    if (!(await this.authorized(token, request))) {
-      response.statusCode = 401;
+    const denial = await this.authorized(token, request);
+    if (denial !== null) {
+      // 401/403 分离同 AuthGuard 合同：缺/坏会话 = 401；身份有效但无
+      // report:read = 403（D-21——修复前任意有效会话即 200）。
+      response.statusCode = denial;
       response.setHeader('Content-Type', 'application/json; charset=utf-8');
       response.setHeader('Cache-Control', 'no-store');
       response.end(
-        `${JSON.stringify({ statusCode: 401, message: '大屏通道缺少有效会话（?token= 或 SMES_SCREEN_PUBLIC_STREAM=on）' })}\n`,
+        `${JSON.stringify({
+          statusCode: denial,
+          message:
+            denial === 403
+              ? "大屏通道需要权限码 'report:read'（与快照端点同码；会话有效但无权限）"
+              : '大屏通道缺少有效会话（?token= 或 SMES_SCREEN_PUBLIC_STREAM=on）',
+        })}\n`,
       );
       return;
     }
@@ -143,25 +166,44 @@ export class ScreenStreamController {
   }
 
   /**
-   * 通道鉴权（OQ-3 开放的 Cadence 缺省收紧形态）：
-   *  1. publicStream.allow（SMES_SCREEN_PUBLIC_STREAM=on）→ 放行（部署显式解锁）；
+   * 通道鉴权（OQ-3 开放的 Cadence 缺省收紧形态；D-21 补权限面）：
+   *  1. publicStream.allow（SMES_SCREEN_PUBLIC_STREAM=on）→ 放行（部署对
+   *     整条通道含权限面的显式解锁）；
    *  2. ?token= 会话：resolveSession 有效且会话租户 = 请求租户（与 AuthGuard
-   *     同语义）→ 放行；无效/过期/跨租户 → 401；
+   *     同语义）→ 再判 report:read（PermissionService.authorize——与快照端点
+   *     同一条判定链，含域内 admin bypass）；会话缺失/无效/跨租户 → 401，
+   *     身份有效但无权限码 → 403；
    *  3. dev/test 回落：仅 SMES_DEV_AUTH=on 时接受 x-smes-user 头（AuthGuard
-   *     同名开关同语义——EventSource 场景浏览器端不发该头，仅测试用）。
+   *     同名开关同语义——EventSource 场景浏览器端不发该头，仅测试用），
+   *     同样判 report:read（D-21：dev 头与 token 同权判定，不放裸身份）。
+   *
+   * 返回 null = 放行；401/403 = 拒绝并以此状态回 JSON（401/403 分离合同）。
    */
-  private async authorized(token: string | undefined, request: ScreenStreamRequest): Promise<boolean> {
-    if (this.access.allow) return true;
+  private async authorized(
+    token: string | undefined,
+    request: ScreenStreamRequest,
+  ): Promise<401 | 403 | null> {
+    if (this.access.allow) return null;
     if (token !== undefined && token.length > 0) {
       const session = await this.auth.resolveSession(token);
-      return session !== null && session.tenant === this.tenantContext.current();
+      if (session === null || session.tenant !== this.tenantContext.current()) {
+        return 401;
+      }
+      return (await this.readable(session.userId)) ? null : 403;
     }
     if (process.env[DEV_AUTH_FLAG] === 'on') {
       const raw = request.headers?.[DEV_USER_HEADER];
       const value = Array.isArray(raw) ? raw[0] : raw;
-      if (typeof value === 'string' && value.trim().length > 0) return true;
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return (await this.readable(UserId.create(value.trim()))) ? null : 403;
+      }
     }
-    return false;
+    return 401;
+  }
+
+  /** report:read 判定（与快照端点同一条 PermissionService 链）。 */
+  private async readable(user: UserId): Promise<boolean> {
+    return this.permissions.authorize(this.tenantContext.current(), user, SCREEN_READ_CODE);
   }
 }
 

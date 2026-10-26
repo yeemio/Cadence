@@ -120,6 +120,10 @@ docker compose -f deploy/compose.yaml down -v --remove-orphans
   开箱即回落各租户自己的 MAIN；未种 MAIN 的租户须先 `warehouse.define`
   建 code=`MAIN` 仓（或显式传仓）。空串/未配 = 无默认仓，收货载荷须显式
   传仓（显式仓优先于 env 默认仓）。
+- **配件审批链 env（D-25）**：`SMES_PARTS_APPROVAL_LEVELS`（1|2|3，缺省/空
+  =1 单级零回归）透传 server → `definePartsApprovalChain` 构造 workorder
+  `partsApprovalChain`；>1 须配 `SMES_PARTS_LEVEL2_ROLE`（levels=3 另须
+  `SMES_PARTS_LEVEL3_ROLE`，org 角色码单段小写）——配错启动即炸不静默回落。
 - **PG 端口**（低危清偿）：`127.0.0.1:${PG_PORT:-55432}:5432`——栈内走 compose
   内网，宿主仅本机可达（迁移排障/psql 连查）；不选纯 `expose`：单机买断形态
   运维需要本机直连。

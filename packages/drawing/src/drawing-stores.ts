@@ -73,6 +73,44 @@ export interface DrawingRevisionStore {
   find(tenant: TenantId, drawingId: DrawingId, version: number): Promise<DrawingRevisionRow | null>;
   /** 该图纸全部修订行（version 升序；链尾=当前版）。 */
   chain(tenant: TenantId, drawingId: DrawingId): Promise<readonly DrawingRevisionRow[]>;
+  /** 租户级图号索引（P1-c 最小端点的读面）：可见集聚合 + 前缀过滤 + 分页。 */
+  listIndex(tenant: TenantId, query: DrawingIndexQuery): Promise<DrawingIndexPage>;
+}
+
+// ---- 图号索引（租户级列表查询读面，P1-c / O3 裁定=最小索引端点） ----
+
+/**
+ * 索引查询（实现方合同）：只聚合 visibleClassifications 集合内的修订——
+ * 全链超许可的图纸**不进索引**（与单图查询同形 404 纪律同向：不泄漏存在性）；
+ * total 与 rows 同过滤口径（可见图纸数，非全库图纸数）。
+ */
+export interface DrawingIndexQuery {
+  /** 图号前缀（可选；区分大小写前缀匹配——drawingId 是 opaque 锚，编码规则=数据约定）。 */
+  readonly drawingIdPrefix?: string | undefined;
+  /** 保密等级可见集（服务层按查看者 clearance 位次展开；值集=配置数据，不进实现）。 */
+  readonly visibleClassifications: readonly string[];
+  /** 页大小（服务层已校验 1..100）。 */
+  readonly limit: number;
+  /** 页偏移（0 起）。 */
+  readonly offset: number;
+}
+
+/** 索引行（按可见集聚合；drawingId 升序分页）。 */
+export interface DrawingIndexRow {
+  readonly drawingId: string;
+  /** 许可内链尾版本（可见集内最大 version——与按工作令清单 latestVersion 同口径）。 */
+  readonly latestVisibleVersion: number;
+  /** 许可内链尾修订的保密等级。 */
+  readonly latestVisibleClassification: string;
+  /** 全链真链尾版本（服务层 status 判定专用：真链尾>许可内链尾 ⇒ 'restricted'）。 */
+  readonly tailVersion: number;
+}
+
+/** 索引分页回执。 */
+export interface DrawingIndexPage {
+  readonly rows: readonly DrawingIndexRow[];
+  /** 可见图纸总数（同过滤口径）。 */
+  readonly total: number;
 }
 
 // ---- 查看留痕（append-only 审计事实） ----

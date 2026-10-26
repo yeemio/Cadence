@@ -19,7 +19,8 @@
  *
  * 实现：
  *  - PgDrawingRevisionStore → 修订链（drawing_revisions；(tenant, drawingId,
- *    version) 与 (tenant, supersedes) 唯一，P2002 → DrawingConflictError）
+ *    version) 与 (tenant, supersedes) 唯一，P2002 → DrawingConflictError）+
+ *    图号索引读面（P1-c：DISTINCT ON 可见集聚合 + groupBy 计数/真链尾）
  *  - PgDrawingChangeNoticeStore → 变更通知（drawing_change_notices；(tenant,
  *    drawingId, toVersion) 唯一 = 发布联动幂等锚点；sinceVersion 游标读）
  *  - PgDrawingViewTrailStore → 查看留痕（drawing_view_trails；append-only
@@ -70,6 +71,27 @@ interface DrawingRevisionStore {
   insert(input: CreateDrawingRevisionInput): Promise<DrawingRevisionRow>;
   find(tenant: TenantId, drawingId: DrawingId, version: number): Promise<DrawingRevisionRow | null>;
   chain(tenant: TenantId, drawingId: DrawingId): Promise<readonly DrawingRevisionRow[]>;
+  listIndex(tenant: TenantId, query: DrawingIndexQuery): Promise<DrawingIndexPage>;
+}
+
+/** 图号索引查询/行/分页（drawing 侧 P1-c 读面镜像：可见集聚合+前缀+分页）。 */
+interface DrawingIndexQuery {
+  readonly drawingIdPrefix?: string | undefined;
+  readonly visibleClassifications: readonly string[];
+  readonly limit: number;
+  readonly offset: number;
+}
+
+interface DrawingIndexRow {
+  readonly drawingId: string;
+  readonly latestVisibleVersion: number;
+  readonly latestVisibleClassification: string;
+  readonly tailVersion: number;
+}
+
+interface DrawingIndexPage {
+  readonly rows: readonly DrawingIndexRow[];
+  readonly total: number;
 }
 
 interface DrawingChangeNotice {
@@ -252,6 +274,60 @@ export class PgDrawingRevisionStore implements DrawingRevisionStore {
       orderBy: { version: 'asc' },
     });
     return rows.map((row) => toRevisionRow(row));
+  }
+
+  /**
+   * 租户级图号索引（P1-c）：三查询最小实现——
+   *  1) DISTINCT ON (drawing_id) 取每图可见集内最大 version（orderBy
+   *     drawingId asc/version desc + distinct）+ skip/take 分页；
+   *  2) groupBy 计可见图纸总数（与 rows 同过滤口径）；
+   *  3) 页内图纸真链尾（groupBy _max(version)——status 判定专用）。
+   * 全链超许可的图纸自然不进前两查询（不泄漏存在性，端口合同）。
+   */
+  async listIndex(tenant: TenantId, query: DrawingIndexQuery): Promise<DrawingIndexPage> {
+    const visibleWhere = {
+      tenantId: tenant,
+      ...(query.drawingIdPrefix === undefined ? {} : { drawingId: { startsWith: query.drawingIdPrefix } }),
+      classification: { in: [...query.visibleClassifications] },
+    };
+    const prefixWhere = {
+      tenantId: tenant,
+      ...(query.drawingIdPrefix === undefined
+        ? {}
+        : { drawingId: { startsWith: query.drawingIdPrefix } }),
+    };
+    const [latestVisible, groups] = await Promise.all([
+      this.prisma.drawingRevisionRecord.findMany({
+        where: visibleWhere,
+        orderBy: [{ drawingId: 'asc' }, { version: 'desc' }],
+        distinct: ['drawingId'],
+        skip: query.offset,
+        take: query.limit,
+        select: { drawingId: true, version: true, classification: true },
+      }),
+      this.prisma.drawingRevisionRecord.groupBy({ by: ['drawingId'], where: visibleWhere }),
+    ]);
+    const pageIds = latestVisible.map((row) => row.drawingId);
+    const tailGroups =
+      pageIds.length === 0
+        ? []
+        : await this.prisma.drawingRevisionRecord.groupBy({
+            by: ['drawingId'],
+            where: { ...prefixWhere, drawingId: { in: pageIds } },
+            _max: { version: true },
+          });
+    const tailByDrawing = new Map(
+      tailGroups.map((group) => [group.drawingId, group._max?.version ?? 0]),
+    );
+    return {
+      rows: latestVisible.map((row) => ({
+        drawingId: row.drawingId,
+        latestVisibleVersion: row.version,
+        latestVisibleClassification: row.classification,
+        tailVersion: tailByDrawing.get(row.drawingId) ?? row.version,
+      })),
+      total: groups.length,
+    };
   }
 }
 

@@ -21,16 +21,19 @@ import {
   AttachmentModule,
   ColumnPreferencesModule,
   createOrgPartsApproverDirectory,
+  definePartsApprovalChain,
   IssueModule,
   HoursModule,
   InspectionModule,
   InMemoryDispatchOrderStore,
+  InMemoryInspectionOrderStore,
   InMemoryItemStore,
   InMemoryLaborEntryStore,
   InMemoryBaselineEventStore,
   InMemoryKitCheckStore,
   InMemoryOutsourcingLineStore,
   InMemoryPurchaseOrderStore,
+  InMemoryReleaseFactStore,
   InMemoryReportDomainEventStore,
   InMemorySessionStore,
   InMemoryStockMovementStore,
@@ -145,6 +148,7 @@ import {
   type AftercareClaimStore,
   type AttachmentStore,
   type ObjectStoragePort,
+  type PartsApprovalChain,
   type IssueTaskStore,
   type IssueTaskLineStore,
   type IssueRecordStore,
@@ -483,8 +487,12 @@ export const MODULE_DEFINITIONS: Record<
       notifyChannel: wiring.baseline?.notifyChannel,
       workOrderDrawingSource: wiring.baseline?.workOrderDrawingSource,
     }),
-  workorder: (stores, wiring) =>
-    WorkOrderModule.register({
+  workorder: (stores, wiring) => {
+    // D-25：多级链 env 装配面（SMES_PARTS_APPROVAL_LEVELS + 角色 env →
+    // definePartsApprovalChain 构造链；缺省 undefined = 服务回落单级缺省，
+    // 零回归）。解析见 partsApprovalChainFromEnv 头注。
+    const partsChain = partsApprovalChainFromEnv();
+    return WorkOrderModule.register({
       orderStore: stores.workOrderStore,
       attachmentStore: stores.workOrderAttachmentStore,
       partsStore: stores.workOrderPartsStore,
@@ -506,7 +514,11 @@ export const MODULE_DEFINITIONS: Record<
       // 模块空目录（多级链该级审批明确拒绝）。审批链级数缺省单级零回归，
       // 多级链经 serviceOptions.partsApprovalChain / partsChainResolver 启用。
       approverPort: createOrgPartsApproverDirectory(stores.policyStore, stores.userStore),
-    }),
+      ...(partsChain === undefined
+        ? {}
+        : { serviceOptions: { partsApprovalChain: partsChain } }),
+    });
+  },
   // M2 Wave-2 环节模块（同上按需启停；跨模块端口 workOrderFeed/inventory/receipt/
   // excel/materialValidation 暂用模块缺省——workOrderFeed 空实现时骨架走四类缺省集、
   // materialValidation 显式拒绝（导入命令接线前不可用，语义诚实），Wave-3 接线替换）
@@ -548,6 +560,8 @@ export const MODULE_DEFINITIONS: Record<
       // 跨模块接线（#17/#18）：inventory 放行事实登记 + IM 通知
       stockReleasePort: wiring.inspection?.stockReleasePort,
       notifyChannel: wiring.inspection?.notifyChannel,
+      // D-24 #39：撤销三闸门（缺省回落模块 FAIL_CLOSED——未装配组合根时恒拒）
+      revokeGuardPort: wiring.inspection?.revokeGuardPort,
     }),
   // M2 Wave-3 环节模块（同上按需启停；跨模块端口 kitCheck/priceSource/inspectionIntake/
   // print 与 inventory 预占/放行/收货适配归跨模块接线增量——见 status.md 待办）
@@ -963,6 +977,50 @@ export class ModuleRegistryError extends Error {
 }
 
 /**
+ * D-25（retest-59c9f8d）：S6 配件多级审批链的 env 装配面。此前 app-registry
+ * 未传 partsApprovalChain / partsChainResolver，三级链只能在直构
+ * WorkOrderService 的测试里启用——部署环境不可配。
+ *
+ * env 面（部署文档见 deploy/README）：
+ *  - SMES_PARTS_APPROVAL_LEVELS：1|2|3；缺省/空 = 单级（不注入
+ *    serviceOptions.partsApprovalChain，服务回落 workorder-config
+ *    DEFAULT_PARTS_APPROVAL_CHAIN——零回归）；
+ *  - SMES_PARTS_LEVEL2_ROLE / SMES_PARTS_LEVEL3_ROLE：二/三级或签角色码
+ *    （org RoleName 形状）。必配关系沿 definePartsApprovalChain 纪律：
+ *    levels≥2 须 LEVEL2_ROLE，levels=3 另须 LEVEL3_ROLE；多余角色前向携带
+ *    不生效。角色码/级数配错启动即炸（ModuleRegistryError，fail-fast——
+ *    多级审批链配错静默回落单级 = 流程控制面静默降级，不可接受）。
+ * partsChainResolver（租户级动态链）仍无 env 面——多租户差异化链属后续增量。
+ */
+export function partsApprovalChainFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): PartsApprovalChain | undefined {
+  const rawLevels = (env['SMES_PARTS_APPROVAL_LEVELS'] ?? '').trim();
+  if (rawLevels === '') return undefined; // 缺省单级零回归（不注入链选项）
+  if (rawLevels !== '1' && rawLevels !== '2' && rawLevels !== '3') {
+    throw new ModuleRegistryError(
+      `SMES_PARTS_APPROVAL_LEVELS 须为 1|2|3（S6 配件审批链级数，缺省 1），得到 '${rawLevels}'`,
+    );
+  }
+  const level2Role = env['SMES_PARTS_LEVEL2_ROLE'];
+  const level3Role = env['SMES_PARTS_LEVEL3_ROLE'];
+  try {
+    return definePartsApprovalChain({
+      levels: Number(rawLevels) as 1 | 2 | 3,
+      ...(level2Role === undefined || level2Role === '' ? {} : { level2Role }),
+      ...(level3Role === undefined || level3Role === '' ? {} : { level3Role }),
+    });
+  } catch (error) {
+    throw new ModuleRegistryError(
+      `配件审批链 env 配置无效（SMES_PARTS_APPROVAL_LEVELS=${rawLevels}：levels≥2 须 SMES_PARTS_LEVEL2_ROLE、` +
+        `levels=3 另须 SMES_PARTS_LEVEL3_ROLE，角色码单段小写 ≤64）：${
+          error instanceof Error ? error.message : String(error)
+        }`,
+    );
+  }
+}
+
+/**
  * 解析并校验 MODULES_ENABLED：容忍空白与大小写、去重、core 置首；
  * 拒绝未知模块（fail-fast：配置拼写错误不能静默缺模块启动）、拒绝缺 core。
  * undefined/null → 默认清单；显式置空 → 启动失败。
@@ -1133,6 +1191,24 @@ export function buildAppModule(
     aftercareClaims:
       options.aftercareClaimStore ??
       (enabled.includes('aftercare-claim') ? new InMemoryAftercareClaimStore() : undefined),
+    // D-24 #39：inventory 放行事实 + inspection 质检单投影（撤销三闸门读面；
+    // 与 InventoryModule/InspectionModule 同源——零 DB 组合根预建共享实例，
+    // PG 形态经 options 注入同源，workOrders/dispatchOrders 同体例）。
+    inventoryReleaseFacts:
+      options.inventoryReleaseFactStore ??
+      (enabled.includes('inventory') ? new InMemoryReleaseFactStore() : undefined),
+    inspectionOrders:
+      options.inspectionOrderStore ??
+      (enabled.includes('inspection') ? new InMemoryInspectionOrderStore() : undefined),
+    // 图文档 P1-a #40：drawing 五存储束与模块同源（发布→挂接方待办桥的事件
+    // 装饰底座；workorder+todoStore 齐备时 wiring 在 events 上包一层，装饰态
+    // 实例经 storeOverrides.drawingStores 回传给 DrawingHttpModule）。
+    drawingStores:
+      options.drawingStores ??
+      (enabled.includes('drawing') ? inMemoryDrawingStores() : undefined),
+    // 图文档 P1-a #40：#27 桥装饰态共享待办（effectiveTodoStore）——创建待办
+    // 即投收件箱（notifications 装配时），待办+通知一点双通道。
+    todoStore: effectiveTodoStore,
   };
   // 跨模块端口接线（清单与机制见 cross-module-wiring.ts 文件头；print/IM sink
   // 由 main.ts 注入 integration 适配，缺省回落拒绝/console 降级——清单 #10/#18；
@@ -1194,7 +1270,9 @@ export function buildAppModule(
         listingOperationStore: options.listingOperationStore,
         listingDomainEventStore: options.listingDomainEventStore,
         listingMachineEventStore: options.listingMachineEventStore,
-        inspectionOrderStore: options.inspectionOrderStore,
+        // D-24 #39：改经 wiringStores 裁决（零 DB = 组合根预建共享实例，PG =
+        // options PG 句柄），撤销闸门②"已质检"支线与模块同源读写。
+        inspectionOrderStore: wiringStores.inspectionOrders,
         inspectionNonconformStore: options.inspectionNonconformStore,
         inspectionOperationStore: options.inspectionOperationStore,
         inspectionDomainEventStore: options.inspectionDomainEventStore,
@@ -1207,7 +1285,9 @@ export function buildAppModule(
         inventoryReservationStore: wiringStores.inventoryReservations,
         inventoryStocktakeStore: options.inventoryStocktakeStore,
         inventoryShippingStore: options.inventoryShippingStore,
-        inventoryReleaseFactStore: options.inventoryReleaseFactStore,
+        // D-24 #39：改经 wiringStores 裁决（同 inspectionOrderStore 体例），
+        // 撤销闸门①放行事实读面与 InventoryModule 同源。
+        inventoryReleaseFactStore: wiringStores.inventoryReleaseFacts,
         inventoryOperationStore: options.inventoryOperationStore,
         inventoryDomainEventStore: wiringStores.inventoryDomainEvents,
         inventoryMachineEventStore: options.inventoryMachineEventStore,
@@ -1245,9 +1325,10 @@ export function buildAppModule(
         maintenanceStores:
           options.maintenanceStores ??
           (enabled.includes('maintenance') ? inMemoryMaintenanceStores() : undefined),
-        drawingStores:
-          options.drawingStores ??
-          (enabled.includes('drawing') ? inMemoryDrawingStores() : undefined),
+        // 图文档 P1-a #40：优先取装饰态五存储束（events.append 联动挂接方待办）；
+        // 未接线形态（workorder/todoStore 缺位）回落 wiringStores 原生裁决——
+        // dispatchOrderStore 的 #29 同体例。
+        drawingStores: wiring.storeOverrides.drawingStores ?? wiringStores.drawingStores,
         metricPackStores:
           options.metricPackStores ??
           (enabled.includes('metric-pack') ? inMemoryMetricPackStores() : undefined),

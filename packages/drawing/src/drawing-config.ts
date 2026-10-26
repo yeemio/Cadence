@@ -79,6 +79,14 @@ export const DRAWING_NOTICE_AUDIT_STATUS_PUBLISHED = 'published';
 /** 查看留痕审核状态：查看即 viewed（append-only 审计事实）。 */
 export const DRAWING_VIEW_AUDIT_STATUS_VIEWED = 'viewed';
 
+// ---- 图号索引分页缺省（P1-c / O3 裁定=最小索引端点；配置层缺省值） ----
+
+/** 索引页大小缺省（20）。 */
+export const DRAWING_INDEX_DEFAULT_PAGE_SIZE = 20;
+
+/** 索引页大小上限（100——租户级全库列表的护栏，防一次拉全库）。 */
+export const DRAWING_INDEX_MAX_PAGE_SIZE = 100;
+
 // ---- 权限码（合同 §5 最小集） ----
 
 /**

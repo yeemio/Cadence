@@ -18,8 +18,11 @@ import { DrawingInputError } from './drawing-errors.js';
 import {
   CLASSIFICATION_LEVELS,
   DEFAULT_CLASSIFICATION_LEVEL,
+  DRAWING_INDEX_DEFAULT_PAGE_SIZE,
+  DRAWING_INDEX_MAX_PAGE_SIZE,
   requireClassificationLevel,
 } from './drawing-config.js';
+import { MAX_DRAWING_READ_REFERENCE_TTL_SECONDS } from './drawing-read-references.js';
 import { DrawingId, type DrawingId as DrawingIdType } from './drawing-ids.js';
 
 // ---- 命令动词（03-drawing.md §3 命令面全集） ----
@@ -146,6 +149,44 @@ export function parseSinceVersionParam(value: string | undefined): number | unde
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0) {
     throw new DrawingInputError(`sinceVersion 须为 >= 0 的整数：${JSON.stringify(value)}`);
+  }
+  return parsed;
+}
+
+/** 索引页码（P1-c）：>= 1 的整数（缺省 1）。 */
+export function parsePageIndexParam(value: string | undefined): number {
+  if (value === undefined || value === '') return 1;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new DrawingInputError(`page 须为 >= 1 的整数：${JSON.stringify(value)}`);
+  }
+  return parsed;
+}
+
+/** 索引页大小（P1-c）：1..上限 的整数（缺省 20）。 */
+export function parsePageSizeParam(value: string | undefined): number {
+  if (value === undefined || value === '') return DRAWING_INDEX_DEFAULT_PAGE_SIZE;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > DRAWING_INDEX_MAX_PAGE_SIZE) {
+    throw new DrawingInputError(`pageSize 须为 1~${String(DRAWING_INDEX_MAX_PAGE_SIZE)} 的整数：${JSON.stringify(value)}`);
+  }
+  return parsed;
+}
+
+/** 索引前缀检索词（P1-c）：1~128 非空白字符（缺省/空串=不过滤）。 */
+export function parseSearchParam(value: string | undefined): string | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  return requireBoundedString(value, 'search', 1, 128);
+}
+
+/** 只读引用 TTL 秒（P1-e）：1..上限 的整数（缺省=本次查看不签发引用）。 */
+export function parseReadReferenceTtlParam(value: string | undefined): number | undefined {
+  if (value === undefined || value === '') return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_DRAWING_READ_REFERENCE_TTL_SECONDS) {
+    throw new DrawingInputError(
+      `referenceTtlSeconds 须为 1~${String(MAX_DRAWING_READ_REFERENCE_TTL_SECONDS)} 的整数：${JSON.stringify(value)}`,
+    );
   }
   return parsed;
 }

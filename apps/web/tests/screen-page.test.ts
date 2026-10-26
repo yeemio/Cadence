@@ -4,7 +4,9 @@
  *    信封宽容解析（null 保留 / pendingFields 种类映射 / 坏形状降级空块不抛）；
  *    SSE 通道 URL 形状（?token= 查询参 + encodeURIComponent）；readScreenToken
  *    会话读取与过期判定；
- *  - screenFrame：1080p 等比缩放计算（min 边适配）与占位标记映射（待定/待接）。
+ *  - screenFrame：1080p 等比缩放计算（min 边适配）与占位标记映射（待定/待接）；
+ *  - screenRoutes（O-1 修复锚定）：页面路由 /bigscreen/digital-operation，且
+ *    与 API 前缀 /screen/* 零重叠（API 调用面保持 /screen/* 不动——API 归 API）。
  * 体例沿 overview-api.test.ts（node 纯逻辑 + fetch/window stub）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,6 +33,7 @@ vi.stubGlobal('window', {
 
 const screenApi = await import('../src/pages/screen/screenApi.js');
 const screenFrame = await import('../src/pages/screen/screenFrame.js');
+const screenRoutes = await import('../src/pages/screen/screenRoutes.js');
 
 let calls: Array<{ url: string; init: RequestInit | undefined }> = [];
 let responder: (() => unknown) | null = null;
@@ -162,6 +165,27 @@ describe('screenApi（数据层接缝）', () => {
     expect(screenApi.readScreenToken(Date.parse('2100-01-01T00:00:00.000Z'))).toBeNull();
     storageBacking.clear();
     expect(screenApi.readScreenToken()).toBeNull();
+  });
+});
+
+describe('screenRoutes（O-1：前端路由与 API 路径分离）', () => {
+  it('大屏页面路由 = /bigscreen/digital-operation（旧 /screen/digital-operation 与 API 同路径已搬家）', () => {
+    expect(screenRoutes.screenPageRoute(screenRoutes.SCREEN_SCENE_DIGITAL_OPERATION)).toBe(
+      '/bigscreen/digital-operation',
+    );
+  });
+
+  it('O-1 不变量：页面路由不落在 API 前缀 /screen/ 下，且不与快照/流任一 API 路径相等（API 调用面保持 /screen/*）', async () => {
+    const route = screenRoutes.screenPageRoute(screenRoutes.SCREEN_SCENE_DIGITAL_OPERATION);
+    expect(route.startsWith('/screen/')).toBe(false);
+    // 对照面：API 调用 URL 仍是 /screen/*（API 归 API，不随路由搬家）
+    responder = () => goldenEnvelope();
+    await screenApi.fetchScreenSnapshot();
+    expect(calls[0]?.url).toBe('/screen/digital-operation');
+    const streamUrl = screenApi.screenStreamUrl('tok', '');
+    expect(streamUrl).toBe('/screen/digital-operation/stream?token=tok');
+    expect(route).not.toBe(calls[0]?.url);
+    expect(route).not.toBe(streamUrl);
   });
 });
 

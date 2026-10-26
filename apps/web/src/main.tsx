@@ -23,6 +23,10 @@ import { menuRoutes } from './menu';
 import { mobileRoutes } from './mobile';
 import { MOBILE_PAGE_BY_CODE, PAGE_BY_CODE } from './pages/assembly';
 import { DigitalOperationScreenPage } from './pages/screen/DigitalOperationScreenPage';
+import {
+  SCREEN_SCENE_DIGITAL_OPERATION,
+  screenPageRoute,
+} from './pages/screen/screenRoutes';
 import { ModulePagePlaceholder } from './pages/ModulePagePlaceholder';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ShellLayout } from './shell/ShellLayout';
@@ -85,10 +89,16 @@ createRoot(document.getElementById('root') as HTMLElement).render(
                 return <Route key={route.code} path={route.routePath} element={<Page />} />;
               })}
             </Route>
-            {/* 数字运营大屏（A8 首波，6a-3 裁决 3）：独立全屏路由——1920x1080 等比
-                缩放的墙挂展示页，不进 ShellLayout 业务壳（取舍见页面文件头注），
-                同 /m/* 先例：与桌面/移动两导航面并列的第三呈现面。 */}
-            <Route path="/screen/digital-operation" element={<DigitalOperationScreenPage />} />
+            {/* 数字运营大屏（A8 首波，6a-3 裁决 3；O-1 修复）：独立全屏路由——
+                1920x1080 等比缩放的墙挂展示页，不进 ShellLayout 业务壳（取舍见
+                页面文件头注），同 /m/* 先例：与桌面/移动两导航面并列的第三呈现面。
+                路由前缀 /bigscreen（O-1：旧 /screen/digital-operation 与 API
+                同路径，直接打开/刷新被 nginx 反代打到后端 401 JSON——前缀取舍
+                见 pages/screen/screenRoutes.ts 文件头）。 */}
+            <Route
+              path={screenPageRoute(SCREEN_SCENE_DIGITAL_OPERATION)}
+              element={<DigitalOperationScreenPage />}
+            />
           </Routes>
         </Refine>
       </BrowserRouter>

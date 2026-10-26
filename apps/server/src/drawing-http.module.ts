@@ -4,7 +4,7 @@
  *
  * 体例对齐 PayrollHttpModule：专业包零框架耦合，控制器/装配归组合根（R-M3-3）。
  * 每个路由必挂 @RequirePermission（权限码按合同 §5：drawing:read / publish /
- * audit-read）。
+ * audit-read）——例外见 read-references 开门面（token 即凭证）。
  *
  * 查看者装配（合同 §2 保密两不变量的组合根面）：DrawingViewer = 调用方身份
  * （AuthGuard）+ clearance 保密许可。v1 无租户权限配置面——clearance 作为
@@ -14,6 +14,14 @@
  * 按工作令图纸清单（接线 #23）：refs 由组合根从 workorder 附件装配（钉版
  * 编码 ref='drawingId@vN'，结构同形透传——消费模块不 import 本包，合同 §4
  * 差异表 #3）；workorder 未装配 = 空清单（零接线语义诚实）。
+ *
+ * P1 增量（drawing-module/CONTRACT.md P1 节）：
+ *  - P1-c 图号索引：GET /drawing/drawings?search=&page=&pageSize=&clearance=
+ *    （前缀检索+保密过滤+分页；元数据口径不含 fileRef）；
+ *  - P1-e 只读引用：view 端点 referenceTtlSeconds 声明即回执附短时效签名
+ *    URL；GET /drawing/read-references/:token 开门面（沿 attachment
+ *    storage/:token 先例：短时签名 token 即能力凭证，无权限码；兑现仍走
+ *    viewRevision 全路径——门禁+每次必落查看留痕，不新增 fileRef 旁路）。
  */
 import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import { DynamicModule, Module, Provider } from '@nestjs/common';
@@ -25,12 +33,20 @@ import {
 } from '@smes/application';
 import { UserId } from '@smes/business-core';
 import {
+  DrawingId,
+  DrawingNotFoundError,
+  DrawingReadReferenceSigner,
   DrawingService,
   parseClearance,
   parseCommandBodyForKind,
   parseDrawingIdParam,
+  parsePageIndexParam,
+  parsePageSizeParam,
+  parseReadReferenceTtlParam,
+  parseSearchParam,
   parseSinceVersionParam,
   parseVersionParam,
+  requireDrawingId,
   type DrawingCommandEnvelope,
   type DrawingEnvelopeBody,
   type DrawingStores,
@@ -39,6 +55,9 @@ import type { WorkOrderDrawingRefsPort } from './cross-module-wiring.js';
 
 /** workorder 附件钉版引用装配端口的 DI token（接口无运行时形状——Symbol token）。 */
 export const WORKORDER_DRAWING_REFS = Symbol('smes.server.workOrderDrawingRefs');
+
+/** 只读引用签发器的 DI token（P1-e：service 签发与开门面验证共用同一实例）。 */
+export const DRAWING_READ_REFERENCES = Symbol('smes.server.drawingReadReferences');
 
 /** 信封补全：解析产物 + 合同常量 + 租户/操作者。 */
 function envelopeOf(
@@ -86,7 +105,31 @@ export class DrawingQueriesController {
     private readonly drawing: DrawingService,
     @Inject(WORKORDER_DRAWING_REFS)
     private readonly workOrderRefs: WorkOrderDrawingRefsPort | undefined,
+    @Inject(DRAWING_READ_REFERENCES)
+    private readonly readReferences: DrawingReadReferenceSigner,
   ) {}
+
+  /**
+   * 租户级图号索引（P1-c / O3 裁定=最小）：search 前缀 + clearance 保密过滤
+   * + 分页（page 1 起缺省 1 / pageSize 缺省 20 上限 100）。
+   * 全链超许可的图纸不进索引；条目=许可内链尾（latestVersion/classification/
+   * status），元数据口径不含 fileRef。
+   */
+  @Get('drawings')
+  @RequirePermission('drawing:read')
+  async drawingsIndex(
+    @Req() request: AuthenticatedRequest,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('clearance') clearance?: string,
+  ): Promise<unknown> {
+    return this.drawing.drawingsIndex(this.tenantContext.current(), this.viewerOf(request, clearance), {
+      ...(search === undefined ? {} : { search: parseSearchParam(search) }),
+      page: parsePageIndexParam(page),
+      pageSize: parsePageSizeParam(pageSize),
+    });
+  }
 
   /** 修订链（元数据清单口径：clearance 过滤；不含 fileRef——内容走查看留痕路径）。 */
   @Get('revisions/:drawingId')
@@ -107,6 +150,8 @@ export class DrawingQueriesController {
    * 查看修订（内容指针 fileRef 的唯一取得路径）：过保密门禁（不可见与不存在
    * 同形 404）→ 必落查看留痕 + DrawingViewed 事件 → 返回内容视图。
    * version 缺省 'latest'；钉版查看传具体修订号。
+   * P1-e：referenceTtlSeconds（1..600）声明时回执附短时效只读引用
+   * （readReference.url+expiresAt；兑现走 read-references 开门面）。
    */
   @Get('revisions/:drawingId/view')
   @RequirePermission('drawing:read')
@@ -115,16 +160,41 @@ export class DrawingQueriesController {
     @Param('drawingId') drawingId: string,
     @Query('version') version?: string,
     @Query('clearance') clearance?: string,
+    @Query('referenceTtlSeconds') referenceTtlSeconds?: string,
   ): Promise<unknown> {
     const target =
       version === undefined || version === '' || version === 'latest'
         ? ('latest' as const)
         : parseVersionParam(version, 'version');
+    const ttl = parseReadReferenceTtlParam(referenceTtlSeconds);
     return this.drawing.viewRevision(
       this.tenantContext.current(),
       this.viewerOf(request, clearance),
       parseDrawingIdParam(drawingId, 'drawingId'),
       target,
+      ttl === undefined ? {} : { readReferenceTtlSeconds: ttl },
+    );
+  }
+
+  /**
+   * 只读引用开门面（P1-e）：短时签名 token 换内容视图。沿 attachment
+   * storage/:token 先例**无权限码、无登录门**——token 即唯一凭证（租户绑定=claims 比对；兑现走 viewRevision 全路径门禁+必留痕；登录态加严归 Owner 裁定 P2 安全批）
+   * AuthGuard；租户绑定=claims 与当前租户比对）。无效/过期/跨租户一律同形
+   * 404（不区分原因，不泄漏存在性）。兑现走 viewRevision 全路径：门禁 +
+   **每次必落新查看留痕**（引用不是留痕旁路）。
+   */
+  @Get('read-references/:token')
+  async readReference(@Param('token') token: string): Promise<unknown> {
+    const tenant = this.tenantContext.current();
+    const claims = this.readReferences.verify(token);
+    if (claims === null || claims.tenantId !== tenant) {
+      throw new DrawingNotFoundError('图纸只读引用无效或已过期');
+    }
+    return this.drawing.viewRevision(
+      tenant,
+      { userId: UserId.create(claims.viewerId), clearance: claims.clearance },
+      requireDrawingId(claims.drawingId, 'drawingId'),
+      claims.version,
     );
   }
 
@@ -197,19 +267,29 @@ export interface DrawingHttpModuleOptions {
   readonly stores: DrawingStores;
   /** workorder 附件钉版引用装配端口（接线 #23；drawing+workorder 双侧装配才非空）。 */
   readonly workOrderDrawingRefs?: WorkOrderDrawingRefsPort | undefined;
+  /**
+   * 只读引用签发器（P1-e 可选注入；缺省=随机密钥实例——重启后旧引用失效，
+   * 同附件基座取舍；TTL 逐请求声明，无模块级缺省签发）。
+   */
+  readonly readReferenceSigner?: DrawingReadReferenceSigner | undefined;
 }
 
 @Module({})
 export class DrawingHttpModule {
   static register(options: DrawingHttpModuleOptions): DynamicModule {
+    const readReferenceSigner = options.readReferenceSigner ?? new DrawingReadReferenceSigner();
     const providers: Provider[] = [
       {
         provide: DrawingService,
-        useFactory: () => new DrawingService(options.stores),
+        useFactory: () => new DrawingService(options.stores, { readReferences: readReferenceSigner }),
       },
       {
         provide: WORKORDER_DRAWING_REFS,
         useValue: options.workOrderDrawingRefs,
+      },
+      {
+        provide: DRAWING_READ_REFERENCES,
+        useValue: readReferenceSigner,
       },
     ];
     return {

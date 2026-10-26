@@ -31,6 +31,8 @@ export {
   CLASSIFICATION_LEVEL_LABELS,
   DEFAULT_CLASSIFICATION_LEVEL,
   DRAWING_PERMISSIONS,
+  DRAWING_INDEX_DEFAULT_PAGE_SIZE,
+  DRAWING_INDEX_MAX_PAGE_SIZE,
   isClassificationLevel,
   classificationRank,
   classificationAllows,
@@ -75,6 +77,9 @@ export type {
   DrawingRevisionRow,
   CreateDrawingRevisionInput,
   DrawingRevisionStore,
+  DrawingIndexQuery,
+  DrawingIndexRow,
+  DrawingIndexPage,
   DrawingViewTrailRow,
   AppendDrawingViewInput,
   ListDrawingViewsFilter,
@@ -96,6 +101,10 @@ export {
   parseVersionParam,
   parseClearance,
   parseDrawingRef,
+  parsePageIndexParam,
+  parsePageSizeParam,
+  parseSearchParam,
+  parseReadReferenceTtlParam,
   type DrawingCommandKind,
   type DrawingCommand,
   type DrawingCommandEnvelope,
@@ -112,7 +121,22 @@ export {
   type DrawingRevisionView,
   type DrawingRevisionSummaryView,
   type WorkOrderDrawingView,
+  type DrawingIndexQueryInput,
+  type DrawingIndexEntry,
+  type DrawingIndexView,
 } from './drawing.service.js';
+
+export {
+  DrawingReadReferenceSigner,
+  newDrawingReadReferenceSigningKey,
+  encodeDrawingReadReferenceToken,
+  verifyDrawingReadReferenceToken,
+  DEFAULT_DRAWING_READ_REFERENCE_TTL_SECONDS,
+  MAX_DRAWING_READ_REFERENCE_TTL_SECONDS,
+  type DrawingReadReference,
+  type DrawingReadReferenceClaims,
+  type DrawingReadReferenceSignerOptions,
+} from './drawing-read-references.js';
 
 export {
   InMemoryDrawingRevisionStore,

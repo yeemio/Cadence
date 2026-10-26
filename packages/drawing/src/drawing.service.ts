@@ -16,6 +16,8 @@
  *    再返回内容视图；
  *  - revisionChain：修订链（clearance 过滤；**不含 fileRef**——清单是元数据
  *    索引，内容走 viewRevision 留痕路径）；
+ *  - drawingsIndex：租户级图号索引（P1-c 最小：前缀检索+保密过滤+分页；
+ *    全链超许可的图纸不进索引）；
  *  - notices：变更通知读取（sinceVersion 游标——消费方轮询/对账）；
  *  - drawingsForWorkOrder：按工作令图纸清单（消费 workorder 附件的钉版引用
  *    结构同形载荷 + 修订升级视图"我引用的 vN 是否已有更新"；组合根粘合面，
@@ -50,9 +52,13 @@ import {
 import {
   DRAWING_REVISION_AUDIT_STATUS_PUBLISHED,
   DRAWING_VIEW_AUDIT_STATUS_VIEWED,
+  CLASSIFICATION_LEVELS,
+  DRAWING_INDEX_MAX_PAGE_SIZE,
   classificationAllows,
   classificationRank,
 } from './drawing-config.js';
+import type { DrawingReadReference, DrawingReadReferenceSigner } from './drawing-read-references.js';
+import { DrawingInputError } from './drawing-errors.js';
 import type { DrawingChangeNotice, DrawingViewer } from './ports.js';
 import type { DrawingId } from './drawing-ids.js';
 import type {
@@ -66,6 +72,7 @@ import type {
 
 /**
  * 修订内容视图（查看路径回执）：唯一携 fileRef 的视图——过门禁+留痕后返回。
+ * P1-e：可选携带短时效只读引用（claims 不含 fileRef；兑现仍走本路径必留痕）。
  */
 export interface DrawingRevisionView {
   /** 修订行 id（dr-<uuidv7>）。 */
@@ -83,6 +90,8 @@ export interface DrawingRevisionView {
   /** current = 链尾；superseded = 历史修订（钉版查看常态）。 */
   readonly status: 'current' | 'superseded';
   readonly createdAt: string;
+  /** 短时效只读引用（P1-e：服务装配签发器且调用方声明 TTL 才出现）。 */
+  readonly readReference?: DrawingReadReference;
 }
 
 /** 修订链元数据视图（清单口径：**不含 fileRef**——内容走 viewRevision 留痕路径）。 */
@@ -100,6 +109,8 @@ export type DrawingCommandResult = DrawingCommitted | RejectedOutcome | Indeterm
 export interface DrawingServiceOptions {
   /** 时钟注入（事件 occurredAt 与修订 changedAt 取时点；测试确定性）。 */
   readonly now?: () => string;
+  /** 只读引用签发器（P1-e 可选：装配后查看回执可携带短时效签名 URL）。 */
+  readonly readReferences?: DrawingReadReferenceSigner | undefined;
 }
 
 /** 按工作令图纸清单的单条升级视图（消费方持钉版引用，§4 结构同形粘合面）。 */
@@ -120,16 +131,53 @@ export type WorkOrderDrawingView =
   | { readonly drawingId: string; readonly version: number; readonly status: 'restricted' }
   | { readonly drawingId: string; readonly version: number; readonly status: 'missing' };
 
+// ---- 图号索引（P1-c / O3 裁定=最小索引端点） ----
+
+/** 索引查询入参（HTTP 解析层已定型，服务层再守界）。 */
+export interface DrawingIndexQueryInput {
+  /** 图号前缀检索（缺省=全库可见图纸）。 */
+  readonly search?: string | undefined;
+  /** 页码（1 起）。 */
+  readonly page: number;
+  /** 页大小（1..100）。 */
+  readonly pageSize: number;
+}
+
+/** 索引条目（元数据口径：不含 fileRef——内容一律走查看留痕路径）。 */
+export interface DrawingIndexEntry {
+  readonly drawingId: string;
+  /** 当前版本（查看者许可内链尾——与按工作令清单 latestVersion 同口径）。 */
+  readonly latestVersion: number;
+  /** 当前版本的保密等级。 */
+  readonly classification: string;
+  /**
+   * current = 真链尾在许可内；restricted = 存在超许可的新修订（呈现许可内
+   * 链尾）。与修订链面"许可过滤后无 current 行"同推断接受度，不回显隐藏版号。
+   */
+  readonly status: 'current' | 'restricted';
+}
+
+/** 索引分页视图。 */
+export interface DrawingIndexView {
+  readonly drawings: readonly DrawingIndexEntry[];
+  readonly page: number;
+  readonly pageSize: number;
+  /** 可见图纸总数（同过滤口径——全链超许可的图纸不计入，不泄漏存在性）。 */
+  readonly total: number;
+}
+
 // ---- 服务 ----
 
 export class DrawingService {
   private readonly now: () => string;
+  private readonly readReferences: DrawingReadReferenceSigner | undefined;
 
   constructor(
     private readonly stores: DrawingStores,
     options: DrawingServiceOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
+    this.readReferences = options.readReferences;
   }
 
   // ---- 命令执行（写路径） ----
@@ -278,12 +326,15 @@ export class DrawingService {
    * web/移动查看（保密两不变量的执行点，合同 §2）：
    * 门禁（不可见与不存在同形 404）→ 留痕行 + DrawingViewed 事件 → 内容视图。
    * version='latest' 查当前版；钉版查看传具体修订号（v4 发布后 v3 读回仍 v3）。
+   * P1-e：options.readReferenceTtlSeconds 声明时回执附短时效只读引用
+   * （留痕落账后签发；兑现仍走本路径每次必落新留痕——不新增旁路）。
    */
   async viewRevision(
     tenant: TenantId,
     viewer: DrawingViewer,
     drawingId: DrawingId,
     version: number | 'latest',
+    options: { readonly readReferenceTtlSeconds?: number | undefined } = {},
   ): Promise<DrawingRevisionView> {
     classificationRank(viewer.clearance); // 未知许可 fail-fast，不默认放行
     const chain = await this.stores.revisions.chain(tenant, drawingId);
@@ -320,7 +371,14 @@ export class DrawingService {
     const event = makeDrawingViewedEvent(tenant, trail, provenance, viewedAt);
     await this.stores.events.append(event); // fail-closed：事件失败即查看失败（留痕已落=保守方向）
     const latestRow = chain.length > 0 ? chain[chain.length - 1]! : target;
-    return this.toRevisionView(target, target === latestRow);
+    const readReference =
+      this.readReferences !== undefined && options.readReferenceTtlSeconds !== undefined
+        ? this.readReferences.issue(tenant, viewer, drawingId, target.version, options.readReferenceTtlSeconds)
+        : undefined;
+    return {
+      ...this.toRevisionView(target, target === latestRow),
+      ...(readReference === undefined ? {} : { readReference }),
+    };
   }
 
   /** 修订链（按 drawingId，含 changeNote；clearance 过滤；不含 fileRef）。 */
@@ -335,6 +393,48 @@ export class DrawingService {
     return chain
       .filter((row) => classificationAllows(viewer.clearance, row.classification))
       .map((row) => this.toSummaryView(row, row.version === latest));
+  }
+
+  /**
+   * 租户级图号索引（P1-c 最小端点）：前缀检索 + 保密过滤 + 分页。
+   * 保密纪律：全链超许可的图纸不进索引（同形 404 纪律的列表面等价物）；
+   * "当前版本"取许可内链尾（与按工作令清单 latestVersion 同口径，不越级泄漏）。
+   */
+  async drawingsIndex(
+    tenant: TenantId,
+    viewer: DrawingViewer,
+    query: DrawingIndexQueryInput,
+  ): Promise<DrawingIndexView> {
+    const rank = classificationRank(viewer.clearance); // 未知许可 fail-fast
+    if (!Number.isInteger(query.page) || query.page < 1) {
+      throw new DrawingInputError(`page 须为 >= 1 的整数：${JSON.stringify(query.page)}`);
+    }
+    if (!Number.isInteger(query.pageSize) || query.pageSize < 1 || query.pageSize > DRAWING_INDEX_MAX_PAGE_SIZE) {
+      throw new DrawingInputError(
+        `pageSize 须为 1~${String(DRAWING_INDEX_MAX_PAGE_SIZE)} 的整数：${JSON.stringify(query.pageSize)}`,
+      );
+    }
+    const search = query.search === undefined ? undefined : query.search.trim();
+    if (search !== undefined && (search.length < 1 || search.length > 128)) {
+      throw new DrawingInputError(`search 须为 1~128 个非空白字符`);
+    }
+    const page = await this.stores.revisions.listIndex(tenant, {
+      ...(search === undefined ? {} : { drawingIdPrefix: search }),
+      visibleClassifications: CLASSIFICATION_LEVELS.slice(0, rank + 1),
+      limit: query.pageSize,
+      offset: (query.page - 1) * query.pageSize,
+    });
+    return {
+      drawings: page.rows.map((row) => ({
+        drawingId: row.drawingId,
+        latestVersion: row.latestVisibleVersion,
+        classification: row.latestVisibleClassification,
+        status: row.tailVersion > row.latestVisibleVersion ? 'restricted' : 'current',
+      })),
+      page: query.page,
+      pageSize: query.pageSize,
+      total: page.total,
+    };
   }
 
   /** 变更通知读取（sinceVersion 游标：只取 toVersion > sinceVersion；toVersion 升序）。 */

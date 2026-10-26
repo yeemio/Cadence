@@ -29,6 +29,9 @@ import type {
   AppendDrawingViewInput,
   CreateDrawingRevisionInput,
   DrawingDomainEventStore,
+  DrawingIndexPage,
+  DrawingIndexQuery,
+  DrawingIndexRow,
   DrawingOperationStore,
   DrawingRevisionRow,
   DrawingRevisionStore,
@@ -81,6 +84,38 @@ export class InMemoryDrawingRevisionStore implements DrawingRevisionStore {
     return this.rows
       .filter((row) => row.tenant === tenant && row.drawingId === drawingId)
       .sort((a, b) => a.version - b.version);
+  }
+
+  async listIndex(tenant: TenantId, query: DrawingIndexQuery): Promise<DrawingIndexPage> {
+    const visible = new Set(query.visibleClassifications);
+    // 租户 + 前缀过滤后按 drawingId 聚合（全链行都在，供真链尾判定）。
+    const byDrawing = new Map<string, DrawingRevisionRow[]>();
+    for (const row of this.rows) {
+      if (row.tenant !== tenant) continue;
+      if (query.drawingIdPrefix !== undefined && !row.drawingId.startsWith(query.drawingIdPrefix)) continue;
+      const list = byDrawing.get(row.drawingId) ?? [];
+      list.push(row);
+      byDrawing.set(row.drawingId, list);
+    }
+    const indexed: DrawingIndexRow[] = [];
+    for (const [drawingId, rows] of byDrawing) {
+      // 可见集聚合（端口合同）：全链超许可的图纸不进索引——不泄漏存在性。
+      const visibleRows = rows.filter((row) => visible.has(row.classification));
+      if (visibleRows.length === 0) continue;
+      const latestVisible = visibleRows.reduce((max, row) => (row.version > max.version ? row : max));
+      const tailVersion = rows.reduce((max, row) => Math.max(max, row.version), 0);
+      indexed.push({
+        drawingId,
+        latestVisibleVersion: latestVisible.version,
+        latestVisibleClassification: latestVisible.classification,
+        tailVersion,
+      });
+    }
+    indexed.sort((a, b) => a.drawingId.localeCompare(b.drawingId));
+    return {
+      rows: indexed.slice(query.offset, query.offset + query.limit),
+      total: indexed.length,
+    };
   }
 }
 
