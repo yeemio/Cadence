@@ -3,6 +3,13 @@
 更新：2026-10-26 午③（**功能补齐波开工（Owner 点向路线图"并行安排做完"）：第一波三线并行——六张报表 metric/数字运营大屏/低危三件套+在途核查预占接线；按写入面互斥分批滚动至 PRD 待实现路线图清完**；上一快照：R 波修复循环全线收口 0b7cd35）
 
 
+## 6a 波验收与 REWORK（2026-10-26 午⑤，6a-3 裁决 agent_0217a824）
+
+- **D-15 ✅ ACCEPT 收口**：四件套全过（透传链/null 安全/seed 幂等/三态测试 102 绿），容器全链在案
+- **大屏 REWORK（4 项，返工 writer 在途）**：P1 A10 存储装配断链（factory 恒 undefined+`!` 掩盖，端点 500 实锤）/P1 快照端点无鉴权公开 200（AuthGuard 语义：未声明码即公开）/P1 web 大屏页不存在（原登记失真）/P2 screen 零测试
+- **报表线 REWORK（4 项，返工 writer 在途）**：P1 ReportCenterController 未注册=死代码（404 实锤）/P1 六源绑定缺失（503 unbound）/P2 新 metric 零求值测试/P2 登记失真（"五张"实 2 条+导出零代码）——PRD 20 册增补 #2 勘误已落
+- **验收方法论沉淀**：零 DB 运行时探针（起服实测）抓出 4 个"代码绿但运行断"的装配缺陷——verify 绿≠链路活，装配层验收必须实测
+
 ## 容器级复证三件套（✅ 18:15，总控，SaaS 栈 27+screen 模块）
 
 - **大屏**：GET /screen/digital-operation → 200；SSE 流 /screen/digital-operation/stream?token= → "stream open"+snapshot 数据帧推送（?token= 认证为设计内形态，EventSource 无 header）；Docker build 随 npm 网络恢复成功
