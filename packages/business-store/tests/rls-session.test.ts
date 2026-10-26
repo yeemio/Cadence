@@ -5,6 +5,10 @@
  * 纯数据面：不构造 PrismaClient、不连库——扩展行为经 rlsSessionOperation 用
  * 事务桩直接驱动（协议面与官方 $extends 一致：tx.$queryRaw 标签模板 + 模型
  * 委托重派）。容器级贯通实证在 deploy/scripts/rls-session-proof.mjs。
+ *
+ * D-8 修复（2026-10-26）新增：$transaction 交互式形态接管——桩客户端捕获
+ * $extends 扩展对象后直接驱动其 query/client 两个组件，锁定同句柄重派、
+ * 回滚不留部分状态、ALS 跨异步传播与数组形态透传。
  */
 import { describe, expect, it } from 'vitest';
 import { TenantId } from '@smes/business-core';
@@ -111,6 +115,202 @@ describe('扩展操作 rlsSessionOperation（事务桩驱动）', () => {
       rlsSessionOperation(tx, { model: 'userRecord', operation: 'findMany', args: {} }),
     );
     expect(calls[0]?.params).toEqual([TENANT_SESSION_VAR, 't-a']);
+  });
+});
+
+describe('withRlsTenantSession $transaction 接管（D-8 修复：桩客户端驱动）', () => {
+  /** 捕获到的扩展对象结构面（与实现注册形状一致）。 */
+  interface CapturedExtension {
+    readonly name: string;
+    readonly query: {
+      readonly $allModels: {
+        readonly $allOperations: (params: {
+          readonly model: string;
+          readonly operation: string;
+          readonly args: unknown;
+        }) => Promise<unknown>;
+      };
+    };
+    readonly client: {
+      readonly $transaction: (
+        arg:
+          | ((tx: RlsSessionTx & Record<string, unknown>) => Promise<unknown>)
+          | readonly unknown[],
+        options?: unknown,
+      ) => Promise<unknown>;
+    };
+  }
+
+  interface StubPrisma {
+    readonly captured: CapturedExtension;
+    readonly baseInteractiveCount: () => number;
+    readonly arrayCalls: ReadonlyArray<{ readonly arg: unknown; readonly options?: unknown }>;
+    readonly sets: ReadonlyArray<{ readonly tx: unknown; readonly params: unknown[] }>;
+    readonly ops: ReadonlyArray<{ readonly tx: unknown; readonly model: string; readonly operation: string }>;
+    readonly commits: readonly string[];
+    /** 全事件时序（'set:<tenant>' / 'op:<model>.<operation>'），断言 SET 先于操作用。 */
+    readonly order: readonly string[];
+  }
+
+  /** 底层客户端桩：模拟真实 Prisma 交互式事务语义（回调后 commit / 抛错 rollback）。 */
+  function makeStubPrisma(): StubPrisma & Record<string, unknown> {
+    let baseInteractive = 0;
+    const arrayCalls: Array<{ arg: unknown; options?: unknown }> = [];
+    const sets: Array<{ tx: unknown; params: unknown[] }> = [];
+    const ops: Array<{ tx: unknown; model: string; operation: string }> = [];
+    const commits: string[] = [];
+    const order: string[] = [];
+    let capturedExt: CapturedExtension | undefined;
+    const stub = {
+      get captured(): CapturedExtension {
+        if (capturedExt === undefined) throw new Error('extension not captured');
+        return capturedExt;
+      },
+      baseInteractiveCount: () => baseInteractive,
+      arrayCalls,
+      sets,
+      ops,
+      commits,
+      order,
+      $extends(ext: unknown) {
+        capturedExt = ext as CapturedExtension;
+        return stub;
+      },
+      async $transaction(arg: unknown, options?: unknown): Promise<unknown> {
+        if (typeof arg !== 'function') {
+          arrayCalls.push({ arg, options });
+          return [];
+        }
+        baseInteractive += 1;
+        const tx: RlsSessionTx & Record<string, unknown> = {
+          async $queryRaw(strings: TemplateStringsArray, ...values: unknown[]) {
+            if (strings.join('$?').includes('set_config')) {
+              sets.push({ tx, params: values });
+              order.push(`set:${String(values[1])}`);
+            }
+            return [];
+          },
+          userRecord: {
+            async create(args: unknown) {
+              ops.push({ tx, model: 'userRecord', operation: 'create' });
+              order.push('op:userRecord.create');
+              return { ok: true, args };
+            },
+            async findMany(args: unknown) {
+              ops.push({ tx, model: 'userRecord', operation: 'findMany' });
+              order.push('op:userRecord.findMany');
+              return [{ id: 'stub-row' }];
+            },
+          },
+        };
+        try {
+          const result = await (arg as (t: typeof tx) => Promise<unknown>)(tx);
+          commits.push('commit');
+          return result;
+        } catch (error) {
+          commits.push('rollback');
+          throw error;
+        }
+      },
+    };
+    return stub as StubPrisma & Record<string, unknown>;
+  }
+
+  function install(): StubPrisma & Record<string, unknown> {
+    const stub = makeStubPrisma();
+    withRlsTenantSession(stub as unknown as import('@prisma/client').PrismaClient);
+    return stub;
+  }
+
+  it('交互式事务：回调前同句柄事务级 SET，多操作同句柄重派、不新开事务', async () => {
+    const stub = install();
+    const ext = stub.captured;
+    let callbackTx: unknown;
+    await ext.client.$transaction(async (tx) => {
+      callbackTx = tx;
+      await ext.query.$allModels.$allOperations({ model: 'userRecord', operation: 'create', args: { data: 1 } });
+      await ext.query.$allModels.$allOperations({ model: 'userRecord', operation: 'findMany', args: {} });
+    });
+    // 底层只开了一个交互式事务（原子性前提：操作共享同一句柄）
+    expect(stub.baseInteractiveCount()).toBe(1);
+    // SET 恰一次、先于任何操作、落在用户回调拿到的同一句柄上
+    expect(stub.sets).toHaveLength(1);
+    expect(stub.sets[0]?.tx).toBe(callbackTx);
+    expect(stub.sets[0]?.params).toEqual([TENANT_SESSION_VAR, 'default']);
+    expect(stub.order[0]).toBe('set:default');
+    // 两个操作都重派到同一句柄（与 SET 同句柄），且没有额外 SET
+    expect(stub.ops).toHaveLength(2);
+    expect(stub.ops[0]?.tx).toBe(callbackTx);
+    expect(stub.ops[1]?.tx).toBe(callbackTx);
+    expect(stub.commits).toEqual(['commit']);
+  });
+
+  it('runWithRlsTenant 包裹的交互式事务：SET 的是该租户；事务中段切租户不再重设（租户冻结于事务开启时刻）', async () => {
+    const stub = install();
+    const ext = stub.captured;
+    await runWithRlsTenant(TenantId.create('t-a'), () =>
+      ext.client.$transaction(async () => {
+        await runWithRlsTenant(TenantId.create('t-other'), () =>
+          ext.query.$allModels.$allOperations({ model: 'userRecord', operation: 'findMany', args: {} }),
+        );
+      }),
+    );
+    expect(stub.sets).toHaveLength(1); // 事务级 SET 一次，回调内不重设
+    expect(stub.sets[0]?.params).toEqual([TENANT_SESSION_VAR, 't-a']);
+    expect(stub.ops).toHaveLength(1); // 切租户上下文里的操作仍同句柄执行
+  });
+
+  it('回调抛错：整批回滚语义交给底层（rollback），ALS 句柄出界即失效——后续独立操作恢复自开事务', async () => {
+    const stub = install();
+    const ext = stub.captured;
+    await expect(ext.client.$transaction(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(stub.commits).toEqual(['rollback']);
+    // 出界后钩子回到"每操作独立事务+SET"现状路径
+    await ext.query.$allModels.$allOperations({ model: 'userRecord', operation: 'findMany', args: {} });
+    expect(stub.baseInteractiveCount()).toBe(2);
+    expect(stub.sets).toHaveLength(2); // 新事务内再 SET（各自事务级生效）
+    expect(stub.commits).toEqual(['rollback', 'commit']);
+    expect(stub.order).toEqual(['set:default', 'set:default', 'op:userRecord.findMany']);
+  });
+
+  it('ALS 上下文随异步链传播：事务内跨 await/tick 的操作仍同句柄', async () => {
+    const stub = install();
+    const ext = stub.captured;
+    await ext.client.$transaction(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await ext.query.$allModels.$allOperations({ model: 'userRecord', operation: 'findMany', args: {} });
+    });
+    expect(stub.baseInteractiveCount()).toBe(1);
+    expect(stub.sets).toHaveLength(1);
+    expect(stub.ops).toHaveLength(1);
+    expect(stub.ops[0]?.tx).toBe(stub.sets[0]?.tx);
+  });
+
+  it('数组形态不接管：原样透传底层（含 options），不 SET、不进交互式路径', async () => {
+    const stub = install();
+    const ext = stub.captured;
+    const promises = [Promise.resolve(1), Promise.resolve(2)];
+    const options = { isolationLevel: 'Serializable' };
+    await ext.client.$transaction(promises, options);
+    expect(stub.arrayCalls).toEqual([{ arg: promises, options }]);
+    expect(stub.baseInteractiveCount()).toBe(0);
+    expect(stub.sets).toHaveLength(0);
+  });
+
+  it('事务外独立操作维持现状：钩子自开事务 + SET + 同句柄重派', async () => {
+    const stub = install();
+    const ext = stub.captured;
+    const result = await ext.query.$allModels.$allOperations({
+      model: 'userRecord',
+      operation: 'findMany',
+      args: { where: {} },
+    });
+    expect(result).toEqual([{ id: 'stub-row' }]);
+    expect(stub.baseInteractiveCount()).toBe(1);
+    expect(stub.sets).toHaveLength(1);
+    expect(stub.ops).toHaveLength(1);
+    expect(stub.ops[0]?.tx).toBe(stub.sets[0]?.tx);
+    expect(stub.commits).toEqual(['commit']);
   });
 });
 

@@ -58,3 +58,17 @@ export function baselineUuidv7(): string {
 export function newFaultReportId(): string {
   return `fr-${baselineUuidv7()}`;
 }
+
+/**
+ * 裸 uuid 字面量形状检查（8-4-4-4-12 十六进制，大小写不敏感）。
+ * 读路径 id 入参短路用：校验运行行 id 是裸 uuid 列（PG @db.Uuid，两形态
+ * 同为 uuidv7 生成），非 uuid 字面量的 id 必不存在——service 层按 404 语义
+ * 直接短路（不触存储，防 PG 适配层对非 uuid 串抛 Prisma P2023 上浮 500；
+ * 与全仓其他 :id 路由对垃圾 id 的 404 口径一致）。
+ */
+const UUID_LITERAL_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 是否裸 uuid 字面量（形状检查，非版本/存在性判断）。 */
+export function isBaselineUuidLiteral(value: string): boolean {
+  return UUID_LITERAL_RE.test(value);
+}

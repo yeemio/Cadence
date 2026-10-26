@@ -18,7 +18,7 @@
  *       sheetStore: stores.listingSheetStore, // …PG 注入点，余类推
  *       todoStore: stores.todoStore,
  *       // 跨模块端口（合流接线）：
- *       workOrderFeed, inventory, receipt, excel, materialValidation,
+ *       workOrderFeed, inventory, receipt, inspectionIntake, excel, materialValidation,
  *     }),
  */
 import { DynamicModule, Module, Provider } from '@nestjs/common';
@@ -49,6 +49,7 @@ import type {
 import {
   EMPTY_WORK_ORDER_CREATED_FEED,
   LISTING_EMPTY_INVENTORY_PORT,
+  LISTING_NOOP_INSPECTION_INTAKE,
   LISTING_NOOP_RECEIPT_PORT,
   LISTING_UNWIRED_MATERIAL_VALIDATION,
   type InventoryAvailabilityPort,
@@ -56,6 +57,7 @@ import {
   type MaterialValidationExecutor,
   type WorkOrderCreatedFeedPort,
 } from './listing-ports.js';
+import type { InspectionIntakePort } from '../inspection/inspection-ports.js';
 import { JsonTablesExcelPort, type ExcelPort } from './excel-port.js';
 import {
   ListingSheetsController,
@@ -83,6 +85,7 @@ export const LISTING_TODO_STORE = Symbol('smes.listing.todoStore');
 export const LISTING_WORK_ORDER_FEED = Symbol('smes.listing.workOrderFeed');
 export const LISTING_INVENTORY_PORT = Symbol('smes.listing.inventoryPort');
 export const LISTING_RECEIPT_PORT = Symbol('smes.listing.receiptPort');
+export const LISTING_INSPECTION_INTAKE = Symbol('smes.listing.inspectionIntake');
 export const LISTING_EXCEL_PORT = Symbol('smes.listing.excelPort');
 export const LISTING_MATERIAL_VALIDATION = Symbol('smes.listing.materialValidation');
 export const LISTING_SERVICE_OPTIONS = Symbol('smes.listing.serviceOptions');
@@ -117,6 +120,8 @@ export interface ListingModuleOptions {
   readonly inventoryPort?: InventoryAvailabilityPort | undefined;
   /** inventory 入库指令端口（收货联动）；缺省 = 恒放行（合流替换）。 */
   readonly receiptPort?: InventoryReceiptPort | undefined;
+  /** inspection 采购质检投递端口（收货→三类采购质检，RQ-019）；缺省 = 空实现（不投递）。 */
+  readonly inspectionIntake?: InspectionIntakePort | undefined;
   /** Excel 导入导出端口；缺省 = JsonTablesExcelPort（json-tables 源；ExcelJS 适配器合流替换）。 */
   readonly excelPort?: ExcelPort | undefined;
   /** baseline 物料校验执行端口；缺省 = 显式拒绝实现（导入命令接线前不可用）。 */
@@ -171,6 +176,10 @@ export class ListingModule {
       { provide: LISTING_WORK_ORDER_FEED, useValue: options.workOrderFeed ?? EMPTY_WORK_ORDER_CREATED_FEED },
       { provide: LISTING_INVENTORY_PORT, useValue: options.inventoryPort ?? LISTING_EMPTY_INVENTORY_PORT },
       { provide: LISTING_RECEIPT_PORT, useValue: options.receiptPort ?? LISTING_NOOP_RECEIPT_PORT },
+      {
+        provide: LISTING_INSPECTION_INTAKE,
+        useValue: options.inspectionIntake ?? LISTING_NOOP_INSPECTION_INTAKE,
+      },
       { provide: LISTING_EXCEL_PORT, useValue: options.excelPort ?? new JsonTablesExcelPort() },
       {
         provide: LISTING_MATERIAL_VALIDATION,
@@ -193,6 +202,7 @@ export class ListingModule {
           workOrderFeed: WorkOrderCreatedFeedPort,
           inventory: InventoryAvailabilityPort,
           receipt: InventoryReceiptPort,
+          inspectionIntake: InspectionIntakePort,
           excel: ExcelPort,
           materialValidation: MaterialValidationExecutor,
           serviceOpts: Partial<ListingServiceOptions>,
@@ -208,7 +218,7 @@ export class ListingModule {
             domainEvents,
             machineEvents,
             todos,
-            { workOrderFeed, inventory, receipt, excel, materialValidation },
+            { workOrderFeed, inventory, receipt, inspectionIntake, excel, materialValidation },
             serviceOpts,
           ),
         inject: [
@@ -225,6 +235,7 @@ export class ListingModule {
           LISTING_WORK_ORDER_FEED,
           LISTING_INVENTORY_PORT,
           LISTING_RECEIPT_PORT,
+          LISTING_INSPECTION_INTAKE,
           LISTING_EXCEL_PORT,
           LISTING_MATERIAL_VALIDATION,
           LISTING_SERVICE_OPTIONS,

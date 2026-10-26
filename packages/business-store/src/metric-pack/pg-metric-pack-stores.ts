@@ -242,8 +242,9 @@ export class PgMetricPackDomainEventStore {
     const row = toBusinessEventRow(event);
     const outbox = initialOutboxRow(row.eventId, event.tenantId);
     try {
-      await this.prisma.$transaction([
-        this.prisma.businessEventRecord.create({
+      // 交互式事务共享 tx 句柄：event+outbox 原子双写（RLS 接管见 rls-session.ts）。
+      await this.prisma.$transaction(async (tx) => {
+        await tx.businessEventRecord.create({
           data: {
             eventId: row.eventId,
             tenantId: row.tenantId,
@@ -257,11 +258,11 @@ export class PgMetricPackDomainEventStore {
             ...(row.provenance === undefined ? {} : { provenance: row.provenance as Prisma.InputJsonObject }),
             payload: row.payload as Prisma.InputJsonObject,
           },
-        }),
-        this.prisma.outboxRecord.create({
+        });
+        await tx.outboxRecord.create({
           data: { eventId: outbox.eventId, tenantId: outbox.tenantId, createdAt: outbox.createdAt },
-        }),
-      ]);
+        });
+      });
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new MetricPackConflictError(`事件 '${row.eventId}' 已落账（eventId 幂等锚点）`);

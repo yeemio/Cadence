@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { InMemoryItemStore } from '../../src/masterdata/in-memory-masterdata-stores.js';
 import { BASELINE_COMMAND_KINDS } from '../../src/baseline/baseline-input.js';
 import { BASELINE_EVENT_TYPES, type MaterialValidatedEventPayload } from '../../src/baseline/baseline-events.js';
+import { BaselineNotFoundError } from '../../src/baseline/baseline-errors.js';
 import {
   bigramDiceSimilarity,
   judgeMaterialLine,
@@ -204,5 +205,25 @@ describe('material.validate 命令执行', () => {
     const runs = await relaxed.listValidationRuns(t1);
     const run = await relaxed.getValidationRun(t1, runs[0]!.id);
     expect(run.lines[0]).toMatchObject({ judgment: 'matched' });
+  });
+});
+
+describe('校验运行读取 id 口径（D-7：非 UUID id → 404 语义，不上浮 500）', () => {
+  it("非 uuid 字面量 id（'abc'）→ BaselineNotFoundError，与不存在同形（不触存储）", async () => {
+    const service = newService(seededLibrary());
+    await expect(service.getValidationRun(t1, 'abc')).rejects.toMatchObject({
+      name: 'BaselineNotFoundError',
+      message: expect.stringContaining("不存在校验运行 'abc'"),
+    });
+  });
+
+  it('uuid 字面量但不存在 → 同 404；落账运行 id 为裸 uuid 形状且可正常回读', async () => {
+    const service = newService(seededLibrary());
+    await expect(service.getValidationRun(t1, '0196f4e3-0000-7000-8000-000000000000')).rejects.toThrow(BaselineNotFoundError);
+    await service.execute(t1, envelope(BASELINE_COMMAND_KINDS.materialValidate, { lines: [{ code: 'P-1001' }] }));
+    const [run] = await service.listValidationRuns(t1);
+    expect(run).toBeDefined();
+    expect(run!.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(await service.getValidationRun(t1, run!.id)).toMatchObject({ id: run!.id });
   });
 });

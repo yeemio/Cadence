@@ -37,8 +37,14 @@ import {
   type ApprovalSendOutcome,
   type ApprovalSubjectRef,
 } from '@smes/engine-flow';
+import type { UserStore } from '../org/org-stores.js';
 import type { TodoItem, TodoStore } from '../workbench/workbench-stores.js';
-import { ApprovalConflictError, ApprovalNotFoundError, ApprovalStateError } from './approval-errors.js';
+import {
+  ApprovalConflictError,
+  ApprovalInputError,
+  ApprovalNotFoundError,
+  ApprovalStateError,
+} from './approval-errors.js';
 import { parseDecisionInput, parseStartApprovalInput, parseCaseIdParam, parseStateFilter } from './approval-input.js';
 import type { ApprovalCase, ApprovalCaseStore } from './approval-stores.js';
 
@@ -67,6 +73,14 @@ export interface ApprovalServiceOptions {
   readonly flowConfigResolver?:
     | ((tenant: TenantId) => Promise<ApprovalFlowConfig | null>)
     | undefined;
+  /**
+   * 审批人目录（D-11）：org 域 UserStore 只读复用（租户收口查询端口，同
+   * TodoStore 复用 workbench 的跨域端口先例；组合根注入与 org/auth 同一
+   * 实例）。发起审批时逐审批人校验"本租户内存在且 active"，任一不满足 →
+   * ApprovalInputError（400）——不产生无人处理的审批单。缺省不校验（单模块
+   * 装配/零 DB boot 语义完整，缺省纪律同 flowConfigResolver）。
+   */
+  readonly userStore?: UserStore | undefined;
 }
 
 export interface ApprovalStartResult {
@@ -115,6 +129,7 @@ export class ApprovalService {
   /** 发起审批：建案 + 提交流程（+ 进审跳步）→ 逐审批人派待办。 */
   async start(tenant: TenantId, actor: UserId, input: unknown): Promise<ApprovalStartResult> {
     const payload = parseStartApprovalInput(input);
+    await this.ensureApproversAvailable(tenant, payload.approvers); // D-11：任何落账/派待办之前
     const config = await this.configFor(tenant);
     const caseId = `case-${randomUUID()}`;
     const subject: ApprovalSubjectRef = {
@@ -172,6 +187,23 @@ export class ApprovalService {
       return { case: created, events: runtime.events(), todosCreated };
     } finally {
       runtime.stop(); // 释放引擎在途定时器（默认配置无，守卫自定义配置）
+    }
+  }
+
+  /**
+   * 审批人可用性校验（D-11）：逐人经租户收口目录查询，本租户内不存在或
+   * active=false → ApprovalInputError（400）。端口按 (tenant, id) 收口——
+   * "属于其他租户"与"不存在"同形 null，错误信息不区分二者（不泄漏他租户
+   * 用户存在性）；未注入目录（模块缺省）不校验，既有单模块行为零变化。
+   */
+  private async ensureApproversAvailable(tenant: TenantId, approvers: readonly UserId[]): Promise<void> {
+    const userStore = this.options.userStore;
+    if (userStore === undefined) return;
+    for (const approver of approvers) {
+      const account = await userStore.find(tenant, approver);
+      if (account === null || !account.active) {
+        throw new ApprovalInputError(`审批人 '${approver}' 不存在或不可用（须为当前租户内活动用户）`);
+      }
     }
   }
 

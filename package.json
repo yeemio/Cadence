@@ -17,7 +17,7 @@
     "reconcile": "pnpm --filter @smes/testkit run reconcile",
     "reconcile:record": "pnpm --filter @smes/testkit run reconcile:record",
     "verify:rls": "node deploy/scripts/rls-proof.mjs",
-    "verify": "pnpm typecheck && pnpm build && pnpm boundary && pnpm boundary:selftest && pnpm test"
+    "verify": "pnpm build && pnpm typecheck && pnpm boundary && pnpm boundary:selftest && pnpm test"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

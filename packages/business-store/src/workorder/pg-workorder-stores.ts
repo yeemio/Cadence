@@ -559,8 +559,11 @@ export class PgWorkOrderDomainEventStore implements WorkOrderDomainEventStore {
     const row = toBusinessEventRow(event);
     const outbox = initialOutboxRow(row.eventId, row.tenantId);
     try {
-      await this.prisma.$transaction([
-        this.prisma.businessEventRecord.create({
+      // 交互式事务（共享 tx 句柄）：event+outbox 同事务原子双写。
+      // RLS=on 时由 rlsTenantSession 扩展接管（回调前同句柄 SET，钩子同句柄重派）；
+      // RLS=off 时即原生交互式事务——两种形态原子性等价。
+      await this.prisma.$transaction(async (tx) => {
+        await tx.businessEventRecord.create({
           data: {
             eventId: row.eventId,
             tenantId: row.tenantId,
@@ -574,15 +577,15 @@ export class PgWorkOrderDomainEventStore implements WorkOrderDomainEventStore {
             ...(row.provenance === undefined ? {} : { provenance: json(row.provenance) }),
             payload: json(row.payload as Readonly<Record<string, unknown>>),
           },
-        }),
-        this.prisma.outboxRecord.create({
+        });
+        await tx.outboxRecord.create({
           data: {
             eventId: outbox.eventId,
             tenantId: outbox.tenantId,
             createdAt: outbox.createdAt,
           },
-        }),
-      ]);
+        });
+      });
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new WorkOrderConflictError(`事件 '${row.eventId}' 已落账（eventId 幂等锚点）`);

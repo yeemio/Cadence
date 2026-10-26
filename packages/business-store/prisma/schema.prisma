@@ -2562,3 +2562,29 @@ model AttachmentRecord {
   @@index([tenantId, bizId, createdAt(sort: Desc)])
   @@map("attachments")
 }
+
+// ---------------------------------------------------------------------------
+// fix-wave-4 W4-2（D-3）：附件对象字节表（ObjectStoragePort 的 PG 适配器侧）。
+// attachments 元数据表零变更；字节走独立新表——列表/详情查询永不触碰字节列
+// （bytea 自动 TOAST，仅 select 时解外，隔离于元数据热路径）。32MiB 护栏在
+// 适配器层把门（与 attachment-input MAX_UPLOAD_BYTES 同值，纵深防御）；
+// 租户收口 = tenant_id 行级（RLS 同批补登：src/rls/tables.ts + 重放迁移
+// 20261026180100）。object_key 库内唯一（uuid 体例，put 恒新生成）——
+// bytea 形态下键退化为库内唯一标识，租户隔离由 tenant_id 行承载（预研
+// §3.1：MinIO/S3 前缀欠账不被本形态触发）。
+// ---------------------------------------------------------------------------
+
+/// 附件对象字节行（PgObjectStorage 端口的持久化；put 追加，无更新/删除面）。
+model AttachmentObjectRecord {
+  id        String   @id @default(uuid(7))
+  tenantId  String   @map("tenant_id")
+  /// 库内唯一对象键（upload/yyyy/mm/dd/<uuid>-<slug> 体例，适配器生成）。
+  objectKey String   @unique @map("object_key")
+  /// 对象字节（PG bytea；TOAST 行外存储，32MiB 护栏内）。
+  bytes     Bytes
+  contentType String? @map("content_type")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([tenantId, objectKey])
+  @@map("attachment_objects")
+}

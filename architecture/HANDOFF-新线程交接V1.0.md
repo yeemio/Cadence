@@ -16,7 +16,7 @@ Owner 明确指令换新线程（本会话上下文极长，跨 M0~M5→S/T/U �
 
 - **GitHub**：`https://github.com/yeemio/Cadence`（私有），main = **`baedb19`**，本地=远端，**工作树零脏文件**。
 - **提交链**（12 个）：ee16599（M0~M5 初版）→ 127e353（D8/approve-builds/CI 对账门禁移除）→ 4abe16e（S/T/U 三波 232 文件）→ 0b8566c（并 lane/m4-final，3 冲突语义并集）→ 54ac017 → d310a6e（U6 接线波）→ 4835e2e（U7 项目成本）→ cf803ae（U8 逾期口径）→ 50aa8a5（部署修复）→ 56bae00（登录文案）→ baedb19（TESTING-GUIDE）。
-- **测试基线**：全仓 `pnpm verify` exit 0（application 549 / business-store 164 / engine-reporting 49 / server 65 / web 117+14skip / product-ui 123 / testkit 77）；六套容器 e2e + 活库冒烟全 PASS 历史（apps/server/package.json scripts `*:e2e` / `smoke:live-db`）。
+- **测试基线**：全仓 `pnpm verify` exit 0（application 549 / business-store 164 / engine-reporting 49 / server 65 / web 117+14skip / product-ui 130 / testkit 77）；六套容器 e2e + 活库冒烟全 PASS 历史（apps/server/package.json scripts `*:e2e` / `smoke:live-db`）。
 - **U 波（文档增量八模块）全部实施→独立验收→落地**：issue 发料（含一轮 REWORK 终裁）/ report-center 口径包+A9 / attachment 文件管理 / process-material / aftercare-claim 售后报销 / T1 三域接线 / costing 六块成本 / 逾期报表口径。**U9 物料价格台账已中止并清除**（Owner 扩盘刹车）。
 - **部署栈正在运行**（单机形态，27 模块）：cadence-pg/server/web 三容器 healthy；web http://localhost:8080（移动 /m）、API :3000、PG 127.0.0.1:55432；账号 admin / demo-admin / approver / viewer，口令统一 `demo-password`。SaaS 形态起法见 TESTING-GUIDE.md §3。
 - **grokbot 测试交接就绪**：`TESTING-GUIDE.md`（仓根）——安装/验证链/六套 e2e/部署/账号/设计内行为/分层地图/纪律。

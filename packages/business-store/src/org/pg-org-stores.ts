@@ -147,6 +147,19 @@ export class PgUserStore implements UserStore {
     });
     return this.find(tenant, id);
   }
+
+  async updatePassword(
+    tenant: TenantId,
+    id: UserId,
+    passwordHash: string,
+  ): Promise<UserAccount | null> {
+    // 同 updateStatus 形态：复合 where 收口 + 零行 = 目标不存在（用例层转 404）
+    await this.prisma.userRecord.updateMany({
+      where: { tenantId: tenant, id },
+      data: { passwordHash },
+    });
+    return this.find(tenant, id);
+  }
 }
 
 interface SessionDbRow {

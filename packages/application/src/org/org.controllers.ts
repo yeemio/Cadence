@@ -7,6 +7,7 @@
  *   POST /org/users                    user:write
  *   PUT  /org/users/:id/roles          user:write
  *   PUT  /org/users/:id/status         user:write（active 启停，收尾波-③）
+ *   PUT  /org/users/:id/password       user:write（设置/重置口令，D-2）
  *   GET  /org/roles                    role:read
  *   POST /org/roles                    role:write
  *   PUT  /org/roles/:name/permissions  role:write
@@ -59,6 +60,16 @@ export class OrgUsersController {
     @Req() request: AuthenticatedRequest,
   ): Promise<Awaited<ReturnType<OrgService['setUserStatus']>>> {
     return this.org.setUserStatus(this.tenantContext.current(), id, request[REQUEST_USER_KEY], body);
+  }
+
+  /** 设置/重置口令（D-2）：覆写 hash + 全端撤销该用户会话（见 OrgService.setUserPassword）。 */
+  @Put(':id/password')
+  @RequirePermission('user:write')
+  async setPassword(
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<Awaited<ReturnType<OrgService['setUserPassword']>>> {
+    return this.org.setUserPassword(this.tenantContext.current(), id, body);
   }
 }
 

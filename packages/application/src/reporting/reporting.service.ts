@@ -12,9 +12,11 @@
  *    五类报工面（外协单不报工）；工艺属性随单快照不回查）；submit 按本人——
  *    申报人 = 命令签发人，载荷不带 reporter；批量整批校验先于落账（一单非法
  *    整批 rejected，不部分落账），上限配置化；工序合法性经 baseline 端口复检
- *    （缺省恒合法 fail-open）；末道报工（kind ∈ 末道质检集 && 工艺路线末道
+ *    （缺省恒合法 fail-open）；超报闸门（fix-wave-4 W4-1）：按派工单累计
+ *    有效报工量 + 本次 ≤ 派工数量（累计口径 = 链尾行除撤销外合计；批量按
+ *    派工单合并计本次量、任一单超量整批拒；S14 精算上限属 PRD 待实现差异，
+ *    不在本闸门）；末道报工（kind ∈ 末道质检集 && 工艺路线末道
  *    判定真）通知式触发 InspectionIntakePort（回执进事件载荷，未接线不阻塞）；
- *    超报容忍：报工数量不硬拦超派工量（合同 §8 open question，对账校正）；
  * 2. 状态机（engine-flow 配置驱动，ADR-0010）：submit = 建单先落 pending@v1
  *    初始投影（无机器事件）再驱动 SUBMIT → reported@v2（listing purchase.order.
  *    submit 同构）；verify（reported→verified，发 ReportVerified——hours 工时
@@ -267,6 +269,39 @@ export class ReportingService {
     return fact;
   }
 
+  /**
+   * 派工单累计有效报工量（超报闸门的累计口径，fix-wave-4 W4-1）：该派工单
+   * 链尾行（被修正取代的链中段不计——store.list 端口合同即链尾口径）除撤销
+   * （revoked，冲销不计）外的 doneQty 合计；reported/verified 均计。
+   */
+  private async effectiveReportedQty(tenant: TenantId, dispatchId: string): Promise<number> {
+    const tails = await this.reports.list(tenant, { dispatchId });
+    let total = 0;
+    for (const row of tails) {
+      if (row.state === 'revoked') continue; // 撤销冲销不计（撤销后重报走新单）
+      total += row.doneQty;
+    }
+    return total;
+  }
+
+  /**
+   * 超报闸门：累计有效报工量 + 本次 ≤ 派工数量（incoming = 单次提交量或批量
+   * 内该派工单合计量）。超量返回 rejected（理由含数量对比）；未超返回 null。
+   * 校验先于幂等记账（rejected 不吞 operationId）。
+   */
+  private async checkOverReport(
+    tenant: TenantId,
+    fact: DispatchFactForReport,
+    incoming: number,
+    incomingLabel: string,
+  ): Promise<RejectedOutcome | null> {
+    const accumulated = await this.effectiveReportedQty(tenant, fact.dispatchId);
+    if (accumulated + incoming <= fact.quantity) return null;
+    return rejected(
+      `派工单 '${fact.dispatchId}' 报工超量：累计有效报工 ${accumulated}+${incomingLabel} ${incoming} 超过派工数量 ${fact.quantity}`,
+    );
+  }
+
   /** 末道报工质检触发（通知式——回执进事件载荷，未接线 created:false 不阻塞）。 */
   private async maybeTriggerInspection(
     tenant: TenantId,
@@ -402,6 +437,9 @@ export class ReportingService {
     if ('status' in factOrRejected) return factOrRejected;
     const fact = factOrRejected;
 
+    const overReport = await this.checkOverReport(tenant, fact, payload.doneQty, '本次');
+    if (overReport !== null) return overReport;
+
     const reportId = newWorkReportId();
     const recorded = await this.operations.record({
       tenant,
@@ -443,6 +481,29 @@ export class ReportingService {
         return rejected(`批量第 ${index + 1} 行被拒：${factOrRejected.reason}`);
       }
       facts.push(factOrRejected);
+    }
+
+    // 超报闸门（整批口径）：同一派工单多行合并计本次量；任一单累计+本次 >
+    // 派工数量 → 整批 rejected 零落账（对齐"任何一行非法整批拒"，先于幂等记账）。
+    const incomingByDispatch = new Map<string, { total: number; firstIndex: number }>();
+    for (const [index, line] of payload.lines.entries()) {
+      const entry = incomingByDispatch.get(line.dispatchId);
+      if (entry === undefined) {
+        incomingByDispatch.set(line.dispatchId, { total: line.doneQty, firstIndex: index });
+      } else {
+        entry.total += line.doneQty;
+      }
+    }
+    for (const { total, firstIndex } of incomingByDispatch.values()) {
+      const overReport = await this.checkOverReport(
+        tenant,
+        facts[firstIndex] as DispatchFactForReport,
+        total,
+        '本次批量合计',
+      );
+      if (overReport !== null) {
+        return rejected(`批量第 ${firstIndex + 1} 行被拒：${overReport.reason}`);
+      }
     }
 
     const anchorId = newWorkReportId();

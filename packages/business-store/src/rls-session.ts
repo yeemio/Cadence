@@ -14,6 +14,17 @@
  *   **同一 tx 句柄**上重派原操作。对现有各 PgXxxStore 零改动：工厂返回的扩展
  *   客户端仍是 PrismaClient 形状（模型委托面不变），store 构造函数原样接收。
  *
+ * 事务原子性（D-8 修复，2026-10-26）：扩展同时接管 `$transaction` 的**交互式
+ *   形态**——用户回调前在同一 tx 句柄上完成事务级 SET，并把该句柄放入本模块的
+ *   AsyncLocalStorage（rlsTxStorage）；`$allOperations` 钩子检测到 ALS 中有句柄
+ *   时**同句柄重派**（不再新开事务），无句柄时维持"每操作独立事务+SET"。由此：
+ *   - 交互式事务内多操作共享同一连接与事务 → 原子性成立（失败整批回滚），
+ *     event+outbox 双写不再被拆开（此前 outbox 插入看不到未提交的 event 行，
+ *     外键 P2003 → 核心写命令 500）；
+ *   - SET 随事务结束（COMMIT/ROLLBACK）自动还原，连接归还池后无租户残留；
+ *   - 事务内租户恒为开启事务时刻的上下文租户（事务级 SET 不再重设——事务中段
+ *     切换租户上下文不影响已开事务，跨租户 fail-closed 语义不变）。
+ *
  * set_config 第三参取舍（true = 事务级，写明）：
  *   - true：SET 随事务结束自动还原——连接归还池后不携带任何租户痕迹。池化连接
  *     被下一个（可能不同租户的）请求复用时不会串租户，这是安全正确性的前提。
@@ -49,6 +60,7 @@
  *   （superuser 绕过 RLS），缺省关闭保证既有测试与 e2e 零行为变化；
  *   app_user 部署（deploy/compose）显式开启。
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { PrismaClient } from '@prisma/client';
 import { TenantContext } from '@smes/application';
 import type { TenantId } from '@smes/business-core';
@@ -97,13 +109,39 @@ export interface RlsSessionOperationParams {
   readonly args: unknown;
 }
 
-/** $allOperations 钩子（导出供单测直接驱动；签名与官方扩展协议一致）。 */
-export async function rlsSessionOperation(
+/**
+ * 底层客户端 `$transaction` 的最小结构面（交互式 / 数组两种形态）。
+ * 真实 PrismaClient 为其超集；交互式回调入参为无扩展链的底层 tx 句柄。
+ */
+interface RlsSessionBaseTransaction {
+  $transaction(
+    fn: (tx: RlsSessionTx & Record<string, unknown>) => Promise<unknown>,
+    options?: unknown,
+  ): Promise<unknown>;
+  $transaction(promises: readonly unknown[], options?: unknown): Promise<unknown>;
+}
+
+/** 被接管的交互式事务句柄登记项（rlsTxStorage 的 store 形状）。 */
+interface RlsSessionTxScope {
+  readonly tx: RlsSessionTx & Record<string, unknown>;
+}
+
+/**
+ * 当前交互式事务句柄（模块级 ALS；与 tenantSessionContext 同为实例私有——
+ * 本模块单例自持，钩子与 $transaction 接管在同模块内读写，无跨实例可见性需求）。
+ */
+const rlsTxStorage = new AsyncLocalStorage<RlsSessionTxScope>();
+
+/** 在指定事务句柄上做事务级 SET（true：随 COMMIT/ROLLBACK 自动还原，池化连接零租户残留）。 */
+async function setTenantOn(tx: RlsSessionTx, tenant: string): Promise<void> {
+  await tx.$queryRaw`SELECT set_config(${TENANT_SESSION_VAR}, ${tenant}, true)`;
+}
+
+/** 在指定 tx 句柄上重派模型操作（不经扩展链——不递归、不再嵌套）。 */
+function redispatchOn(
   tx: RlsSessionTx & Record<string, unknown>,
   params: RlsSessionOperationParams,
 ): Promise<unknown> {
-  const tenant = String(currentRlsTenant());
-  await tx.$queryRaw`SELECT set_config(${TENANT_SESSION_VAR}, ${tenant}, true)`;
   const delegate = tx[params.model] as Record<string, ((a: unknown) => Promise<unknown>) | undefined>;
   const operation = delegate[params.operation];
   if (typeof operation !== 'function') {
@@ -112,40 +150,77 @@ export async function rlsSessionOperation(
   return operation(params.args);
 }
 
+/** $allOperations 钩子（导出供单测直接驱动；签名与官方扩展协议一致）。 */
+export async function rlsSessionOperation(
+  tx: RlsSessionTx & Record<string, unknown>,
+  params: RlsSessionOperationParams,
+): Promise<unknown> {
+  await setTenantOn(tx, String(currentRlsTenant()));
+  return redispatchOn(tx, params);
+}
+
 /**
  * 给 PrismaClient 装 RLS session 接线扩展。
  *
  * 每个模型操作 → 交互式事务 { SET app.current_tenant; 原操作 }；原操作在 tx
- * 句柄上重派（不经扩展链——不递归、不再嵌套）。返回值仍是 PrismaClient 形状
+ * 句柄上重派（不经扩展链——不递归、不再嵌套）。交互式 `$transaction`（函数回调
+ * 形态）经 client 组件接管：回调前同句柄 SET + 句柄入 ALS，回调内钩子同句柄重派
+ * （原子性恢复，见文件头"事务原子性"）。返回值仍是 PrismaClient 形状
  * （$extends 结果为超集，向下转型安全：store 只消费标准模型委托面）。
  *
- * 已知边界（写明；M4 收尾波 14 工厂接线时经容器实验实证标定）：
- *   - **raw 入口不经钩子**：`$queryRaw` / `$executeRaw` 等 client 级入口不被
- *     模型操作钩子拦截——无 SET。app_user 形态下读 0 行（fail-visible）、写被
- *     RLS 拒（42501）。inventory 三处 $executeRaw 即此边界。
- *   - **事务原子性丢失（=on 时）**：数组/交互式 `$transaction` 内的模型操作仍
- *     被本钩子拦截，但被重派进钩子自开的新交互式事务——外层事务原子性不成立。
- *     实验实证（app_user+RLS 容器）：交互式事务内 create 后抛错，该行已独立
- *     提交未回滚；数组事务第二操作失败，第一操作已落库。接线前（无 SET）这些
- *     操作在 app_user 形态下整个事务全拒——接线是净改善，但"失败整批回滚"的
- *     语义在 =on 时变为"每操作独立提交"，涉事务操作失败可能留部分状态。
- *     superuser 形态开 =on 同样丢原子性——门控只应在 app_user+RLS 形态开启。
+ * 已知边界（写明）：
+ *   - **raw 入口不经钩子**：client 级 `$queryRaw` / `$executeRaw` 不被模型操作
+ *     钩子拦截——无 SET。app_user 形态下读 0 行（fail-visible）、写被 RLS 拒
+ *     （42501）。inventory 三处 $executeRaw 即此边界。例外：在被接管的交互式
+ *     事务**句柄上**调用的 raw（tx.$queryRaw / tx.$executeRaw）落在该事务连接
+ *     上，事务级 SET 已生效——携带租户。
+ *   - **数组形态 `$transaction([...])` 不接管（原子性边界保留）**：数组内每个
+ *     模型操作仍走钩子的"独立事务+SET"路径——操作各自提交，失败不整批回滚
+ *     （=on 时；且外层原生 $transaction([...]) 因元素为钩子返回的普通 Promise 而非
+ *     PrismaPromise，会额外报一层外层错误——届时各操作已各自独立提交）。本包全部 14 域
+ *     修复）；后续新代码若再用数组形态，在 =on 下即回退到此边界——grep
+ *     `\$transaction(\[` 于 business-store/src 应保持零命中。
+ *   - **回调内经根客户端发起的操作会被拉入事务**：=on 时在交互式回调内 await
+ *     根客户端（this.prisma）的模型操作，钩子按 ALS 句柄重派进当前事务（原生
+ *     Prisma 语义是独立连接独立提交）。本包无此用法；该语义保证 RLS 正确与
+ *     原子性优先。
  *   - org / masterdata / workbench / approval 四域 store 全部为普通模型操作
- *     （已核对，无上述边界）；其余 14 域存在 $transaction / $executeRaw 用法
- *     （诚实缺口登记：后续波可评估"事务感知扩展"——数组事务前splice set_config
- *     原语、交互式事务句柄上先 SET 同句柄重派——届时以容器实验复证原子性恢复）。
+ *     （已核对，无上述边界）。
  */
 export function withRlsTenantSession(prisma: PrismaClient): PrismaClient {
-  const client = prisma as unknown as {
-    $transaction(fn: (tx: RlsSessionTx & Record<string, unknown>) => Promise<unknown>): Promise<unknown>;
-  };
+  const client = prisma as unknown as RlsSessionBaseTransaction;
   const extended = prisma.$extends({
     name: 'rlsTenantSession',
     query: {
       $allModels: {
         async $allOperations(params: RlsSessionOperationParams): Promise<unknown> {
+          const scope = rlsTxStorage.getStore();
+          if (scope !== undefined) {
+            // 被接管的交互式事务内：同句柄重派（事务级 SET 已在回调前完成），
+            // 不再新开事务——外层事务原子性由此成立（D-8 修复核心）。
+            return redispatchOn(scope.tx, params);
+          }
           return client.$transaction((tx) => rlsSessionOperation(tx, params));
         },
+      },
+    },
+    client: {
+      // $transaction 接管（client 组件属性在扩展客户端上直接遮蔽内建实现；
+      // 6.19 运行时 br/Er 属性层序与类型层均已核实支持）。数组形态不接管
+      // （边界见头注）。
+      $transaction: (
+        arg:
+          | ((tx: RlsSessionTx & Record<string, unknown>) => Promise<unknown>)
+          | readonly unknown[],
+        options?: unknown,
+      ): Promise<unknown> => {
+        if (typeof arg !== 'function') {
+          return client.$transaction(arg, options);
+        }
+        return client.$transaction(async (tx) => {
+          await setTenantOn(tx, String(currentRlsTenant()));
+          return rlsTxStorage.run({ tx }, () => arg(tx));
+        }, options);
       },
     },
   });

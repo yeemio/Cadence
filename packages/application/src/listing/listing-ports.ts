@@ -12,6 +12,8 @@
 import type { TenantId, UserId } from '@smes/business-core';
 import type { BaselineCommandEnvelope } from '../baseline/baseline-input.js';
 import type { MaterialValidationExecutor } from '../baseline/baseline.service.js';
+import type { InspectionKind } from '../inspection/inspection-config.js';
+import type { InspectionIntakePort } from '../inspection/inspection-ports.js';
 import type { ListingKind } from './listing-config.js';
 
 // ---- workorder 端口：WorkOrderCreated 事件订阅（清单骨架生成源） ----
@@ -97,6 +99,27 @@ export interface InventoryReceiptPort {
 /** 缺省入库端口：恒放行（无 inventory 接线时收货不阻塞；合流时替换）。 */
 export const LISTING_NOOP_RECEIPT_PORT: InventoryReceiptPort = {
   receivePurchase: async () => ({ received: true }),
+};
+
+// ---- inspection 端口：收货→三类采购质检来源投递（17 册 RQ-019） ----
+
+/** 缺省收货质检投递端口：未接线不投递（回执 created:false 不报错——零接线 boot 语义完整）。 */
+export const LISTING_NOOP_INSPECTION_INTAKE: InspectionIntakePort = {
+  receiveSourceFact: async () => ({
+    inspectionId: null,
+    created: false,
+    reason: 'inspection intake 端口未接线：listing 收货触发需组合根注入 InspectionService',
+  }),
+};
+
+/**
+ * 采购申请 kind → 采购质检 kind 映射（RQ-019 三类采购质检；PRD 14 §6"收货事实
+ * 携带 kind 显式"——kind 由收货侧经申请链推导后显式给 inspection）。
+ */
+export const REQUEST_KIND_TO_INSPECTION_KIND: Readonly<Record<string, InspectionKind>> = {
+  nonstandard: 'nonstandard_purchase',
+  standard: 'standard_purchase',
+  equipment: 'equipment_purchase',
 };
 
 // ---- baseline 端口：物料校验执行（接口只 import 不实现） ----

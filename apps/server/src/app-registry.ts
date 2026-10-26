@@ -423,6 +423,7 @@ export const MODULE_DEFINITIONS: Record<
       recordStore: stores.approvalRecordStore,
       eventStore: stores.approvalEventStore,
       todoStore: stores.todoStore,
+      userStore: stores.userStore,
       // T1 接线 #102：approval-config 装配时，案件发起/决策按租户读当前启用
       // 配置（active 行；无 active 行回落静态默认配置）。stores.todoStore 在
       // buildAppModule 已是待办桥包装实例（notifications 装配时）——审批派
@@ -502,6 +503,8 @@ export const MODULE_DEFINITIONS: Record<
       receiptPort: wiring.listing?.receiptPort,
       materialValidation: wiring.listing?.materialValidation,
       excelPort: wiring.listing?.excelPort,
+      // fix-wave-3 W3-1（#37）：inspection 收货触发三类采购质检
+      inspectionIntake: wiring.listing?.inspectionIntake,
     }),
   inspection: (stores, wiring) =>
     InspectionModule.register({
@@ -561,6 +564,11 @@ export const MODULE_DEFINITIONS: Record<
       machineEventStore: stores.reportingMachineEventStore,
       // 跨模块接线（#1）：dispatch 有效派工单读（submit 前置校验 fail-closed）
       validDispatch: wiring.reporting?.validDispatch,
+      // fix-wave-3 W3-1（#34~#36）：baseline 工序合法性/工艺路线末道判定 +
+      // inspection 末道报工触发（此前组合态为 no-op 缺省）
+      operationValidity: wiring.reporting?.operationValidity,
+      finalOperation: wiring.reporting?.finalOperation,
+      inspectionIntake: wiring.reporting?.inspectionIntake,
     }),
   hours: (stores, wiring) =>
     HoursModule.register({

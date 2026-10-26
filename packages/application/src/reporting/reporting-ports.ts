@@ -41,7 +41,7 @@ export interface DispatchFactForReport {
   readonly workOrderId: string | null;
   readonly drawingNo: string | null;
   readonly operationCode: string | null;
-  /** 派工数量（超报容忍口径的参考输入；初版不硬拦——合同 §8 open question）。 */
+  /** 派工数量（超报闸门上界：累计有效报工 + 本次 ≤ quantity——fix-wave-4 W4-1）。 */
   readonly quantity: number;
   /** 执行人（可选的对账参考输入；报工申报人以命令签发人为准）。 */
   readonly assignee: string | null;

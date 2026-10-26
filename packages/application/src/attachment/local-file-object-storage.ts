@@ -73,7 +73,7 @@ export class LocalFileSystemObjectStorage implements ObjectStoragePort {
   }
 
   async issueReadReference(
-    _tenant: TenantId,
+    tenant: TenantId,
     object: StoredObjectRef,
     options: IssueReadReferenceOptions,
   ): Promise<ObjectReadReference> {
@@ -87,6 +87,7 @@ export class LocalFileSystemObjectStorage implements ObjectStoragePort {
     const contentType = await this.readSidecar(filePath);
     const expiresAtMs = Date.now() + options.ttlSeconds * 1000;
     const token = encodeReadReferenceToken(this.signingKey, {
+      tenantId: tenant,
       target: object.target,
       objectKey: object.objectKey,
       expiresAtMs,
@@ -100,10 +101,11 @@ export class LocalFileSystemObjectStorage implements ObjectStoragePort {
     };
   }
 
-  async resolveReadReference(_tenant: TenantId, token: string): Promise<ResolvedReadReference | null> {
+  async resolveReadReference(tenant: TenantId, token: string): Promise<ResolvedReadReference | null> {
     const claims = verifyReadReferenceToken(this.signingKey, token, new Date());
     if (claims === null) return null;
     if (claims.target !== this.target) return null;
+    if (claims.tenantId !== tenant) return null; // 令牌非本租户签发（D-4：同无效语义拒绝）
     let bytes: Uint8Array;
     try {
       bytes = new Uint8Array(await readFile(this.pathOf(claims.objectKey)));

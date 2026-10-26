@@ -176,7 +176,7 @@ export class AttachmentService {
     return { attachmentId: record.id, downloadName, ...reference };
   }
 
-  /** 开门面：解析短时只读引用（无效/过期/对象缺失 → 404 语义，不区分原因）。 */
+  /** 开门面：解析短时只读引用（无效/过期/跨租户/对象缺失 → 404 语义，不区分原因）。 */
   async resolveReadReference(tenant: TenantId, token: string): Promise<{
     readonly bytes: Uint8Array;
     readonly contentType: string | null;

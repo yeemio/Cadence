@@ -424,6 +424,134 @@ describe('report.submit-batch：批量申报', () => {
   });
 });
 
+// ---- 报工数量上界（fix-wave-4 W4-1：超报闸门） ----
+
+describe('超报闸门：累计有效报工 + 本次 ≤ 派工数量（链尾口径，撤销不计）', () => {
+  function seedCappedDispatch(harness: ReturnType<typeof newHarness>, quantity: number): DispatchFactForReport {
+    harness.validDispatch.seed({ dispatchId: 'dsp-cap', quantity });
+    harness.operationValidity.seed('OP-20');
+    return harness.validDispatch.facts.get('dsp-cap')!;
+  }
+
+  it('派 10 报 11 → rejected（理由含数量对比）零落账，且拒绝不吞 operationId', async () => {
+    const harness = newHarness();
+    seedCappedDispatch(harness, 10);
+    const overEnv = envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 11, laborMinutes: 60 });
+    const result = await harness.service.execute(overEnv);
+    expect(result.status).toBe('rejected');
+    expect((result as { reason: string }).reason).toContain(
+      "派工单 'dsp-cap' 报工超量：累计有效报工 0+本次 11 超过派工数量 10",
+    );
+    expect(await harness.reports.list(t1, { dispatchId: 'dsp-cap' })).toHaveLength(0);
+    expect(await harness.domainEvents.pendingOutbox()).toHaveLength(0);
+
+    // 校验先于幂等记账：被拒的 operationId 可携带修正载荷重提并提交成功
+    const retryEnv: CommandEnvelope<ReportCommand> = makeCommandEnvelope({
+      tenantId: t1,
+      issuedBy: worker,
+      operationId: overEnv.operationId,
+      expectedRevision: 'initial',
+      issuedAt: FIXED_NOW,
+      command: { kind: 'report.submit.v1', payload: { dispatchId: 'dsp-cap', doneQty: 10, laborMinutes: 60 } },
+    });
+    const retried = await committed(await harness.service.execute(retryEnv));
+    expect(retried.report!.doneQty).toBe(10);
+  });
+
+  it('派 10 报 6+4 过（累计分次累计）；累计满后再报 1 拒', async () => {
+    const harness = newHarness();
+    seedCappedDispatch(harness, 10);
+    await committed(
+      await harness.service.execute(envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 6, laborMinutes: 60 })),
+    );
+    const second = await committed(
+      await harness.service.execute(envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 4, laborMinutes: 60 })),
+    );
+    expect(second.report!.state).toBe('reported');
+
+    const overflow = await harness.service.execute(
+      envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 1, laborMinutes: 30 }),
+    );
+    expect(overflow.status).toBe('rejected');
+    expect((overflow as { reason: string }).reason).toContain('累计有效报工 10+本次 1 超过派工数量 10');
+  });
+
+  it('报 5 撤销后再报 6 过（累计口径排除已撤销）', async () => {
+    const harness = newHarness();
+    seedCappedDispatch(harness, 10);
+    const first = await committed(
+      await harness.service.execute(envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 5, laborMinutes: 60 })),
+    );
+    await committed(
+      await harness.service.execute(envelopeOf('report.revoke.v1', { reason: '报错作废' }, 2, auditor), first.report!.id),
+    );
+    const second = await committed(
+      await harness.service.execute(envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 6, laborMinutes: 60 })),
+    );
+    expect(second.report!.state).toBe('reported'); // 撤销 5 不计：6 ≤ 10
+  });
+
+  it('修正版链不双计（累计只计链尾）：报 10 修正为 8 后再报 2 过、再报 1 拒', async () => {
+    const harness = newHarness();
+    seedCappedDispatch(harness, 10);
+    const first = await committed(
+      await harness.service.execute(envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 10, laborMinutes: 60 })),
+    );
+    await committed(
+      await harness.service.execute(
+        envelopeOf('report.audit-edit.v1', { doneQty: 8, reason: '数量录错修正' }, 2, auditor),
+        first.report!.id,
+      ),
+    );
+    // 链尾 8：双计口径（10+8）下必拒；链尾口径 8+2=10 ≤ 10 过
+    const second = await committed(
+      await harness.service.execute(envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 2, laborMinutes: 30 })),
+    );
+    expect(second.report!.doneQty).toBe(2);
+
+    const overflow = await harness.service.execute(
+      envelopeOf('report.submit.v1', { dispatchId: 'dsp-cap', doneQty: 1, laborMinutes: 30 }),
+    );
+    expect(overflow.status).toBe('rejected');
+    expect((overflow as { reason: string }).reason).toContain('累计有效报工 10+本次 1 超过派工数量 10');
+  });
+
+  it('batch 混合总量超限整批拒：同派工单两行 6+5 > 10 → 整批 rejected 零落账', async () => {
+    const harness = newHarness();
+    seedCappedDispatch(harness, 10);
+    harness.validDispatch.seed({ dispatchId: 'dsp-cap-2', operationCode: 'OP-30', drawingNo: 'DWG-A01' });
+    harness.operationValidity.seed('OP-30');
+    const result = await harness.service.execute(
+      envelopeOf('report.submit-batch.v1', {
+        lines: [
+          { dispatchId: 'dsp-cap', doneQty: 6, laborMinutes: 60 },
+          { dispatchId: 'dsp-cap-2', doneQty: 2, laborMinutes: 30 },
+          { dispatchId: 'dsp-cap', doneQty: 5, laborMinutes: 60 },
+        ],
+      }),
+    );
+    expect(result.status).toBe('rejected');
+    expect((result as { reason: string }).reason).toContain('批量第 1 行被拒');
+    expect((result as { reason: string }).reason).toContain('累计有效报工 0+本次批量合计 11 超过派工数量 10');
+    expect(await harness.reports.list(t1)).toHaveLength(0);
+    expect(await harness.domainEvents.pendingOutbox()).toHaveLength(0);
+
+    // 各行合并后不超限则整批过（6+4=10）
+    const pass = await committed(
+      await harness.service.execute(
+        envelopeOf('report.submit-batch.v1', {
+          lines: [
+            { dispatchId: 'dsp-cap', doneQty: 6, laborMinutes: 60 },
+            { dispatchId: 'dsp-cap-2', doneQty: 2, laborMinutes: 30 },
+            { dispatchId: 'dsp-cap', doneQty: 4, laborMinutes: 60 },
+          ],
+        }),
+      ),
+    );
+    expect(pass.reports).toHaveLength(3);
+  });
+});
+
 // ---- 末道报工触发质检 ----
 
 describe('末道报工 → 质检触发（InspectionIntakePort，通知式）', () => {

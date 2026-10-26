@@ -17,7 +17,7 @@ pnpm install --frozen-lockfile        # 实证零障碍（镜像构建每日跑�
 pnpm verify
 # = typecheck + build + boundary（依赖方向守卫）+ boundary:selftest + 全部包测试
 # 当前基线数字：application 549 / business-store 164 / engine-reporting 49 /
-# server 65 / web 117+14skip / product-ui 123 / testkit 77 及其余包
+# server 65 / web 117+14skip / product-ui 130 / testkit 77 及其余包
 ```
 
 ## 2. 容器 e2e（六套，均自带容器生命周期，可独立复跑）

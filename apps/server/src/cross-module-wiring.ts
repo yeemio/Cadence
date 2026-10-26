@@ -164,7 +164,10 @@
  *     设备选择维，归拢是唯一可解析模式）；electrical 须 equipmentRefs（组合根
  *     无解析源——demand 行源本波为空实现）不触发，显式同步面 POST
  *     /issue/tasks/sync 兜底。通知式合同：派工已提交，同步失败仅 console.warn
- *     不回滚派工。
+ *     不回滚派工。W3-2 扩展：advance→'cancelled'（撤销派工）且 kind=assembly
+ *     且挂工作令时同装饰器触发 issue.cleanup.v1 清理发料任务（目标任务集按
+ *     issue 现存任务推导，确定性 operationId 幂等，清理被拒/异常 console.warn
+ *     不回滚撤销——机制与取舍见 createIssueSyncDispatchStore 头注）。
  * 30. aftercare-claim.reportPort ← reporting 审批通过报工读
  *     机制：service 级迟到绑定——createAftercareReportPort(ReportingService
  *     .listReports)（投影 application 已备，此处只粘迟到引用）。
@@ -192,6 +195,25 @@
  *     无工作令归属的售后单不入项目成本——口径差异登记）。
  *     ④/⑤ 工时段与 ③ 外协段复用 #3/#4 既有源；录入价格写回端口缺省 NOOP
  *     （issue 源码冻结，写回交互归后续波裁定）。
+ *
+ * fix-wave-3 W3-1（两路质检来源触发组合根接线——17 册 PRD §8 开放问题①：
+ * 域层接收面已实现有测试，组合根此前未接线，线上组合为 no-op 缺省）：
+ * 34. reporting.operationValidity ← baseline 工序合法性
+ *     机制：service 级迟到绑定——BaselineService.getProcess；未绑定回落
+ *     ALL_OPERATIONS_VALID 同构（恒合法）；绑定后当前版生效（active）→true，
+ *     NotFound→false（接线后未知工序 submit rejected 是设计语义——fail-closed 复检）。
+ * 35. reporting.finalOperation ← baseline 工艺路线末道判定
+ *     机制：service 级迟到绑定——BaselineService.getRouting(drawingNo) 取
+ *     current.steps 的 max-seq 步 processCode 比对；未绑定回落
+ *     NEVER_FINAL_OPERATION 同构，NotFound/无路线→false（恒非末道，不抛）。
+ *     末道=max seq（PRD 17 §7 第 10 条：与源"sort_order 最大"同构）。
+ * 36. reporting.inspectionIntake ← inspection 末道报工触发（RQ-017）
+ *     机制：service 级迟到绑定——InspectionService.receiveSourceFact（#9 同体例；
+ *     未绑定回落 REPORTING_NOOP_INSPECTION_INTAKE 同构）。
+ * 37. listing.inspectionIntake ← inspection 收货触发三类采购质检（RQ-019）
+ *     机制：service 级迟到绑定——InspectionService.receiveSourceFact（#9 同体例；
+ *     未绑定回落 LISTING_NOOP_INSPECTION_INTAKE 同构——事实不落地不报错）。
+ *     kind 由 listing 收货侧经申请链推导后显式携带（PRD 14 §6）。
  */
 import { randomUUID } from 'node:crypto';
 import type { INestApplicationContext, Type } from '@nestjs/common';
@@ -201,6 +223,7 @@ import { MaintenanceService, type FaultTaskSuggestion } from '@smes/maintenance'
 import type { DrawingRefInput } from '@smes/drawing';
 import type { MetricPackExportPort, MetricSourceSet } from '@smes/metric-pack';
 import {
+  ALL_OPERATIONS_VALID,
   BASELINE_EVENT_TYPES,
   BaselineNotFoundError,
   BaselineService,
@@ -222,14 +245,19 @@ import {
   LISTING_UNWIRED_MATERIAL_VALIDATION,
   ListingService,
   minutesToHours,
+  NEVER_FINAL_OPERATION,
   ReportingService,
+  REPORTING_NOOP_INSPECTION_INTAKE,
   STOCK_MOVEMENT_AGGREGATE_TYPE,
   aftercareClaimTotalMinor,
   type AftercareApprovedReportPort,
+  type FinalOperationJudgePort,
   type InventoryAvailabilityPort,
+  type OperationValidityPort,
   type InventoryCommand,
   type InventoryDomainEventStore,
   type AftercareClaimStore,
+  type IssueCommand,
   type IssueMaterialPort,
   type IssueRecordStore,
   type IssueStockAllocationReceipt,
@@ -375,6 +403,8 @@ export interface CrossModuleRegisterPorts {
     readonly materialValidation?: MaterialValidationExecutor | undefined;
     /** Excel 导入导出（xlsx-bytes ↔ 结构化表，ExcelJS 适配器——本 wiring 构造）。 */
     readonly excelPort?: ExcelPort | undefined;
+    /** fix-wave-3 W3-1 #37：inspection 收货触发三类采购质检；缺省回落模块 noop。 */
+    readonly inspectionIntake?: InspectionIntakePort | undefined;
   };
   readonly dispatch?: {
     readonly kitCheck?: KitCheckReadPort | undefined;
@@ -384,6 +414,12 @@ export interface CrossModuleRegisterPorts {
   };
   readonly reporting?: {
     readonly validDispatch?: ValidDispatchSource | undefined;
+    /** fix-wave-3 W3-1 #34：baseline 工序合法性复检；缺省回落模块恒合法。 */
+    readonly operationValidity?: OperationValidityPort | undefined;
+    /** fix-wave-3 W3-1 #35：baseline 工艺路线末道判定；缺省回落模块恒非末道。 */
+    readonly finalOperation?: FinalOperationJudgePort | undefined;
+    /** fix-wave-3 W3-1 #36：inspection 末道报工触发；缺省回落模块 noop。 */
+    readonly inspectionIntake?: InspectionIntakePort | undefined;
   };
   readonly hours?: {
     readonly reportFeed?: ReportEventFeedPort | undefined;
@@ -1467,10 +1503,18 @@ export function createInventoryIssueMaterialPort(deps: InventoryIssueMaterialDep
 }
 
 /**
- * dispatch→issue 派工生成钩子（U6 #29）：装饰 DispatchOrderStore.advance——
- * draft→assigned（派工成功）且 kind=assembly 且挂工作令时调 syncFromDispatch
- * （rollup=true 整线归拢；取舍见文件头）。通知式合同：派工已提交，同步失败
- * console.warn 不回滚（显式同步面 POST /issue/tasks/sync 兜底）。
+ * dispatch→issue 派工生成钩子（U6 #29）+ 撤销派工清理钩子（fix-wave-3 W3-2）：
+ * 装饰 DispatchOrderStore.advance——
+ *  - draft→assigned（派工成功）且 kind=assembly 且挂工作令时调 syncFromDispatch
+ *    （rollup=true 整线归拢；取舍见文件头）。通知式合同：派工已提交，同步失败
+ *    console.warn 不回滚（显式同步面 POST /issue/tasks/sync 兜底）。
+ *  - →cancelled（撤销派工）且 kind=assembly 且挂工作令时触发 issue.cleanup.v1
+ *    清理该工作令装配维度的发料任务（W3-2）。目标任务集按 issue 现存任务推导：
+ *    非归拢任务的 equipmentRef 去重 + 存在归拢任务则 includeRollup；无任务直接
+ *    跳过不调 execute（无可清理）。幂等 = 确定性 operationId
+ *    `wiring-issue-cleanup:<dispatchId>`（重复撤销/重试由 issue 侧 operations.record
+ *    拒重复）。通知式合同：清理被拒（目标任务已发料非未开始等）或异常仅
+ *    console.warn 留痕，不回滚撤销（显式清理面 POST /issue/tasks/cleanup 兜底）。
  */
 export function createIssueSyncDispatchStore(
   store: DispatchOrderStore,
@@ -1481,7 +1525,8 @@ export function createIssueSyncDispatchStore(
     find: (tenant, id) => store.find(tenant, id),
     list: (tenant, filter) => store.list(tenant, filter),
     advance: async (tenant, id, expectedObjectVersion, nextState, nextObjectVersion, extra) => {
-      const before = nextState === 'assigned' ? await store.find(tenant, id) : null;
+      const before =
+        nextState === 'assigned' || nextState === 'cancelled' ? await store.find(tenant, id) : null;
       const advanced = await store.advance(tenant, id, expectedObjectVersion, nextState, nextObjectVersion, extra);
       if (
         before !== null &&
@@ -1507,6 +1552,66 @@ export function createIssueSyncDispatchStore(
         } catch (error) {
           console.warn(
             '[smes] 派工→发料任务同步失败（通知式合同，不回滚派工；POST /issue/tasks/sync 可补触发）:',
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
+      // W3-2：撤销派工→issue.cleanup（通知式合同，不回滚撤销）。
+      if (
+        before !== null &&
+        before.state !== 'cancelled' &&
+        advanced.state === 'cancelled' &&
+        before.kind === 'assembly' &&
+        before.workOrderId !== null
+      ) {
+        try {
+          const issue = resolveIssue();
+          if (issue !== undefined) {
+            // 目标任务集推导：按该工作令装配维度现存任务——非归拢设备维去重 +
+            // 归拢任务存在则整线清理；无任务跳过（无可清理，不占 operationId）。
+            const tasks = await issue.listTasks(tenant, {
+              workOrderId: before.workOrderId,
+              dispatchKind: 'assembly',
+            });
+            const equipmentRefs = [
+              ...new Set(
+                tasks
+                  .filter((task) => !task.rollup && task.equipmentRef !== null)
+                  .map((task) => task.equipmentRef as string),
+              ),
+            ];
+            const includeRollup = tasks.some((task) => task.rollup);
+            if (equipmentRefs.length > 0 || includeRollup) {
+              const outcome = await issue.execute(
+                makeCommandEnvelope<IssueCommand>({
+                  tenantId: tenant,
+                  issuedBy: UserId.create('u-system-wiring-issue'),
+                  operationId: OperationId.create(`wiring-issue-cleanup:${id}`),
+                  expectedRevision: 'initial',
+                  issuedAt: new Date().toISOString(),
+                  command: {
+                    kind: 'issue.cleanup.v1',
+                    payload: {
+                      workOrderId: before.workOrderId,
+                      dispatchKind: 'assembly',
+                      ...(equipmentRefs.length > 0 ? { equipmentRefs } : {}),
+                      ...(includeRollup ? { includeRollup: true } : {}),
+                      remark: '撤销派工自动清理',
+                    },
+                  },
+                }),
+              );
+              if (outcome.status !== 'committed') {
+                console.warn(
+                  '[smes] 撤销派工→发料任务清理被拒（通知式合同，不回滚撤销；POST /issue/tasks/cleanup 可补清理）:',
+                  outcome.reason,
+                );
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(
+            '[smes] 撤销派工→发料任务清理失败（通知式合同，不回滚撤销；POST /issue/tasks/cleanup 可补清理）:',
             error instanceof Error ? error.message : String(error),
           );
         }
@@ -1733,6 +1838,76 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
             const inspection = lateInspection.resolve();
             return inspection === undefined
               ? DISPATCH_NOOP_INSPECTION_INTAKE.receiveSourceFact(tenant, fact)
+              : inspection.receiveSourceFact(tenant, fact);
+          },
+        }
+      : undefined;
+
+  // fix-wave-3 W3-1 #34 reporting.operationValidity（service 级迟到绑定；未绑定
+  // 回落 ALL_OPERATIONS_VALID 同构恒合法——bind 前窗口语义与模块缺省一致）
+  const operationValidity: OperationValidityPort | undefined =
+    has('reporting') && has('baseline')
+      ? {
+          isKnownOperation: async (tenant, operationCode) => {
+            const baseline = lateBaseline.resolve();
+            if (baseline === undefined) return true; // 未绑定 = ALL_OPERATIONS_VALID 同语义
+            try {
+              return (await baseline.getProcess(tenant, operationCode)).current.status === 'active';
+            } catch (error) {
+              if (error instanceof BaselineNotFoundError) return false; // NotFound→false（fail-closed 复检）
+              throw error;
+            }
+          },
+        }
+      : undefined;
+
+  // fix-wave-3 W3-1 #35 reporting.finalOperation（service 级迟到绑定；未绑定回落
+  // NEVER_FINAL_OPERATION 同构恒非末道；NotFound/无路线→false 恒非末道不抛）
+  const finalOperationJudge: FinalOperationJudgePort | undefined =
+    has('reporting') && has('baseline')
+      ? {
+          isFinalOperation: async (tenant, drawingNo, operationCode) => {
+            const baseline = lateBaseline.resolve();
+            if (baseline === undefined) return false; // 未绑定 = NEVER_FINAL_OPERATION 同语义
+            try {
+              const steps = (await baseline.getRouting(tenant, drawingNo)).current.steps;
+              if (steps.length === 0) return false; // 空工序序列（防御）→ 恒非末道
+              const last = steps.reduce((max, step) => (step.seq > max.seq ? step : max)); // 末道 = max seq
+              return last.processCode === operationCode;
+            } catch (error) {
+              if (error instanceof BaselineNotFoundError) return false; // 无工艺路线 → 恒非末道
+              throw error;
+            }
+          },
+        }
+      : undefined;
+
+  // fix-wave-3 W3-1 #36 reporting.inspectionIntake（service 级迟到绑定；#9 同体例）
+  const reportingInspectionIntake: InspectionIntakePort | undefined =
+    has('reporting') && has('inspection')
+      ? {
+          receiveSourceFact: (tenant, fact) => {
+            const inspection = lateInspection.resolve();
+            return inspection === undefined
+              ? REPORTING_NOOP_INSPECTION_INTAKE.receiveSourceFact(tenant, fact)
+              : inspection.receiveSourceFact(tenant, fact);
+          },
+        }
+      : undefined;
+
+  // fix-wave-3 W3-1 #37 listing.inspectionIntake（service 级迟到绑定；#9 同体例，
+  // 未绑定回落 LISTING_NOOP_INSPECTION_INTAKE 同构——同形回执，bind 前窗口不投递）
+  const listingInspectionIntake: InspectionIntakePort | undefined =
+    has('listing') && has('inspection')
+      ? {
+          receiveSourceFact: (tenant, fact) => {
+            const inspection = lateInspection.resolve();
+            return inspection === undefined
+              ? Promise.resolve({
+                  inspectionId: null,
+                  created: false,
+                  reason: 'inspection intake 端口未接线（组合根 bind 前窗口）：listing 收货触发',
+                })
               : inspection.receiveSourceFact(tenant, fact);
           },
         }
@@ -2045,6 +2220,7 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
       listingInventoryPort !== undefined ||
       receiptPort !== undefined ||
       materialValidation !== undefined ||
+      listingInspectionIntake !== undefined ||
       (has('listing') && excel !== undefined)
         ? {
             listing: {
@@ -2053,6 +2229,7 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
               ...(receiptPort !== undefined ? { receiptPort } : {}),
               ...(materialValidation !== undefined ? { materialValidation } : {}),
               ...(has('listing') && excel !== undefined ? { excelPort: excel } : {}),
+              ...(listingInspectionIntake !== undefined ? { inspectionIntake: listingInspectionIntake } : {}),
             },
           }
         : {}),
@@ -2066,7 +2243,19 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
             },
           }
         : {}),
-      ...(validDispatch !== undefined ? { reporting: { validDispatch } } : {}),
+      ...(validDispatch !== undefined ||
+      operationValidity !== undefined ||
+      finalOperationJudge !== undefined ||
+      reportingInspectionIntake !== undefined
+        ? {
+            reporting: {
+              ...(validDispatch !== undefined ? { validDispatch } : {}),
+              ...(operationValidity !== undefined ? { operationValidity } : {}),
+              ...(finalOperationJudge !== undefined ? { finalOperation: finalOperationJudge } : {}),
+              ...(reportingInspectionIntake !== undefined ? { inspectionIntake: reportingInspectionIntake } : {}),
+            },
+          }
+        : {}),
       ...(reportFeed !== undefined ? { hours: { reportFeed } } : {}),
       ...(payrollSource !== undefined || payrollExportPort !== undefined
         ? {

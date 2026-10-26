@@ -650,8 +650,9 @@ export class PgBaselineEventStore implements BaselineEventStore {
     const row = toBusinessEventRow(event);
     const outbox = initialOutboxRow(row.eventId, event.tenantId);
     try {
-      await this.prisma.$transaction([
-        this.prisma.businessEventRecord.create({
+      // 交互式事务共享 tx 句柄：event+outbox 原子双写（RLS 接管见 rls-session.ts）。
+      await this.prisma.$transaction(async (tx) => {
+        await tx.businessEventRecord.create({
           data: {
             eventId: row.eventId,
             tenantId: row.tenantId,
@@ -665,15 +666,15 @@ export class PgBaselineEventStore implements BaselineEventStore {
             ...(row.provenance === undefined ? {} : { provenance: jsonInput(row.provenance) }),
             payload: jsonInput(row.payload as Readonly<Record<string, unknown>>)!,
           },
-        }),
-        this.prisma.outboxRecord.create({
+        });
+        await tx.outboxRecord.create({
           data: {
             eventId: outbox.eventId,
             tenantId: outbox.tenantId,
             createdAt: outbox.createdAt,
           },
-        }),
-      ]);
+        });
+      });
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new BaselineConflictError(`事件 '${row.eventId}' 已落账（eventId 幂等锚点）`);

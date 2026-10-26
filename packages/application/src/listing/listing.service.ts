@@ -107,15 +107,19 @@ import {
 import {
   EMPTY_WORK_ORDER_CREATED_FEED,
   LISTING_EMPTY_INVENTORY_PORT,
+  LISTING_NOOP_INSPECTION_INTAKE,
   LISTING_NOOP_RECEIPT_PORT,
   LISTING_TODO_SOURCE,
   LISTING_UNWIRED_MATERIAL_VALIDATION,
   materialValidationOperationId,
+  REQUEST_KIND_TO_INSPECTION_KIND,
   type InventoryAvailabilityPort,
   type InventoryReceiptPort,
   type MaterialValidationExecutor,
   type WorkOrderCreatedFeedPort,
 } from './listing-ports.js';
+import type { InspectionIntakePort } from '../inspection/inspection-ports.js';
+import type { InspectionKind } from '../inspection/inspection-config.js';
 import type { BaselineCommand } from '../baseline/baseline-input.js';
 import {
   JsonTablesExcelPort,
@@ -195,6 +199,7 @@ export interface ListingCrossModulePorts {
   readonly workOrderFeed: WorkOrderCreatedFeedPort;
   readonly inventory: InventoryAvailabilityPort;
   readonly receipt: InventoryReceiptPort;
+  readonly inspectionIntake: InspectionIntakePort;
   readonly excel: ExcelPort;
   readonly materialValidation: MaterialValidationExecutor;
 }
@@ -239,6 +244,7 @@ export class ListingService {
       workOrderFeed: ports.workOrderFeed ?? EMPTY_WORK_ORDER_CREATED_FEED,
       inventory: ports.inventory ?? LISTING_EMPTY_INVENTORY_PORT,
       receipt: ports.receipt ?? LISTING_NOOP_RECEIPT_PORT,
+      inspectionIntake: ports.inspectionIntake ?? LISTING_NOOP_INSPECTION_INTAKE,
       excel: ports.excel ?? new JsonTablesExcelPort(),
       materialValidation: ports.materialValidation ?? LISTING_UNWIRED_MATERIAL_VALIDATION,
     };
@@ -1244,6 +1250,9 @@ export class ListingService {
       const event = makePurchaseOrderTransitionedEvent(this.domainEventBase(envelope), payloadOut, orderId);
       await this.domainEvents.append(event);
 
+      // 收货→三类采购质检来源投递（RQ-019；通知式——失败不阻塞不回滚收货）。
+      await this.deliverReceiptInspection(tenant, order, receivedByLineNo, envelope.issuedBy);
+
       // 待办联动：收货消催货（buyer 名下该订单的逾期催货待办自动完成）。
       const todosCompleted =
         advanced.buyer !== null
@@ -1261,6 +1270,71 @@ export class ListingService {
     } finally {
       runtime.stop();
     }
+  }
+
+  // ---- 收货→采购质检来源投递（RQ-019；通知式合同沿 U6 #29 体例） ----
+
+  /**
+   * 逐收货行投递采购质检来源事实（advance + 域事件落账后调用）：触发行 = 本次
+   * 收货数量 > 0 的行；投递失败仅 console.warn 不回滚收货（回执 created:false
+   * 是幂等命中/非覆盖面正常路径，不告警）。
+   */
+  private async deliverReceiptInspection(
+    tenant: TenantId,
+    order: PurchaseOrder,
+    receivedByLineNo: ReadonlyMap<number, number>,
+    triggeredBy: UserId,
+  ): Promise<void> {
+    for (const [lineNo, receivedQty] of receivedByLineNo) {
+      if (receivedQty <= 0) continue; // 触发行：本次收货数量 > 0
+      const line = order.lines.find((entry) => entry.lineNo === lineNo);
+      if (line === undefined) continue; // 防御（receive 明细校验已保证行存在）
+      const kind = await this.resolvePurchaseInspectionKind(tenant, order.requestIds, line.itemId);
+      if (kind === null) {
+        console.warn(
+          `[smes] 收货行质检投递跳过（订单 '${order.id}' 行 ${lineNo}：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）`,
+        );
+        continue;
+      }
+      try {
+        await this.ports.inspectionIntake.receiveSourceFact(tenant, {
+          sourceType: 'receipt',
+          sourceRefId: `${order.id}#${lineNo}`, // 复用 receiptKey 幂等键约定
+          kind,
+          itemId: line.itemId,
+          drawingNo: line.drawingNo,
+          quantity: receivedQty,
+          workOrderId: order.workOrderId,
+          occurredAt: this.now(),
+          triggeredBy,
+        });
+      } catch (error) {
+        console.warn(
+          `[smes] 收货行质检投递失败（通知式合同，不回滚收货；订单 '${order.id}' 行 ${lineNo}）:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  }
+
+  /**
+   * 申请链 kind 推导：订单承接申请按 itemId 匹配（申请单物料）去重后恰一个
+   * kind → 映射采购质检 kind；无申请/无匹配/多 kind 歧义 → null（该行不投递）。
+   */
+  private async resolvePurchaseInspectionKind(
+    tenant: TenantId,
+    requestIds: readonly string[],
+    itemId: string,
+  ): Promise<InspectionKind | null> {
+    const kinds = new Set<string>();
+    for (const requestId of requestIds) {
+      const request = await this.requests.find(tenant, requestId);
+      if (request === null || request.itemId !== itemId) continue;
+      kinds.add(request.kind);
+    }
+    const [only] = kinds;
+    if (kinds.size !== 1 || only === undefined) return null;
+    return REQUEST_KIND_TO_INSPECTION_KIND[only] ?? null;
   }
 
   // ---- purchase.return.create（建退货单 + 订单退货回退） ----

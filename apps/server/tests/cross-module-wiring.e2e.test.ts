@@ -97,6 +97,21 @@ async function getJson(baseUrl: string, path: string): Promise<OutcomeShape> {
   return (await response.json()) as OutcomeShape;
 }
 
+/**
+ * fixture 补齐（fix-wave-3 W3-1 接线 #34 后的组合态语义）：报工工序合法性复检
+ * 经 baseline 真实判定——场景引用的工序码须先在工序库定义（active）。同码已由
+ * 他场景定义时 define 返回 rejected（已存在），幂等跳过。
+ */
+async function ensureProcessDefined(baseUrl: string, code: string): Promise<void> {
+  const defined = await post(
+    baseUrl,
+    '/baseline/processes/commands',
+    envelope('baseline.process.define.v1', { code, name: `接线工序-${code}` }),
+  );
+  if (defined.body.status === 'committed') return;
+  expect(String(defined.body.reason)).toMatch(/已存在/); // 已定义——幂等跳过
+}
+
 describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => {
   let baseUrl = '';
   const savedEnv = new Map<string, string | undefined>();
@@ -181,6 +196,9 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
   it(
     '端到端链：建工作令→建派工→assign→报工 submit→verify→hours 劳动条目→costing 非零工时成本',
     async () => {
+      // 报工工序合法性（#34）接线后真实判定：先入工序库（fixture 补齐）。
+      await ensureProcessDefined(baseUrl, 'OP-10');
+
       // ---- 环节 1：建工作令（WorkOrderCreated 落域事件——workOrderFeed #11 的事实源）----
       const createdOrder = await post(
         baseUrl,
@@ -499,6 +517,9 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
   it(
     '双触发幂等组合态：verify 拦截器已联动 ingest，手动 POST /hours/ingest 后条目数不变',
     async () => {
+      // 报工工序合法性（#34）接线后真实判定：先入工序库（fixture 补齐）。
+      await ensureProcessDefined(baseUrl, 'OP-10');
+
       // 自足链：建工作令 → 零件派工 → assign → 报工 → verify（拦截器自动联动 hours.ingest）
       const createdOrder = await post(
         baseUrl,
@@ -568,6 +589,9 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
     'payroll 全链（#21 事实源+导出+HTTP 面）：规则发布→月度核算（hours 净工时经逆映射）→查询→xlsx 导出→冲销重算归零→400 映射',
     async () => {
       const month = new Date().toISOString().slice(0, 7); // 'YYYY-MM'（hours 条目按 workDate 归属月）
+
+      // 报工工序合法性（#34）接线后真实判定：先入工序库（fixture 补齐）。
+      await ensureProcessDefined(baseUrl, 'OP-10');
 
       // ---- 独立工作链：建令→派工→assign→报工→verify（reporter=OPERATOR）----
       const order = await post(baseUrl, '/workorder/work-orders', envelope('workorder.create.v1', { projectName: 'payroll 接线链' }));
@@ -975,6 +999,125 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
         { headers: HEADERS },
       );
       expect(unknownMetric.status).toBe(404);
+    },
+    60_000,
+  );
+
+  it(
+    'fix-wave-3 W3-1 末道报工→自制质检：末道工序申报即产 self_outsourced 待检单，非末道不触发（#34/#35/#36）',
+    async () => {
+      // ---- 环节 1：baseline 建两道工序（OP-W3-PRE 前道 / OP-W3-FIN 末道，active）----
+      for (const code of ['OP-W3-PRE', 'OP-W3-FIN']) {
+        const defined = await post(
+          baseUrl,
+          '/baseline/processes/commands',
+          envelope('baseline.process.define.v1', { code, name: `W3 工序-${code}` }),
+        );
+        expect(defined.status, `工序定义 ${code}：${JSON.stringify(defined.body)}`).toBe(201);
+        expect(defined.body.status).toBe('committed');
+      }
+
+      // ---- 环节 2：工艺路线（图号 DWG-W3-01：前道→末道；seq=数组位置 1/2）----
+      const routed = await post(
+        baseUrl,
+        '/baseline/routings/commands',
+        envelope('baseline.routing.define.v1', {
+          drawingNo: 'DWG-W3-01',
+          name: 'W3 工艺路线',
+          steps: [{ processCode: 'OP-W3-PRE' }, { processCode: 'OP-W3-FIN' }],
+        }),
+      );
+      expect(routed.status, `工艺路线定义：${JSON.stringify(routed.body)}`).toBe(201);
+      expect(routed.body.status).toBe('committed');
+
+      // ---- 环节 3：工作令 + 末道工序派工 + assign（可报态）----
+      const createdOrder = await post(
+        baseUrl,
+        '/workorder/work-orders',
+        envelope('workorder.create.v1', { projectName: '接线组合态-W3末道报工' }),
+      );
+      const workOrder = createdOrder.body['workOrder'] as { id: string };
+
+      const createdDispatch = await post(
+        baseUrl,
+        '/dispatch/orders',
+        envelope('dispatch.create.v1', {
+          workOrderId: workOrder.id,
+          kind: 'part',
+          drawingNo: 'DWG-W3-01',
+          operationCode: 'OP-W3-FIN', // 末道
+          quantity: 6,
+        }),
+      );
+      expect(createdDispatch.body.status).toBe('committed');
+      const dispatchOrder = createdDispatch.body['dispatchOrder'] as { id: string; objectVersion: number };
+      const assigned = await post(
+        baseUrl,
+        `/dispatch/orders/${dispatchOrder.id}/assign`,
+        envelope('dispatch.assign.v1', { assignee: 'u-worker-w3', remark: null }, dispatchOrder.objectVersion),
+      );
+      expect(assigned.body.status).toBe('committed');
+
+      // ---- 环节 4：末道报工申报（RQ-017：申报时触发，非 verify 后）----
+      const submitted = await post(
+        baseUrl,
+        '/reports',
+        envelope('report.submit.v1', { dispatchId: dispatchOrder.id, doneQty: 6, laborMinutes: 120 }),
+      );
+      expect(submitted.status, `末道报工：${JSON.stringify(submitted.body)}`).toBe(201);
+      expect(submitted.body.status).toBe('committed');
+      const report = submitted.body['report'] as { id: string };
+
+      // ---- 环节 5：inspection 出现自制类待检单（来源=report，来源对象=报工单 id）----
+      const queue = (await getJson(baseUrl, '/inspection/orders?kind=self_outsourced&state=pending'))['orders'] as {
+        id: string;
+        kind: string;
+        state: string;
+        sourceType: string | null;
+        sourceRefId: string | null;
+        drawingNo: string | null;
+        quantity: number;
+      }[];
+      const triggered = queue.find((row) => row.sourceRefId === report.id);
+      expect(triggered, `待检单读回：${JSON.stringify(queue)}`).toBeDefined();
+      expect(triggered!.kind).toBe('self_outsourced');
+      expect(triggered!.sourceType).toBe('report');
+      expect(triggered!.drawingNo).toBe('DWG-W3-01');
+      expect(triggered!.quantity).toBe(6);
+
+      // ---- 环节 6：非末道工序报工不触发（finalOperation #35 判 false）----
+      const createdPre = await post(
+        baseUrl,
+        '/dispatch/orders',
+        envelope('dispatch.create.v1', {
+          workOrderId: workOrder.id,
+          kind: 'part',
+          drawingNo: 'DWG-W3-01',
+          operationCode: 'OP-W3-PRE', // 前道
+          quantity: 6,
+        }),
+      );
+      expect(createdPre.body.status).toBe('committed');
+      const preDispatch = createdPre.body['dispatchOrder'] as { id: string; objectVersion: number };
+      const preAssigned = await post(
+        baseUrl,
+        `/dispatch/orders/${preDispatch.id}/assign`,
+        envelope('dispatch.assign.v1', { assignee: 'u-worker-w3', remark: null }, preDispatch.objectVersion),
+      );
+      expect(preAssigned.body.status).toBe('committed');
+      const preSubmitted = await post(
+        baseUrl,
+        '/reports',
+        envelope('report.submit.v1', { dispatchId: preDispatch.id, doneQty: 6, laborMinutes: 60 }),
+      );
+      expect(preSubmitted.body.status).toBe('committed'); // 申报落账不阻塞，仅不触发质检
+
+      const queueAfter = (await getJson(baseUrl, '/inspection/orders?kind=self_outsourced&state=pending'))['orders'] as {
+        sourceRefId: string | null;
+        drawingNo: string | null;
+      }[];
+      const forDrawing = queueAfter.filter((row) => row.drawingNo === 'DWG-W3-01');
+      expect(forDrawing.length).toBe(1); // 仅末道那单，前道申报不新增
     },
     60_000,
   );

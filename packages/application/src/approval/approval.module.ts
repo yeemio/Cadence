@@ -55,6 +55,12 @@ export interface ApprovalModuleOptions {
   readonly flowConfigResolver?:
     | ((tenant: import('@smes/business-core').TenantId) => Promise<ApprovalFlowConfig | null>)
     | undefined;
+  /**
+   * 审批人目录（D-11）：org 域 UserStore 只读复用——发起审批时校验审批人均为
+   * 本租户内活动用户（任一不满足 → 400）。组合根应注入与 org/auth 共享的同一
+   * 实例（app-registry sharedUserStore）；缺省不校验（单模块装配语义完整）。
+   */
+  readonly userStore?: import('../org/org-stores.js').UserStore | undefined;
 }
 
 @Module({})
@@ -67,6 +73,8 @@ export class ApprovalModule {
       ...(options.flowConfigResolver === undefined
         ? {}
         : { flowConfigResolver: options.flowConfigResolver }),
+      // D-11：审批人目录接线（org UserStore 共享实例经组合根注入；缺省不校验）。
+      ...(options.userStore === undefined ? {} : { userStore: options.userStore }),
     };
     const providers: Provider[] = [
       { provide: APPROVAL_CASE_STORE, useValue: options.caseStore ?? new InMemoryApprovalCaseStore() },

@@ -146,4 +146,7 @@ export const RLS_TABLES: readonly RlsTableSpec[] = [
   tenantTable('cost_project_entries'),
   tenantTable('cost_project_snapshots'),
   tenantTable('cost_price_entries'),
+  // fix-wave-4 W4-2 线（2026-10-26 落库：D-3 附件对象字节表，ObjectStoragePort
+  // PG 适配器持久化通道；守恒测试触发补登 + 全量重放迁移 20261026180100——102 表快照）
+  tenantTable('attachment_objects'),
 ];

@@ -78,7 +78,10 @@ export interface ResolvedReadReference {
  *    非法返回明确业务错误，勿泄露凭据）；
  *  - resolveReadReference 校验签名与有效期——无效/过期/对象缺失一律返回
  *    null（404 语义由用例层翻译），不区分失败原因（不泄漏存在性）；
- *  - 全部按租户收口（tenant 形参留给未来多租户桶隔离；本波适配器按实例隔离）。
+ *  - 只读引用令牌绑定签发租户：resolveReadReference 与传入 tenant 比对
+ *    不一致（跨租户兑现）同样返回 null（D-4：同无效语义拒绝）；
+ *  - 全部按租户收口（元数据/引用均按 tenant 形参收口；本波适配器对象
+ *    落盘仍按实例隔离，桶级隔离归部署期）。
  */
 export interface ObjectStoragePort {
   currentTarget(tenant: TenantId): Promise<StorageTargetDescriptor>;

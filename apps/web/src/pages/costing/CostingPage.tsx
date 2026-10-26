@@ -18,6 +18,7 @@ import {
 } from '../../data/costingApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, RowDetail } from '../../components/ModuleTable';
+import { formatStampColumn } from './timeFormat';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -127,7 +128,7 @@ export function CostingPage() {
                 { key: 'status', label: '状态', mono: true },
                 { key: 'createdAt', label: '发布时刻' },
               ]}
-              rows={modelsQuery.data ?? []}
+              rows={formatStampColumn(modelsQuery.data)}
             />
           </QueryState>
 
@@ -252,7 +253,7 @@ export function CostingPage() {
                       { key: 'totalMinor', label: '总额（分）' },
                       { key: 'createdAt', label: '生成时刻' },
                     ]}
-                    rows={snapshotsQuery.data ?? []}
+                    rows={formatStampColumn(snapshotsQuery.data)}
                   />
                 </QueryState>
               </div>
@@ -281,7 +282,7 @@ export function CostingPage() {
                 { key: 'kind', label: '事件', mono: true },
                 { key: 'createdAt', label: '时刻' },
               ]}
-              rows={eventsQuery.data ?? []}
+              rows={formatStampColumn(eventsQuery.data)}
             />
           </QueryState>
         </CardContent>

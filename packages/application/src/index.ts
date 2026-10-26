@@ -119,6 +119,7 @@ export {
   parseUpdateDepartmentInput,
   parseUpdatePositionInput,
   parseUserIdParam,
+  parseUserPasswordInput,
   parseUserStatusInput,
 } from './org/org-input.js';
 export type {
@@ -145,6 +146,7 @@ export type {
   CreateUserPayload,
   UpdateDepartmentPayload,
   UpdatePositionPayload,
+  UserPasswordPayload,
   UserStatusPayload,
 } from './org/org-input.js';
 

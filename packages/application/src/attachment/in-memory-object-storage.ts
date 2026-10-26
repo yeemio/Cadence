@@ -64,7 +64,7 @@ export class InMemoryObjectStorage implements ObjectStoragePort {
   }
 
   async issueReadReference(
-    _tenant: TenantId,
+    tenant: TenantId,
     object: StoredObjectRef,
     options: IssueReadReferenceOptions,
   ): Promise<ObjectReadReference> {
@@ -73,13 +73,14 @@ export class InMemoryObjectStorage implements ObjectStoragePort {
       // 文档二.5：桶/Key 非法返回明确业务错误（不区分原因细节，不带凭据）
       throw new AttachmentStorageError(`对象存储内不存在目标 '${object.target}' 的对象 '${object.objectKey}'`);
     }
-    return this.encodeReference(object, stored.contentType, options);
+    return this.encodeReference(tenant, object, stored.contentType, options);
   }
 
-  async resolveReadReference(_tenant: TenantId, token: string): Promise<ResolvedReadReference | null> {
+  async resolveReadReference(tenant: TenantId, token: string): Promise<ResolvedReadReference | null> {
     const claims = verifyReadReferenceToken(this.signingKey, token, new Date());
     if (claims === null) return null;
     if (claims.target !== this.target) return null; // 令牌属其他适配器实例
+    if (claims.tenantId !== tenant) return null; // 令牌非本租户签发（D-4：同无效语义拒绝）
     const stored = this.objects.get(`${claims.target}|${claims.objectKey}`);
     if (stored === undefined) return null;
     return {
@@ -90,12 +91,14 @@ export class InMemoryObjectStorage implements ObjectStoragePort {
   }
 
   private encodeReference(
+    tenant: TenantId,
     object: StoredObjectRef,
     contentType: string | null,
     options: IssueReadReferenceOptions,
   ): ObjectReadReference {
     const expiresAtMs = Date.now() + options.ttlSeconds * 1000;
     const token = encodeReadReferenceToken(this.signingKey, {
+      tenantId: tenant,
       target: object.target,
       objectKey: object.objectKey,
       expiresAtMs,

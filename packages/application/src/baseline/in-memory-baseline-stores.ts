@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import type { BusinessEvent, TenantId } from '@smes/business-core';
 import { BaselineConflictError } from './baseline-errors.js';
-import { FaultReportId } from './baseline-ids.js';
+import { baselineUuidv7, FaultReportId } from './baseline-ids.js';
 import type {
   BaselineEventStore,
   BaselineOperationLedger,
@@ -271,7 +271,9 @@ export class InMemoryMaterialValidationRunStore implements MaterialValidationRun
   private readonly runs = new Map<string, MaterialValidationRunRow>(); // key: `${tenant}|${id}`
 
   async insert(run: Omit<MaterialValidationRunRow, 'id' | 'createdAt'>): Promise<MaterialValidationRunRow> {
-    const row: MaterialValidationRunRow = { ...run, id: nextMemoryId('mvr'), createdAt: new Date().toISOString() };
+    // id 与 PG 形态同口径（裸 uuidv7，列 @db.Uuid）：service 读路径按 uuid 字面量
+    // 形状短路非 uuid id（D-7），内存形态 id 须同为裸 uuid 才不会被误短路。
+    const row: MaterialValidationRunRow = { ...run, id: baselineUuidv7(), createdAt: new Date().toISOString() };
     this.runs.set(`${row.tenant}|${row.id}`, row);
     return row;
   }
@@ -303,7 +305,9 @@ export class InMemoryBaselineEventStore implements BaselineEventStore {
   async list(tenant: TenantId): Promise<readonly BusinessEvent[]> {
     return this.events
       .filter((event) => event.tenantId === tenant)
-      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || String(a.eventId).localeCompare(String(b.eventId)));
+      // 同 occurredAt（同毫秒连发）时依赖 sort 稳定性保持插入序（=因果序）——
+      // eventId 为 uuidv4 随机串，作次级键会让事件顺序掷骰子（versioned-masters flaky 根因）。
+      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
   }
 }
 

@@ -1,9 +1,9 @@
 /**
  * connect* 工厂 RLS session 门控接线一致性（ESCALATION-2 收尾，M4 部署期收尾波）。
  *
- * 覆盖：全部 18 个连接工厂（先例四家 org / masterdata / workbench / approval +
- * 其余十四家各领域 pg-*-stores + metric-pack 六源 bundle）在 SMES_RLS_SESSION=on
- * 时必须经 withRlsTenantSession 装扩展、缺省不装。
+ * 覆盖：连接工厂清单（ESCALATION-2 收尾波 18 家 + fix-wave-4 W4-2 增补
+ * attachment-object-storage 对象字节工厂）在 SMES_RLS_SESSION=on 时必须经
+ * withRlsTenantSession 装扩展、缺省不装。
  *
  * 纯装配面（不连库）：vi.mock @prisma/client 以桩类拦截 $extends——
  * PrismaClient 构造本就惰性连接、$extends 是纯客户端操作，桩不破坏惰性合同；
@@ -45,9 +45,11 @@ import { connectPayrollStore } from '../src/payroll/pg-payroll-stores.js';
 import { connectReportingStore } from '../src/reporting/pg-reporting-stores.js';
 import { connectWorkbenchStore } from '../src/workbench/pg-workbench-stores.js';
 import { connectWorkOrderStore } from '../src/workorder/pg-workorder-stores.js';
+// fix-wave-4 W4-2：attachment 对象字节 PG 适配器工厂（D-3 持久化）
+import { connectAttachmentObjectStorage } from '../src/attachment/pg-object-storage.js';
 import { SMES_RLS_SESSION_ENV } from '../src/rls-session.js';
 
-/** 18 家工厂清单（与 main.ts 装配序同源；新增 connect* 工厂漏接线 → 此表补行 → 红）。 */
+/** 工厂清单（与 main.ts 装配序同源；新增 connect* 工厂漏接线 → 此表补行 → 红）。 */
 const factories: ReadonlyArray<readonly [string, () => unknown]> = [
   ['org', () => connectBusinessStore()],
   ['masterdata', () => connectMasterdataStore()],
@@ -67,9 +69,11 @@ const factories: ReadonlyArray<readonly [string, () => unknown]> = [
   ['drawing', () => connectDrawingStore()],
   ['metric-pack', () => connectMetricPackStore()],
   ['metric-source-bundle', () => connectMetricSourceBundle(TenantId.create('t-a'))],
+  // fix-wave-4 W4-2：attachment 对象字节工厂（同门控纪律：=on 必装 rlsTenantSession）
+  ['attachment-object-storage', () => connectAttachmentObjectStorage()],
 ];
 
-describe('connect* 工厂 RLS session 门控（ESCALATION-2 收尾：18/18 全接线）', () => {
+describe('connect* 工厂 RLS session 门控（ESCALATION-2 收尾 18 家 + W4-2 增补 attachment-object-storage：全接线）', () => {
   const savedEnv = process.env[SMES_RLS_SESSION_ENV];
 
   afterEach(() => {

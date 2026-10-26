@@ -5,12 +5,51 @@
  * 拒绝都在视图模型层钉死（packages/product-ui overview-views.ts），本页只呈现。
  *
  * 菜单/路由接线归合流（合同 T2）：本文件不自带路由与权限守卫。
+ *
+ * fix-wave-2 D-12：四源数据请求按 session 权限投影（菜单可见性 = 接口可达性
+ * 纪律对齐到首页数据请求，数据源与侧栏投影同款 usePermissions +
+ * toPermissionCodes）。页面是四码一体的全量聚合（部分渲染易误导，取舍见
+ * overviewApi）——任一源缺权限即整页不发起请求，显式列出缺失源与权限码；
+ * 全部具备才放行 fetchOverviewView。已放行而失败（含 403 残留路径）仍走
+ * 既有 ApiErrorHint 显式报错，不停在"正在加载…"（D-6 同纪律）。
  */
 import { useQuery } from '@tanstack/react-query';
+import { usePermissions } from '@refinedev/core';
+import { permissionCode, sessionHasPermission, toPermissionCodes } from '@smes/product-ui';
+import type { PermissionCode } from '@smes/product-ui';
 import { ApiErrorHint } from '../../components/ApiErrorHint';
 import { QueryState } from '../../components/ModuleTable';
 import { fetchOverviewView } from '../../data/overviewApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+/** 总览数据源及其读取权限码（与后端各控制器 @RequirePermission 同码，端点表见 data/overviewApi.ts）。 */
+interface OverviewSourceRequirement {
+  readonly key: 'todo' | 'delivery' | 'inspection' | 'machining';
+  readonly label: string;
+  readonly permission: PermissionCode;
+}
+
+const OVERVIEW_SOURCES: readonly OverviewSourceRequirement[] = [
+  { key: 'todo', label: '工作台待办', permission: permissionCode('workbench:read') },
+  { key: 'delivery', label: '交付态势', permission: permissionCode('workorder:read') },
+  { key: 'inspection', label: '质检汇总', permission: permissionCode('inspection:read') },
+  { key: 'machining', label: '机加工时', permission: permissionCode('hours:read') },
+];
+
+/**
+ * D-12 投影判定（唯一决策点，页面查询的 enabled 即"返回 null 或空数组"）：
+ * 入参 = refine usePermissions 的原始 data。
+ * - null = 会话权限未就绪（不发起请求、不误报无权限）；
+ * - [] = 四源权限齐备（admin 通配 bypass 含在内）→ 放行 fetchOverviewView；
+ * - 非空 = 缺失源清单（整页不发起请求，显式列出源与权限码）。
+ */
+export function overviewDeniedSources(
+  permissionData: unknown,
+): OverviewSourceRequirement[] | null {
+  if (permissionData === undefined) return null;
+  const permissions = toPermissionCodes(permissionData);
+  return OVERVIEW_SOURCES.filter((source) => !sessionHasPermission(permissions, source.permission));
+}
 
 const RISK_LABELS: Record<string, string> = {
   overdue: '逾期',
@@ -56,7 +95,15 @@ function Metric({
 }
 
 export function OverviewIndexPage() {
-  const overviewQuery = useQuery({ queryKey: ['overview'], queryFn: fetchOverviewView });
+  // D-12：session 权限投影（与 ShellLayout 侧栏投影同数据源）。permissions
+  // 未就绪（deniedSources=null）时不发起请求、也不误报无权限（保持加载态一个 tick）。
+  const { data: permissionData } = usePermissions({});
+  const deniedSources = overviewDeniedSources(permissionData);
+  const overviewQuery = useQuery({
+    queryKey: ['overview'],
+    queryFn: fetchOverviewView,
+    enabled: deniedSources !== null && deniedSources.length === 0,
+  });
   const view = overviewQuery.data;
 
   return (
@@ -75,12 +122,20 @@ export function OverviewIndexPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {overviewQuery.isError && <ApiErrorHint error={overviewQuery.error} />}
-          <QueryState
-            isPending={overviewQuery.isPending}
-            error={overviewQuery.isError ? overviewQuery.error : null}
-            isEmpty={false}
-          >
+          {deniedSources !== null && deniedSources.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              当前身份缺少运营总览数据源权限，不发起数据请求：
+              {deniedSources.map((source) => `${source.label}（${source.permission}）`).join('、')}
+              。需管理员在服务端授予对应策略后刷新。
+            </p>
+          ) : (
+            <>
+              {overviewQuery.isError && <ApiErrorHint error={overviewQuery.error} />}
+              <QueryState
+                isPending={overviewQuery.isPending}
+                error={overviewQuery.isError ? overviewQuery.error : null}
+                isEmpty={false}
+              >
             {view !== undefined && (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <Card>
@@ -139,7 +194,9 @@ export function OverviewIndexPage() {
                 </Card>
               </div>
             )}
-          </QueryState>
+              </QueryState>
+            </>
+          )}
         </CardContent>
       </Card>
 

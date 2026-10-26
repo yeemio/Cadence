@@ -1,6 +1,22 @@
 # 状态快照
 
-更新：2026-10-26 午（**产品需求文档体系（PRD）v1.0 冻结：13 分域分册+总纲+README+追溯总表，506 需求项全量需求化，验收 ACCEPT**；上一快照：10-26 凌晨②总控收口 0b8566c/109/109/U 波五模块 ACCEPT）
+更新：2026-10-26 午②（**grokbot 测试报告修复循环 R 波：D-8/D-1/D-2 三缺陷全链闭环（修复+容器复证+验收 ACCEPT），wave-2/3 并行在途**；上一快照：PRD v1.0 冻结：13 分域分册+总纲+README+追溯总表，506 需求项全量需求化，验收 ACCEPT**；上一快照：10-26 凌晨②总控收口 0b8566c/109/109/U 波五模块 ACCEPT）
+
+## R 波修复循环（进行中，2026-10-26 午②；grokbot SaaS 功能测试报告驱动，报告源 noodle-test-output/ 三报告）
+
+- **wave-1 ✅ 全链闭环（本线程）**：D-8 P0 RLS 事务原子性（rls-session 扩展接管 $transaction 交互式形态+ALS 同句柄重派；14 域 event+outbox 数组双写全改交互式；business-store 170 测试）+ D-1 P0 权限按租户 enforcer 隔离（application 566 测试）→ 容器复证：tenant-a 工作令 10/10 201+外协 201+event/outbox 守恒 10/10（修复前 500/15v7 孤儿）+D-1 三租户双向顺序验证全 200+rls-session-proof 双对照 → code-reviewer 验收 **ACCEPT**（agent_9859e205，独立运行时探针证实 Prisma 遮蔽机制）→ 低危注释处置 2 条。容器复证时补建三租户 admin 夹具（superuser SQL 复制 default，方式同 grokbot）
+- **D-2 ✅ 全链闭环（本线程）**：用户口令（建号可选初始口令 scrypt+PUT /org/users/:id/password 重置+写时全端撤会话+跨租户 404 收口；application 572/business-store 170 测试）→ 容器复证五步全过（建号→登录 201（修复前永不可能）→重置→旧 401 新 201→跨租户 403 原口令未篡改）→ 验收 **ACCEPT**（agent_5d49fea3；低危 4 条登记：hasPassword 投影 P3 后续等）
+- **D-9 ✅ 复测确认真缺陷**：派工 10 报工 11 committed 无拦截（总控容器复现）；修复排 fix-wave-4 W4-1（累计有效报工量上界，排除 S14 精算防扩盘）
+- **wave-2（侧边栏线程）**：9 项 P2/P3（D-7/D-11/D-4/D-5/D-12/D-6/D-13/B-1/B-2）合同 architecture/contracts/fix-wave-2/，在途
+- **wave-3 ✅ 已收口（第三线总控回传 14:40）**：W3-1 intake 双路接线（末道报工→自制质检 + 收货→采购质检，#34~#37 四适配器；组合态 e2e 新场景+64/64）与 W3-2 撤销派工→issue.cleanup（24/24）均 code-reviewer 验收 ACCEPT；W3-3 门禁半面经范围咨询裁定登记不做（listing 工序面未落库+processId 无锚点，强行接线=发明语义；空列表半面已锚定零改动）、W3-4 受限条款触发不做（PG 适配器在 business-store 禁碰面）。实施者 agent_9662223e/agent_0e83ddf9，验收 agent_a923957a/agent_4a53f454+咨询 agent_8ef6e954。总控容器复证：外协回厂质检链全通（insp 单创建+判定负例拒 6>3）——此前疑点解除（系实验漏 start 步）
+- **D-9 ✅ 全链闭环（本线程 W4-1）**：报工上界闸门（累计有效报工量≤派工数量，链尾+排除撤销，batch 整批拒；application 577 测试）→ 容器复证三段全过（报 11 拒/6+4 过/满后再报 1 拒，理由逐字吻合）→ 验收 ACCEPT（agent_dec15c08）；audit-edit 上调不过闸门经裁定登记低危（report:audit 受信权限面+可撤销补救，PRD 17 册增补已登记）；并发竞态边界与 S14 精算同批收口
+- **合流前必修项已清（总控）**：wave-3 交付的 tests/listing/receipt-inspection-intake.test.ts 8 处 tsc 泛型错误修复（envelope 辅助函数签名收窄+import），application tsc 全绿+3/3 测试过
+- **wave-3 交付的 PRD 增补登记（总控，append-only）**：17 册增补#1（开放问题①闭合+闸门半面）；14 册增补#1（RREQ-LP-051 W3-3 裁定）
+- **D-3 限额暂停与恢复**：PG 对象存储适配器 writer 首派撞 [1308] 5 小时上限（16:07:31 重置）——已设定时 automation-41edfd32（16:09 一次性重派），装配切换行留合流时总控加
+- **wave-2（侧边栏线程）**：9 项 P2/P3 合同 fix-wave-2/，在途（其 capability 2 失败属本波 A-2 approval 改动，wave-3 回传归属笔误已修正）
+- **fix-wave-4 合同已预写**：W4-1 D-9（等 wave-3 解锁 reporting）/W4-2 D-3 附件 PG 持久化（等 wave-2 解锁 attachment；定向方案 ObjectStoragePort PG 适配器）
+- **BLOCKED 链路预验（总控）**：报工核查 ✓/重复核查幂等 ✓（信封 rejected）/成本重建全链 ✓（costing.model.publish→rebuild 双 committed 快照落账——欠账清单"须先跑 rebuild"实为"先 publish 再 rebuild"）；外协完成→回厂质检单未创建（两实验 0 单）疑点固定——因当前镜像是 wave-3 半成品（正改质检 intake），终态镜像复验后定性
+- **合流收口（✅ 15:15，Owner 指令"发布到最新 GitHub"）**：全仓 `pnpm verify` exit 0（三跑收敛：①application baseline 事件排序 flaky 根因修复=同毫秒 occurredAt 下 uuidv4 次级键掷骰子，改稳定排序落插入序；②wave-3 intake 测试 8 处 tsc 泛型收窄；③capability e2e 适配 D-11=预置共享 userStore 真实用户身份）。**提交内容分层**：有完整证据链（修复+复证+验收 ACCEPT）=wave-1 D-8/D-1、wave-3 W3-1/W3-2、D-2、D-9；**verify 绿但待验收**=wave-2 九项（侧边栏线程产出，实现亲读过 D-7/D-11 正确）+D-3 PG 对象存储半成品（writer 撞限额遗产，verify 过但无回传证据链，装配切换行未做——定时 16:09 重派收口）。grokbot 补测即外部验收（8 条 BLOCKED+RP-01/D-9 已由本线代复+7 条 N/A 用例修正重跑）
 
 ## PRD v1.0（✅ 10-26 午，Owner 指令"对照 73 份开发文档搭建完整需求文档"+三决策：SRS 形态/全量需求化+差异登记/一波全量并行 GLM-5.3）
 

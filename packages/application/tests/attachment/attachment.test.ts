@@ -56,6 +56,7 @@ describe('只读引用令牌', () => {
     const key = newReadReferenceSigningKey();
     const otherKey = newReadReferenceSigningKey();
     const claims = {
+      tenantId: 't1',
       target: 'memory',
       objectKey: 'upload/2026/10/26/x-a.pdf',
       expiresAtMs: Date.now() + 60_000,
@@ -73,6 +74,19 @@ describe('只读引用令牌', () => {
     const tamperedPayload = Buffer.from(JSON.stringify({ ...claims, objectKey: 'other' }), 'utf8').toString('base64url');
     expect(verifyReadReferenceToken(key, `${head}.${tamperedPayload}.${sig}`, new Date())).toBeNull();
     expect(verifyReadReferenceToken(key, 'not-a-token', new Date())).toBeNull();
+  });
+
+  it('载荷形状门：tenantId 非字符串（旧形状令牌）→ null（同无效语义）', () => {
+    const key = newReadReferenceSigningKey();
+    const legacy = { target: 'memory', objectKey: 'upload/x', expiresAtMs: Date.now() + 60_000, downloadName: 'a', contentType: null };
+    const legacyToken = encodeReadReferenceToken(key, legacy as unknown as Parameters<typeof encodeReadReferenceToken>[1]);
+    expect(verifyReadReferenceToken(key, legacyToken, new Date())).toBeNull();
+
+    const wrongType = encodeReadReferenceToken(key, {
+      target: 'memory', objectKey: 'upload/x', expiresAtMs: Date.now() + 60_000, downloadName: 'a', contentType: null,
+      tenantId: 123 as unknown as string,
+    });
+    expect(verifyReadReferenceToken(key, wrongType, new Date())).toBeNull();
   });
 });
 
@@ -110,6 +124,17 @@ describe('对象存储端口：内存适配器', () => {
     const reference = await other.issueReadReference(t1, ref, { ttlSeconds: 60 });
     const token = reference.url.split('/').pop()!;
     expect(await storage.resolveReadReference(t1, token)).toBeNull();
+  });
+
+  it('令牌绑定租户（D-4）：t1 签发 t2 兑现 → null；t1 兑现 → 正常取回', async () => {
+    const storage = new InMemoryObjectStorage();
+    const ref = await storage.put(t1, { fileName: 'a.pdf', contentType: 'application/pdf', bytes: PDF_BYTES });
+    const reference = await storage.issueReadReference(t1, ref, { ttlSeconds: 60, downloadName: 'a.pdf' });
+    const token = reference.url.split('/').pop()!;
+    expect(await storage.resolveReadReference(t2, token)).toBeNull(); // 跨租户 → 同无效语义
+    const resolved = await storage.resolveReadReference(t1, token);
+    expect(resolved).not.toBeNull();
+    expect([...resolved!.bytes]).toEqual([...PDF_BYTES]);
   });
 });
 
@@ -152,6 +177,19 @@ describe('对象存储端口：本地文件适配器', () => {
         { ttlSeconds: 60 },
       ),
     ).rejects.toThrow(AttachmentStorageError);
+  });
+
+  it('令牌绑定租户（D-4）：t1 签发 t2 兑现 → null；t1 兑现 → 正常取回', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'cadence-attachment-'));
+    roots.push(root);
+    const storage = newLocalStorage({ rootDirectory: root });
+    const ref = await storage.put(t1, { fileName: 'a.pdf', contentType: 'application/pdf', bytes: PDF_BYTES });
+    const reference = await storage.issueReadReference(t1, ref, { ttlSeconds: 60, downloadName: 'a.pdf' });
+    const token = reference.url.split('/').pop()!;
+    expect(await storage.resolveReadReference(t2, token)).toBeNull(); // 跨租户 → 同无效语义
+    const resolved = await storage.resolveReadReference(t1, token);
+    expect(resolved).not.toBeNull();
+    expect([...resolved!.bytes]).toEqual([...PDF_BYTES]);
   });
 });
 
@@ -366,6 +404,19 @@ describe('用例：删除与下载引用（文档二.4/二.5）', () => {
     expect([...resolved.bytes]).toEqual([...PDF_BYTES]);
     await expect(service.resolveReadReference(t1, 'v1.junk.junk')).rejects.toThrow(AttachmentNotFoundError);
   });
+
+  it('开门面租户绑定（D-4）：A 租户令牌在 B 租户兑现 → NotFound（同既有无效语义）；同租户行为不变', async () => {
+    const { service } = newService();
+    const view = await service.upload(t1, alice, {
+      fileName: 'a.pdf', contentBase64: b64(PDF_BYTES), bizType: 'workorder', bizId: 'wo-1',
+    });
+    const reference = await service.issueDownloadReference(t1, { id: view.id, bizId: 'wo-1' });
+    const token = reference.url.split('/').pop()!;
+    const resolved = await service.resolveReadReference(t1, token);
+    expect([...resolved.bytes]).toEqual([...PDF_BYTES]); // 同租户：行为不变
+    await expect(service.resolveReadReference(t2, token)).rejects.toThrow(AttachmentNotFoundError); // 跨租户：同无效语义
+    await expect(service.resolveReadReference(t1, token)).resolves.toBeTruthy(); // 拒绝不影响原租户继续兑现
+  });
 });
 
 describe('控制器权限码元数据（@RequirePermission 声明面）', () => {
@@ -397,18 +448,22 @@ describe('控制器权限码元数据（@RequirePermission 声明面）', () => 
     const store = new InMemoryAttachmentStore();
     const storage = new InMemoryObjectStorage();
     const service = new AttachmentService(store, storage);
-    const controller = new AttachmentController(new TenantContext(), service);
+    const tenantContext = new TenantContext();
+    const controller = new AttachmentController(tenantContext, service);
     const view = await service.upload(t1, alice, {
       fileName: '合同.pdf', contentType: 'application/pdf', contentBase64: b64(PDF_BYTES), bizType: 'workorder', bizId: 'wo-1',
     });
     const reference = await service.issueDownloadReference(t1, { id: view.id, bizId: 'wo-1' });
     const token = reference.url.split('/').pop()!;
 
-    const streamable = await controller.openStorage(token);
+    // 兑现租户取自 TenantContext（ALS）——同租户上下文内取回（真实请求流等价物）
+    const streamable = await tenantContext.run(t1, () => controller.openStorage(token));
     expect(streamable).toBeInstanceOf(Object);
     expect(streamable.getHeaders()).toMatchObject({ type: 'application/pdf' });
     expect(streamable.getHeaders().disposition).toContain(encodeURIComponent('合同.pdf'));
 
-    await expect(controller.openStorage('v1.junk.junk')).rejects.toThrow(AttachmentNotFoundError);
+    // D-4：同一令牌换到其他租户上下文（换 Host 形态）兑现 → 同既有无效 token 语义拒绝
+    await expect(tenantContext.run(t2, () => controller.openStorage(token))).rejects.toThrow(AttachmentNotFoundError);
+    await expect(tenantContext.run(t1, () => controller.openStorage('v1.junk.junk'))).rejects.toThrow(AttachmentNotFoundError);
   });
 });

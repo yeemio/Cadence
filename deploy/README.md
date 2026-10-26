@@ -21,7 +21,7 @@ M4 正式线已接通：RLS session 变量接线（org / masterdata / workbench 
 | --- | --- | --- |
 | 启动 | `docker compose -f deploy/compose.yaml up` | `SMES_TENANT_MODE=saas SMES_DOMAIN=smes.example.com docker compose -f deploy/compose.yaml --profile saas up` |
 | 定价对应（ADR-0005） | 买断 246k，私有化部署 | 订阅 54k/年，托管 |
-| 租户解析 | `singleTenantResolver()` 恒 `'default'`（缺省不触碰解析器，零行为变化） | `hostBasedTenantResolver({domain, lookup})` 子域名 → 租户（**已接线**：`SMES_TENANT_MODE=saas` + `SMES_DOMAIN` + `SMES_TENANTS` 静态清单，未知/域外 Host fail-closed 421） |
+| 租户解析 | `singleTenantResolver()` 恒 `'default'`（缺省不触碰解析器，零行为变化） | `hostBasedTenantResolver({domain, lookup})` 子域名 → 租户（**已接线**：`SMES_TENANT_MODE=saas` + `SMES_DOMAIN` + `SMES_TENANTS` 静态清单，fail-closed：域内未知租户 404、域外/缺/多级 Host 421） |
 | 入口 | web:8080 / server:3000 直连 | 叠加 proxy:80（nginx 透传 Host，子域 = 租户） |
 | DB 连接 | app_user（受限 DML，无 BYPASSRLS）+ `SMES_RLS_SESSION=on` | 同左 |
 | 行级隔离 | RLS 由 DB 强制（纵深防御；单机无第二租户） | RLS 是安全边界：未设变量 → 0 行/拒写；设变量 → 仅本租户 |
@@ -99,9 +99,10 @@ docker compose -f deploy/compose.yaml down -v --remove-orphans
   web 不起）；web healthcheck = 静态入口自证（不探 `/health`：反代路径会把
   server 故障混入 web 自身判定）；`restart: unless-stopped`（pg/server/web/
   proxy；migrate 一次性恒 `no`）；pg-data 具名卷（`down -v` 才删）。
-  healthcheck Host 取舍（写明）：saas 形态 fail-closed 对域外/未知租户 Host
-  一律 421（M4 收尾波：租户解析失败从 500 收敛为 421 Misdirected Request，
-  见下 SaaS profile 节），liveness 探针不得依赖租户路由——saas
+  healthcheck Host 取舍（写明）：saas 形态 fail-closed 对域内未知租户 Host
+  404、域外/缺/多级 Host 421（M4 收尾波：租户解析失败从 500 收敛为 421
+  Misdirected Request；M5 收尾波：域内未知租户分叉 404，见下 SaaS profile
+  节），liveness 探针不得依赖租户路由——saas
   （SMES_TENANTS 非空）时探针 Host = 首个已知租户 + SMES_DOMAIN，单机回落
   127.0.0.1；用 node http 而非 fetch（fetch 规范禁改 Host 头，静默忽略会误报）。
 - **migrate 一次性服务**：superuser 侧 `prisma migrate deploy` + 迁移完成后
@@ -126,14 +127,15 @@ SMES_TENANT_MODE=saas SMES_DOMAIN=smes.example.com SMES_TENANTS=tenant-a \
 # pg + migrate + server + web + proxy（proxy 仅 saas profile 起验）
 ```
 
-- **租户解析实证（M4 正式线直连实测；M4 收尾波复测——解析失败从 500 收敛
-  为 421 Misdirected Request，输出原样）**：
+- **租户解析实证（M4 正式线直连实测；M4 收尾波：解析失败从 500 收敛为
+  4xx；M5 收尾波：域内未知租户分叉 404，其余仍 421——以下为 M5 口径）**：
 
 ```bash
 $ curl -H "Host: tenant-a.smes.example.com" .../health
 {"status":"ok","tenant":"tenant-a"} HTTP:200      # 子域 → 租户，请求级读回
 $ curl -H "Host: rogue.smes.example.com" .../health   # 域内未知租户
-HTTP:421  # fail-closed（不回落 default）；message: unknown tenant "rogue"
+HTTP:404  # fail-closed（不回落 default）；message: unknown tenant "rogue"
+          #（M5 收尾波：Host 属本域但租户不存在，通配 DNS 下等价 NXDOMAIN）
 $ curl -H "Host: evil.example.com" .../health     # 域外 Host
 HTTP:421  # message: host "evil.example.com" outside domain "smes.example.com"
 $ curl .../health                                 # 缺省 Host（127.0.0.1）
@@ -157,18 +159,26 @@ HTTP:421  # message: ...is not a single subdomain of "smes.example.com"
   渲染配置 `server_name ~^.+\.smes.example.com;` + Host / X-Forwarded-Host
   透传头；server 侧解析行为以上面直连探针为准。真实 DNS 解析与 TLS 证书属
   部署期事项，不在本栈验证面。
-- **已知行为（写明）**：server 侧 fail-closed 已激活——域外/未知/多级子域
-  Host 在 server 侧 **421**（M4 收尾波：`TenantResolutionError` 经 Express
-  全局错误中间件 `tenantResolutionErrorHandler` 映射 421 Misdirected Request
-  ——机制与状态码取舍见 `apps/server/src/tenant-resolution-error.handler.ts`
-  文件头；上表实测）；单 server 块 nginx 配置对未匹配
-  `server_name` 的 Host 落默认 server 透传，proxy 层有意保持哑透传（compose
-  注释口径），域收口点在 server 侧。
+- **已知行为（写明）**：server 侧 fail-closed 已激活——域内未知租户 Host
+  在 server 侧 **404**（M5 收尾波有意语义：Host 属本域但租户不存在，通配
+  DNS 下等价 NXDOMAIN），域外/缺/多级子域 Host **421** Misdirected Request
+  （客户端走错 origin）。两层机制：main.ts 租户中间件内联窄捕
+  `TenantResolutionError`、按 reason（unknown-tenant / off-domain /
+  missing-host / invalid-subdomain）分叉 404/421——生产主路径，语义与取舍
+  注释见 `apps/server/src/main.ts`；逃逸错误再由 Express 全局错误中间件
+  `tenantResolutionErrorHandler` 兜底映射 421——机制与状态码取舍见
+  `apps/server/src/tenant-resolution-error.handler.ts` 文件头；上表实测。
+  web 容器不在收口面：web/nginx 不感知租户清单，任意子域（含未知租户）
+  都返回静态登录页 200——租户校验在 server 侧 fail-closed。单 server 块
+  nginx 配置对未匹配 `server_name` 的 Host 落默认 server 透传，proxy 层
+  有意保持哑透传（compose 注释口径），域收口点在 server 侧。
 - **接缝（M4 后续）**：非默认租户的开通/种子流程（SMES_TENANTS 是静态清单；
   tenant-a 无种子用户 → 该租户下登录 401 属预期——数据面端到端待租户开通
   流程）。~~TenantResolutionError → 500 的状态码映射~~（**M4 收尾波已闭合**：
-  Express 错误中间件映射 421，e2e 覆盖未知/域外/空/多级四形 + 非
-  TenantResolutionError 原样放行）。
+  Express 错误中间件映射 421；**M5 收尾波进一步分叉**——生产主路径改内联
+  中间件按 reason 映射 404/421（见上已知行为节），兜底错误中间件维持全
+  421；e2e 覆盖未知/域外/空/多级四形 + 非 TenantResolutionError 原样放行
+  ——e2e 装配即兜底错误中间件层，其断言 421 在该层为真）。
 - **单机复验**：无 profile、无 env 直接 `up -d` 不回归——缺省插值
   `SMES_TENANT_MODE=single-node`、`SMES_DOMAIN` 空、proxy 服务不起，
   /health 与 web 均 200，`down -v` 零残留。

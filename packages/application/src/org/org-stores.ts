@@ -41,9 +41,9 @@ export interface CreateUserInput {
   /** 缺省 true。 */
   readonly active?: boolean;
   /**
-   * 初始口令哈希（可选，收尾波-③）：端口允许带哈希创建（种子/测试/后续
-   * 管理端设初始口令用）；HTTP 创建端点不透传该字段（parseCreateUserInput
-   * 只收 username/displayName/active），缺省 null = 不能登录。
+   * 初始口令哈希（可选，收尾波-③ + D-2）：允许带哈希创建（种子/测试/
+   * 管理端带初始口令建用户）。HTTP 端点入参带 password 时由用例层
+   * hashPassword 后透传；不带 = null（未设口令态，不能登录）。
    */
   readonly passwordHash?: string;
 }
@@ -58,6 +58,15 @@ export interface UserStore {
   findByUsername(tenant: TenantId, username: string): Promise<UserCredentials | null>;
   /** 期望态设置 active（users.active 启停）；目标不存在返回 null（用例层转 404）。 */
   updateStatus(tenant: TenantId, id: UserId, active: boolean): Promise<UserAccount | null>;
+  /**
+   * 覆写口令哈希（D-2：管理员设置/重置口令）；目标不存在返回 null
+   * （用例层转 404）。只收哈希——明文口令绝不过端口边界。
+   */
+  updatePassword(
+    tenant: TenantId,
+    id: UserId,
+    passwordHash: string,
+  ): Promise<UserAccount | null>;
 }
 
 /** 角色元数据（RBAC 角色名；角色-权限与用户-角色绑定存 PolicyStore，不在本表）。 */

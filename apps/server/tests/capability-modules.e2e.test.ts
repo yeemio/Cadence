@@ -13,7 +13,8 @@ import 'reflect-metadata';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NestFactory } from '@nestjs/core';
-import { TenantContext } from '@smes/application';
+import { InMemoryUserStore, TenantContext } from '@smes/application';
+import { TenantId } from '@smes/business-core';
 import { buildAppModule, parseModulesEnabled } from '../src/app-registry.js';
 import { ApprovalErrorFilter } from '../src/approval-error.filter.js';
 import { AuthErrorFilter } from '../src/auth-error.filter.js';
@@ -23,9 +24,14 @@ import { OrgErrorFilter } from '../src/org-error.filter.js';
 import { WorkOrderErrorFilter } from '../src/workorder-error.filter.js';
 
 /** dev 身份（grant admin 角色 → 全权限码 bypass）；VIEWER 无策略 = 403 证据身份。 */
+// D-11 后审批人须为 org 目录内真实用户：e2e 预置共享 userStore（org 模块不在
+// 本组合清单，无法走 HTTP 建号），操作/审批/收件身份 = 预置用户 id（seededUserId）。
 const OPERATOR = 'u-op-capability';
+let seededUserId = OPERATOR;
 const VIEWER = 'u-viewer-capability';
-const AUTH_HEADERS = { 'content-type': 'application/json', 'x-smes-user': OPERATOR };
+// D-11 后审批人须为 org 目录内真实用户：先经 dev 策略钩子授 admin 建用户，
+// 再把操作身份切到建出的用户 id（并同步补授权），策略绑定与 x-smes-user 恒一致。
+let AUTH_HEADERS: Record<string, string> = { 'content-type': 'application/json', 'x-smes-user': OPERATOR };
 const VIEWER_HEADERS = { 'content-type': 'application/json', 'x-smes-user': VIEWER };
 
 /** 合法自定义两步流（engine-flow 权威校验可过；发起后落 in_review）。 */
@@ -58,9 +64,16 @@ describe('T1 能力子集三模块组合态（零 DB 全装配）', () => {
     setEnv('SMES_DEV_POLICY_ENDPOINT', 'on'); // 策略注入钩子（grant admin）
 
     const enabled = parseModulesEnabled(process.env['MODULES_ENABLED']);
-    app = await NestFactory.create(buildAppModule(enabled, { devPolicyEndpoint: true }), {
-      logger: ['error', 'warn'],
+    const sharedUserStore = new InMemoryUserStore();
+    const seededUser = await sharedUserStore.create({
+      tenant: TenantId.create('default'),
+      username: 'op-capability',
+      displayName: '能力e2e操作员',
     });
+    app = await NestFactory.create(
+      buildAppModule(enabled, { devPolicyEndpoint: true, userStore: sharedUserStore }),
+      { logger: ['error', 'warn'] },
+    );
     app.useGlobalFilters(
       new OrgErrorFilter(),
       new AuthErrorFilter(),
@@ -77,10 +90,14 @@ describe('T1 能力子集三模块组合态（零 DB 全装配）', () => {
     const { port } = app.getHttpServer().address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${port}`;
 
-    const granted = await post('/dev/policies', {
-      rules: [{ kind: 'grant-role', tenant: 'default', user: OPERATOR, role: 'admin' }],
-    });
+    const granted = await post(
+      '/dev/policies',
+      { rules: [{ kind: 'grant-role', tenant: 'default', user: seededUser.id, role: 'admin' }] },
+      { 'content-type': 'application/json', 'x-smes-user': OPERATOR },
+    );
     expect(granted.status).toBe(200);
+    seededUserId = seededUser.id;
+    AUTH_HEADERS = { 'content-type': 'application/json', 'x-smes-user': seededUserId };
   }, 60_000);
 
   afterAll(async () => {
@@ -168,7 +185,7 @@ describe('T1 能力子集三模块组合态（零 DB 全装配）', () => {
   it('#101 通知中心：发布/收件箱/未读/已读 + 待办桥（审批派待办 → 站内通知）', async () => {
     // 显式发布（运维补发面）
     const published = await post('/notifications', {
-      recipient: OPERATOR,
+      recipient: seededUserId,
       title: '联调补发通知',
       source: 'ops',
     });
@@ -183,7 +200,7 @@ describe('T1 能力子集三模块组合态（零 DB 全装配）', () => {
     // 回落路径的组合态断言；切换/驱动断言在 #102 用例）。
     const started = await post('/approval/cases', {
       subjectRef: { type: 'capability-e2e', id: 'cap-1' },
-      approvers: [OPERATOR],
+      approvers: [seededUserId],
       reason: '组合态验证',
     });
     expect(started.status).toBe(201);
@@ -270,7 +287,7 @@ describe('T1 能力子集三模块组合态（零 DB 全装配）', () => {
     expect(activated.status).toBe(201);
     const started = await post('/approval/cases', {
       subjectRef: { type: 'capability-e2e', id: 'cap-2' },
-      approvers: [OPERATOR],
+      approvers: [seededUserId],
       reason: '切换后驱动',
     });
     expect(started.status).toBe(201);
@@ -281,7 +298,7 @@ describe('T1 能力子集三模块组合态（零 DB 全装配）', () => {
     expect(deactivated.body.active).toBe(false);
     const fallback = await post('/approval/cases', {
       subjectRef: { type: 'capability-e2e', id: 'cap-3' },
-      approvers: [OPERATOR],
+      approvers: [seededUserId],
       reason: '回落默认',
     });
     expect(fallback.body.case.flowConfigId).toBe('general-approval');

@@ -20,7 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { Outlet } from 'react-router';
 import { AudioWaveform, Bell, Building2, LoaderCircle, LogOut, Menu, X } from 'lucide-react';
-import { toPermissionCodes, toSidebarMenu } from '@smes/product-ui';
+import { permissionCode, sessionHasPermission, toPermissionCodes, toSidebarMenu } from '@smes/product-ui';
 import { menuTree } from '../menu';
 import { fetchUnreadCount } from '../data/notificationsApi';
 import { useMergedMenu } from './useMenuConfig';
@@ -50,6 +50,21 @@ interface ShellIdentity {
   readonly tenantId?: unknown;
 }
 
+/** 未读计数读取门禁码（与后端 GET /notifications/unread-count 门禁同码）。 */
+const NOTIFICATION_READ = permissionCode('notification:read');
+
+/**
+ * D-12 投影判定（唯一决策点，unreadQuery 的 enabled 即本函数返回值）：
+ * 未就绪或无 notification:read → false（不发起 unread-count 请求，不渲染
+ * 铃铛——fail-open 语义不变，无新增报错 UI）；admin 通配 bypass 内含。
+ */
+export function canPollUnreadCount(permissionData: unknown): boolean {
+  return (
+    permissionData !== undefined &&
+    sessionHasPermission(toPermissionCodes(permissionData), NOTIFICATION_READ)
+  );
+}
+
 function ShellBody() {
   const { data: permissionData } = usePermissions({});
   const permissions = toPermissionCodes(permissionData);
@@ -60,11 +75,14 @@ function ShellBody() {
 
   // T1 #101：顶栏铃铛——notification:read 门禁的未读计数（30s 轮询；无权限/
   // 失败 = 不渲染，fail-open 不占位）。入口页 = /notifications（通知中心页）。
+  // fix-wave-2 D-12（总控裁定追加）：无权限/未就绪即不发起请求（此前 403 后
+  // 才回落不渲染）。
   const unreadQuery = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: fetchUnreadCount,
     refetchInterval: 30_000,
     retry: false,
+    enabled: canPollUnreadCount(permissionData),
   });
   const showBell = unreadQuery.data !== undefined;
   const unreadCount = unreadQuery.data ?? 0;

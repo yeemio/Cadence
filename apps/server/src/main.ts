@@ -29,7 +29,7 @@ import { connectMenuConfigStore } from '@smes/business-store/menu-config';
 import { connectNotificationStore } from '@smes/business-store/notifications';
 import { connectApprovalConfigStore } from '@smes/business-store/approval-config';
 import { connectIssueStore } from '@smes/business-store/issue';
-import { connectAttachmentStore } from '@smes/business-store/attachment';
+import { connectAttachmentStore, connectAttachmentObjectStorage } from '@smes/business-store/attachment';
 import { metricSourceSetOf } from '@smes/metric-pack';
 import { hostBasedTenantResolver, TenantResolutionError, type TenantId } from '@smes/business-core';
 import { buildAppModule, parseModulesEnabled } from './app-registry.js';
@@ -116,12 +116,21 @@ async function bootstrap(): Promise<void> {
   // 不注入 = buildAppModule 回落模块内存实现（零 DB boot 语义完整）。
   const issueStoreHandle = process.env['DATABASE_URL'] ? connectIssueStore() : undefined;
   const attachmentStoreHandle = process.env['DATABASE_URL'] ? connectAttachmentStore() : undefined;
-  // 对象存储（U6）：显式 SMES_ATTACHMENT_DIR 时注入本地文件适配器（字节落盘
-  // 跨重启存活）；缺省不注入 = 模块内存适配器（重启即失——零接线形态语义诚实，
-  // 部署期换装 MinIO/S3 经同端口替换，不动业务面）。
+  // fix-wave-4 W4-2（D-3）：attachment 对象字节 PG 适配器——同上惰性连接；有
+  // DATABASE_URL 的部署形态附件字节入库 attachment_objects（bytea），重启随
+  // pg-data 卷存活（修复内存适配器重启即丢、download-reference 502）。
+  const attachmentObjectStorageHandle = process.env['DATABASE_URL']
+    ? connectAttachmentObjectStorage()
+    : undefined;
+  // 对象存储（U6；W4-2 装配切换）：SMES_ATTACHMENT_DIR 显式存在 → 本地文件
+  // 适配器（运维显式覆盖，字节落盘跨重启存活——既有行为保留）；否则
+  // DATABASE_URL 存在 → PG bytea 适配器（部署形态即此形态）；否则不注入 =
+  // 模块内存适配器（零 DB 演示回落，重启即失——语义诚实，MinIO/S3 部署期
+  // 换装经同端口替换，不动业务面）。DIR 与 PG 并存时 DIR 优先（显式覆盖
+  // 语义优先，预研 §4-1 缺省建议；最终取舍归 Owner 裁定）。
   const attachmentObjectStorage = process.env['SMES_ATTACHMENT_DIR']
     ? new LocalFileSystemObjectStorage({ rootDirectory: process.env['SMES_ATTACHMENT_DIR'] })
-    : undefined;
+    : attachmentObjectStorageHandle?.objectStorage;
   const standardReportsProviderByTenant = new Map<string, ReportSourceProvider>();
   const standardReportsSourceProvider = process.env['DATABASE_URL']
     ? {

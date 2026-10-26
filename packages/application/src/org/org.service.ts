@@ -15,6 +15,7 @@ import { splitPermissionCode } from '../core/auth/permission-code.js';
 import type { PermissionCode } from '../core/auth/permission-code.js';
 import type { PolicyRule, RoleName } from '../core/auth/policy-store.js';
 import type { SessionRevoker } from '../auth/session-stores.js';
+import { hashPassword } from '../auth/password.js';
 import { InMemoryDepartmentStore, InMemoryPositionStore } from './in-memory-org-stores.js';
 import { OrgInputError, OrgNotFoundError } from './org-errors.js';
 import {
@@ -29,6 +30,7 @@ import {
   parseUpdateDepartmentInput,
   parseUpdatePositionInput,
   parseUserIdParam,
+  parseUserPasswordInput,
   parseUserStatusInput,
 } from './org-input.js';
 import type {
@@ -76,8 +78,13 @@ export class OrgService {
   // ---- 用户 ----
 
   async createUser(tenant: TenantId, input: unknown): Promise<UserAccount> {
-    const parsed = parseCreateUserInput(input);
-    return this.users.create({ tenant, ...parsed });
+    // 明文口令只到本层：scrypt 哈希后过端口（D-2）；不带 = 未设口令态（登录 401）
+    const { password, ...rest } = parseCreateUserInput(input);
+    return this.users.create({
+      tenant,
+      ...rest,
+      ...(password === undefined ? {} : { passwordHash: hashPassword(password) }),
+    });
   }
 
   async listUsers(tenant: TenantId): Promise<readonly UserAccount[]> {
@@ -116,6 +123,35 @@ export class OrgService {
       throw new OrgNotFoundError(`租户 '${tenant}' 内不存在用户 '${userId}'`);
     }
     if (!active && this.sessions !== null) {
+      await this.sessions.revokeAllForUser(tenant, id);
+    }
+    return updated;
+  }
+
+  /**
+   * 管理员设置/重置口令（PUT /org/users/:id/password，D-2）。
+   *
+   * 取舍（写明）：
+   *  - 哈希覆写 = 新口令即刻生效，旧口令即刻失效（同 username 下只有
+   *    最新 hash 可验过——旧口令自然 401）；
+   *  - 写时全端撤销该用户会话（对齐 users.active 启停的先例）：重置常
+   *    出于口令泄露处置，已签发会话不应在旧凭据暴露下继续存活；用户
+   *    以新口令重新登录。管理员重置自己也撤自己——无自锁风险（新口令
+   *    是操作者刚设置的，重新登录即恢复）；
+   *  - 停用用户也可设口令（口令与 active 正交——登录侧 active=false 恒拒）。
+   */
+  async setUserPassword(tenant: TenantId, userId: string, input: unknown): Promise<UserAccount> {
+    const { password } = parseUserPasswordInput(input);
+    const id = parseUserIdParam(userId);
+    const target = await this.users.find(tenant, id);
+    if (target === null) {
+      throw new OrgNotFoundError(`租户 '${tenant}' 内不存在用户 '${userId}'`);
+    }
+    const updated = await this.users.updatePassword(tenant, id, hashPassword(password));
+    if (updated === null) {
+      throw new OrgNotFoundError(`租户 '${tenant}' 内不存在用户 '${userId}'`);
+    }
+    if (this.sessions !== null) {
       await this.sessions.revokeAllForUser(tenant, id);
     }
     return updated;

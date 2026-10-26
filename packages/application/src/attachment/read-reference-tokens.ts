@@ -2,9 +2,11 @@
  * 只读引用令牌（U3 A13）：零基建适配器（内存/本地文件）的短时能力凭证。
  *
  * 形状：`v1.<b64url(claims JSON)>.<b64url(HMAC-SHA256)>`——对象键/目标/过期
- * 时刻/下载展示名/内容类型全部入 claims，HMAC 防篡改，常数时间比较。过期即
- * 失效（verifyReadReference 返回 null）。等价文档语义：私有桶 + 仅带签名 GET
- * + response-content-disposition（downloadName 随令牌下发）。
+ * 时刻/下载展示名/内容类型/租户标识全部入 claims，HMAC 防篡改，常数时间比较。
+ * 租户标识（tenantId）随 claims 签名：兑现方（resolveReadReference）与请求解析
+ * 出的当前租户比对一致才放行——同一令牌换租户 Host 兑现即无效（D-4）。
+ * 过期即失效（verifyReadReference 返回 null）。等价文档语义：私有桶 + 仅带签名
+ * GET + response-content-disposition（downloadName 随令牌下发）。
  *
  * 密钥取舍：适配器实例自持（构造注入或随机生成）——重启后旧引用失效，与
  * 60 秒级 TTL 的短时效语义一致；部署期接入真实对象存储后由其 SDK 签名取代。
@@ -13,6 +15,8 @@ import { createHmac, getRandomValues, timingSafeEqual } from 'node:crypto';
 
 /** 令牌载荷（只读面：不含可写字段）。 */
 export interface ReadReferenceClaims {
+  /** 签发租户标识（兑现方与当前租户比对一致才放行）。 */
+  readonly tenantId: string;
   readonly target: string;
   readonly objectKey: string;
   /** 过期时刻（epoch 毫秒）。 */
@@ -67,6 +71,7 @@ export function verifyReadReferenceToken(
     return null;
   }
   if (
+    typeof claims?.tenantId !== 'string' ||
     typeof claims?.target !== 'string' ||
     typeof claims?.objectKey !== 'string' ||
     typeof claims?.expiresAtMs !== 'number' ||

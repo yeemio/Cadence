@@ -17,6 +17,7 @@ import {
   PERMISSION_METADATA_KEY,
   InMemoryApprovalCaseStore,
   InMemoryTodoStore,
+  InMemoryUserStore,
   ApprovalModule,
   ApprovalService,
   ApprovalConflictError,
@@ -151,6 +152,85 @@ describe('发起审批（start）', () => {
       .rejects.toBeInstanceOf(ApprovalInputError);
     await expect(service.start(t1, bob, { subjectRef: { type: 'item', id: 'x' }, approvers: [alice], reason: '  ' }))
       .rejects.toBeInstanceOf(ApprovalInputError);
+  });
+});
+
+describe('发起审批（审批人校验，D-11：目录接线时逐人查本租户活动用户）', () => {
+  async function newApprovalWithDirectory() {
+    const cases = new InMemoryApprovalCaseStore();
+    const records = createInMemoryApprovalRecordStore();
+    const events = createInMemoryApprovalEventStore();
+    const todos = new InMemoryTodoStore();
+    const users = new InMemoryUserStore();
+    const service = new ApprovalService(cases, records, events, todos, {
+      config: DEFAULT_APPROVAL_FLOW_CONFIG,
+      submitEvent: 'SUBMIT',
+      reviewEvent: 'START_REVIEW',
+      userStore: users,
+    });
+    // alice：t1 活动用户；carol：t1 停用用户；dave：仅 t2 活动用户（跨租户探针）。
+    const alice = await users.create({ tenant: t1, username: 'alice', displayName: 'Alice' });
+    const carol = await users.create({
+      tenant: t1, username: 'carol', displayName: 'Carol', active: false,
+    });
+    const dave = await users.create({ tenant: t2, username: 'dave', displayName: 'Dave' });
+    return { cases, todos, users, service, alice, carol, dave };
+  }
+
+  it('审批人在本租户不存在 → ApprovalInputError，不建案不派待办', async () => {
+    const { cases, todos, service, alice } = await newApprovalWithDirectory();
+    await expect(
+      service.start(t1, bob, {
+        subjectRef: { type: 'item', id: 'i1' },
+        approvers: [alice.id, 'no-such-user'],
+        reason: 'r',
+      }),
+    ).rejects.toThrow(ApprovalInputError);
+    expect((await cases.list(t1)).length).toBe(0); // 拒绝发生在任何落账之前
+    expect((await todos.listOwn(t1, alice.id)).length).toBe(0);
+  });
+
+  it('审批人存在但 active=false → ApprovalInputError（与不存在同错误形态）', async () => {
+    const { service, alice, carol } = await newApprovalWithDirectory();
+    await expect(
+      service.start(t1, bob, {
+        subjectRef: { type: 'item', id: 'i1' },
+        approvers: [alice.id, carol.id],
+        reason: 'r',
+      }),
+    ).rejects.toThrow(/不存在或不可用/);
+  });
+
+  it('审批人只存在于其他租户 → ApprovalInputError（租户收口，不泄漏归属）', async () => {
+    const { service, dave } = await newApprovalWithDirectory();
+    await expect(
+      service.start(t1, bob, {
+        subjectRef: { type: 'item', id: 'i1' },
+        approvers: [dave.id],
+        reason: 'r',
+      }),
+    ).rejects.toThrow(/不存在或不可用/); // 与"不存在"同文案，不区分他租户存在性
+  });
+
+  it('审批人均为本租户活动用户 → 发起成功（201 行为不变）', async () => {
+    const { todos, service, alice } = await newApprovalWithDirectory();
+    const result = await service.start(t1, bob, {
+      subjectRef: { type: 'item', id: 'i1' },
+      approvers: [alice.id],
+      reason: 'r',
+    });
+    expect(result.case.state).toBe('in_review');
+    expect((await todos.listOwn(t1, alice.id)).length).toBe(1);
+  });
+
+  it('未注入目录（模块缺省）→ 不校验，既有行为零变化', async () => {
+    const { service } = newApproval();
+    const result = await service.start(t1, bob, {
+      subjectRef: { type: 'item', id: 'i1' },
+      approvers: ['no-such-user'],
+      reason: 'r',
+    });
+    expect(result.case.state).toBe('in_review');
   });
 });
 

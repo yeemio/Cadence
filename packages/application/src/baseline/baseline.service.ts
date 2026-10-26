@@ -55,7 +55,7 @@ import {
   makeStandardTimeDefinedEvent,
   type BaselineProvenance,
 } from './baseline-events.js';
-import { FaultReportId, newFaultReportId } from './baseline-ids.js';
+import { FaultReportId, isBaselineUuidLiteral, newFaultReportId } from './baseline-ids.js';
 import {
   BASELINE_COMMAND_KINDS,
   parseEquipmentRegisterPayload,
@@ -1064,6 +1064,11 @@ export class BaselineService implements OutsourcingPriceLookup, MaterialValidati
   }
 
   async getValidationRun(tenant: TenantId, runId: string): Promise<MaterialValidationRunRow> {
+    // D-7：运行行 id 是裸 uuid 列，非 uuid 字面量必不存在——先按 404 语义短路，
+    // 不触存储（PG 适配层对非 uuid 串会抛 Prisma P2023 上浮 500）；消息与存储 miss 同形。
+    if (!isBaselineUuidLiteral(runId)) {
+      throw new BaselineNotFoundError(`租户 '${tenant}' 内不存在校验运行 '${runId}'`);
+    }
     const run = await this.stores.validationRuns.get(tenant, runId);
     if (run === null) throw new BaselineNotFoundError(`租户 '${tenant}' 内不存在校验运行 '${runId}'`);
     return run;

@@ -88,6 +88,19 @@ export class InMemoryUserStore implements UserStore {
     this.users.set(key, next);
     return toAccount(next);
   }
+
+  async updatePassword(
+    tenant: TenantId,
+    id: UserId,
+    passwordHash: string,
+  ): Promise<UserAccount | null> {
+    const key = `${tenant}|${id}`;
+    const row = this.users.get(key);
+    if (row === undefined) return null;
+    const next: UserRow = { ...row, passwordHash };
+    this.users.set(key, next);
+    return toAccount(next);
+  }
 }
 
 interface RoleRow {

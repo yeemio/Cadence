@@ -13,10 +13,32 @@ import { OrgInputError } from './org-errors.js';
 
 const USERNAME_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
 
+/**
+ * 口令长度上界（D-2）：auth 域既有校验（parseLoginInput）只查非空字符串、
+ * 无上界先例——本域取 1..128 并登记（scrypt 对长度无要求，上界只防
+ * 无意超长输入耗散哈希算力；不 trim——口令的前后空白是合法字符，
+ * 与 login 侧口径一致）。
+ */
+const PASSWORD_MAX_LENGTH = 128;
+
+function requirePassword(value: unknown, what: string): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > PASSWORD_MAX_LENGTH) {
+    throw new OrgInputError(
+      `${what} 须为 1~${PASSWORD_MAX_LENGTH} 字符的非空字符串：${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
 export interface CreateUserPayload {
   readonly username: string;
   readonly displayName: string;
   readonly active?: boolean;
+  /**
+   * 初始口令（可选，D-2）：明文只到用例层——OrgService 哈希后落
+   * passwordHash；缺省 = 未设口令态（登录 401，管理员可后补设）。
+   */
+  readonly password?: string;
 }
 
 function requireObject(input: unknown, what: string): Record<string, unknown> {
@@ -37,7 +59,7 @@ function requireDisplayName(value: unknown): string {
   return trimmed;
 }
 
-/** 解析 POST /org/users 请求体。 */
+/** 解析 POST /org/users 请求体（password 可选：带 = 设初始口令；不带 = 未设口令态）。 */
 export function parseCreateUserInput(input: unknown): CreateUserPayload {
   const record = requireObject(input, '创建用户请求体');
   const username = record['username'];
@@ -51,9 +73,14 @@ export function parseCreateUserInput(input: unknown): CreateUserPayload {
   if (active !== undefined && typeof active !== 'boolean') {
     throw new OrgInputError(`active 须为布尔：${JSON.stringify(active)}`);
   }
-  return active === undefined
-    ? { username, displayName }
-    : { username, displayName, active };
+  const password = record['password'];
+  const payload: { username: string; displayName: string; active?: boolean; password?: string } = {
+    username,
+    displayName,
+  };
+  if (active !== undefined) payload.active = active;
+  if (password !== undefined) payload.password = requirePassword(password, "字段 'password'");
+  return payload;
 }
 
 export interface CreateRolePayload {
@@ -133,6 +160,16 @@ export function parseUserStatusInput(input: unknown): UserStatusPayload {
     throw new OrgInputError(`active 须为布尔：${JSON.stringify(active)}`);
   }
   return { active };
+}
+
+export interface UserPasswordPayload {
+  readonly password: string;
+}
+
+/** 解析 PUT /org/users/:id/password 请求体 { password: string }（D-2：设置/重置口令）。 */
+export function parseUserPasswordInput(input: unknown): UserPasswordPayload {
+  const record = requireObject(input, '用户口令请求体');
+  return { password: requirePassword(record['password'], "字段 'password'") };
 }
 
 /** 路径参数角色名解析。 */
