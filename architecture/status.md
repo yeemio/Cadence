@@ -16,6 +16,8 @@
 - **wave-2（侧边栏线程）**：9 项 P2/P3 合同 fix-wave-2/，在途（其 capability 2 失败属本波 A-2 approval 改动，wave-3 回传归属笔误已修正）
 - **fix-wave-4 合同已预写**：W4-1 D-9（等 wave-3 解锁 reporting）/W4-2 D-3 附件 PG 持久化（等 wave-2 解锁 attachment；定向方案 ObjectStoragePort PG 适配器）
 - **BLOCKED 链路预验（总控）**：报工核查 ✓/重复核查幂等 ✓（信封 rejected）/成本重建全链 ✓（costing.model.publish→rebuild 双 committed 快照落账——欠账清单"须先跑 rebuild"实为"先 publish 再 rebuild"）；外协完成→回厂质检单未创建（两实验 0 单）疑点固定——因当前镜像是 wave-3 半成品（正改质检 intake），终态镜像复验后定性
+- **D-3 ✅ 三方闭环（15:45 补齐）**：实现主体=第一线 writer（14:46 派，撞 [1308] 限额断在收尾前——PG bytea 适配器+双迁移+RLS 102 表+装配切换全落树）；收尾=第二线（两行计数 101→102：project-cost 断言+rls-proof 常量）；验收 ACCEPT（第二线 agent_fffec981，高危点核实：令牌租户绑定语义经共享 read-reference-tokens 结构性继承）；**容器复证（第一线 15:45）：上传→docker restart→签名 URL 下载内容原样返回 200（修复前 502），attachment_objects 表落行**。装配语义：SMES_ATTACHMENT_DIR→文件适配器（显式覆盖优先）＞DATABASE_URL→PG bytea＞零 DB→内存（诚实回落）
+- **wave-2 九项事后验收 ✅ ACCEPT（agent_c2d6827d，15:40）**：逐项亲读 diff+亲跑四包测试（web 143+14/product-ui 130/application 577/server 70）全绿；低危三条登记（TESTING-GUIDE 计数半新半旧已顺手清偿/D-11 无 HTTP 层 e2e 断言/未知租户 404 分叉无直接 e2e 系历史欠账）
 - **合流收口（✅ 15:15，Owner 指令"发布到最新 GitHub"）**：全仓 `pnpm verify` exit 0（三跑收敛：①application baseline 事件排序 flaky 根因修复=同毫秒 occurredAt 下 uuidv4 次级键掷骰子，改稳定排序落插入序；②wave-3 intake 测试 8 处 tsc 泛型收窄；③capability e2e 适配 D-11=预置共享 userStore 真实用户身份）。**提交内容分层**：有完整证据链（修复+复证+验收 ACCEPT）=wave-1 D-8/D-1、wave-3 W3-1/W3-2、D-2、D-9；**verify 绿但待验收**=wave-2 九项（侧边栏线程产出，实现亲读过 D-7/D-11 正确）+D-3 PG 对象存储半成品（writer 撞限额遗产，verify 过但无回传证据链，装配切换行未做——定时 16:09 重派收口）。grokbot 补测即外部验收（8 条 BLOCKED+RP-01/D-9 已由本线代复+7 条 N/A 用例修正重跑）
 
 ## PRD v1.0（✅ 10-26 午，Owner 指令"对照 73 份开发文档搭建完整需求文档"+三决策：SRS 形态/全量需求化+差异登记/一波全量并行 GLM-5.3）
