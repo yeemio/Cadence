@@ -57,7 +57,7 @@ import {
   OrgModule,
   ReportingModule,
   // A8/A10 首波：数字运营大屏（SSE 推送 + A10 日跑批；组合根 HTTP 面）
-  // ScreenHttpModule,  // A8 大屏装配收口中（限额中断半成品）：域层已就绪，module 层归 19:53 后续做波
+  // ScreenHttpModule 从本仓 screen-http.module 导入（A8 装配，writer 写于 apps/server）：
   StandardReportsModule,
   InMemoryMachiningDailyStatsStore,
   WorkbenchModule,
@@ -149,6 +149,7 @@ import {
   type IssueDomainEventStore,
   type ProcessMaterialLinkStore,
 } from '@smes/application';
+import { parseDailyTenants, ScreenHttpModule } from './screen-http.module.js';
 import { inMemoryPayrollStores, type PayrollStores } from '@smes/payroll';
 import { PayrollHttpModule } from './payroll-http.module.js';
 import { inMemoryMaintenanceStores, type MaintenanceStores } from '@smes/maintenance';
@@ -697,45 +698,45 @@ export const MODULE_DEFINITIONS: Record<
   // HTTP/推送面——SSE 数据帧通道 + 5s 聚合节拍 + A10 日跑批定时器。事实源从
   // StorePorts 逐项解析（各源模块未启用 → 对应读面 undefined → 块级降级占位，
   // screen-ports.ts 头注契约）；日统计存储 = PG 句柄或组合根内存缺省。
-  //   screen: (stores) =>
-  //     ScreenHttpModule.register({
-  //       sources: {
-  //         workOrders: stores.workOrderStore,
-  //         dispatchOrders: stores.dispatchOrderStore,
-  //         outsourcingLines: stores.dispatchOutsourcingLineStore,
-  //         workReports: stores.reportingReportStore,
-  //         inspections: stores.inspectionOrderStore,
-  //         listingLines: stores.listingLineStore,
-  //         machiningDailyStats: stores.machiningDailyStatsStore,
-  //         // 报工排名显示名：org UserStore 读面（userStore 恒装配——sharedUserStore）
-  //         userNameOf:
-  //           stores.userStore === undefined
-  //             ? undefined
-  //             : async (tenant, reporter) => {
-  //                 try {
-  //                   const account = await stores.userStore!.find(tenant, UserId.create(reporter));
-  //                   return account?.displayName ?? null;
-  //                 } catch {
-  //                   return null; // 非法 reporter id 形状 → 回退原样显示（service 头注）
-  //                 }
-  //               },
-  //       },
-  //       dailyStore: stores.machiningDailyStatsStore!,
-  //       // 屏显静态配置 env 注入（部署期覆盖缺省值；非法值回落 DEFAULT——呈现面容错）
-  //       config: {
-  //         companyNameLines: [
-  //           process.env['SMES_SCREEN_COMPANY_LINE_1'] ?? '',
-  //           process.env['SMES_SCREEN_COMPANY_LINE_2'] ?? '',
-  //         ].filter((line) => line.length > 0),
-  //         ...(process.env['SMES_SCREEN_SAFE_BASELINE_DATE'] !== undefined
-  //           ? { safeProductionBaselineDate: process.env['SMES_SCREEN_SAFE_BASELINE_DATE'] }
-  //           : {}),
-  //       },
-  //       frameIntervalMs: Number(process.env['SMES_SCREEN_FRAME_INTERVAL_MS'] ?? '') || undefined,
-  //       // A10 跑批租户集：saas 形态 SMES_TENANTS 逗号清单；缺省单租户 'default'
-  //       dailyTenants: parseDailyTenants(process.env['SMES_TENANTS']),
-  //       publicStream: process.env['SMES_SCREEN_PUBLIC_STREAM'] === 'on',
-  //     }),
+  screen: (stores) =>
+    ScreenHttpModule.register({
+      sources: {
+        workOrders: stores.workOrderStore,
+        dispatchOrders: stores.dispatchOrderStore,
+        outsourcingLines: stores.dispatchOutsourcingLineStore,
+        workReports: stores.reportingReportStore,
+        inspections: stores.inspectionOrderStore,
+        listingLines: stores.listingLineStore,
+        machiningDailyStats: stores.machiningDailyStatsStore,
+        // 报工排名显示名：org UserStore 读面（userStore 恒装配——sharedUserStore）
+        userNameOf:
+          stores.userStore === undefined
+            ? undefined
+            : async (tenant, reporter) => {
+                try {
+                  const account = await stores.userStore!.find(tenant, UserId.create(reporter));
+                  return account?.displayName ?? null;
+                } catch {
+                  return null; // 非法 reporter id 形状 → 回退原样显示（service 头注）
+                }
+              },
+      },
+      dailyStore: stores.machiningDailyStatsStore!,
+      // 屏显静态配置 env 注入（部署期覆盖缺省值；非法值回落 DEFAULT——呈现面容错）
+      config: {
+        companyNameLines: [
+          process.env['SMES_SCREEN_COMPANY_LINE_1'] ?? '',
+          process.env['SMES_SCREEN_COMPANY_LINE_2'] ?? '',
+        ].filter((line) => line.length > 0),
+        ...(process.env['SMES_SCREEN_SAFE_BASELINE_DATE'] !== undefined
+          ? { safeProductionBaselineDate: process.env['SMES_SCREEN_SAFE_BASELINE_DATE'] }
+          : {}),
+      },
+      frameIntervalMs: Number(process.env['SMES_SCREEN_FRAME_INTERVAL_MS'] ?? '') || undefined,
+      // A10 跑批租户集：saas 形态 SMES_TENANTS 逗号清单；缺省单租户 'default'
+      dailyTenants: parseDailyTenants(process.env['SMES_TENANTS']),
+      publicStream: process.env['SMES_SCREEN_PUBLIC_STREAM'] === 'on',
+    }),
 };
 
 /** 组合根装配选项。 */

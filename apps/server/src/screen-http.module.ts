@@ -220,3 +220,9 @@ export class ScreenHttpModule {
     };
   }
 }
+
+/** A10 跑批租户集：saas 形态 SMES_TENANTS 逗号清单；缺省单租户 'default'。 */
+export function parseDailyTenants(raw: string | undefined): readonly TenantId[] {
+  const list = (raw ?? '').split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+  return (list.length > 0 ? list : ['default']).map((t) => TenantId.create(t));
+}
