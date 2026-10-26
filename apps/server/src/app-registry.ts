@@ -20,6 +20,7 @@ import {
   AftercareClaimModule,
   AttachmentModule,
   ColumnPreferencesModule,
+  createOrgPartsApproverDirectory,
   IssueModule,
   HoursModule,
   InspectionModule,
@@ -83,6 +84,7 @@ import {
   type EquipmentStore,
   type FaultReportStore,
   type GapCheckStore,
+  type GoodsShelfStore,
   type HoursDomainEventStore,
   type HoursOperationStore,
   type InspectionDomainEventStore,
@@ -150,6 +152,7 @@ import {
   type IssueOperationStore,
   type IssueDomainEventStore,
   type ProcessMaterialLinkStore,
+  type ItemPriceLedgerStore,
 } from '@smes/application';
 import { parseDailyTenants, ScreenHttpModule } from './screen-http.module.js';
 import { inMemoryPayrollStores, type PayrollStores } from '@smes/payroll';
@@ -216,6 +219,8 @@ export interface StorePorts {
   readonly supplierStore?: SupplierStore | undefined;
   /** 计量单位字典存储（MasterdataModule 注入点，S1 backfill：0920 #100）。 */
   readonly unitStore?: UnitStore | undefined;
+  // S9：价格台账句柄（可选注入，缺省模块内存回落）
+  readonly itemPriceLedgerStore?: ItemPriceLedgerStore | undefined;
   /** 待办存储（WorkbenchModule 与 ApprovalModule 共享注入点——待办联动同源）。 */
   readonly todoStore?: TodoStore | undefined;
   /** 审批案件存储（ApprovalModule 注入点）。 */
@@ -284,6 +289,8 @@ export interface StorePorts {
   readonly inspectionMachineEventStore?: ApprovalEventStore | undefined;
   /** 仓库主数据存储（InventoryModule 注入点，M2 Wave-3）。 */
   readonly inventoryWarehouseStore?: WarehouseStore | undefined;
+  /** 货架/货架库位主数据存储（InventoryModule 注入点，fix-wave-6 6b-1 B3）。 */
+  readonly inventoryGoodsShelfStore?: GoodsShelfStore | undefined;
   /** 库存账（现存量+预占）存储（InventoryModule 注入点）。 */
   readonly inventoryAccountStore?: StockAccountStore | undefined;
   /** 库位余额存储（InventoryModule 注入点）。 */
@@ -430,6 +437,8 @@ export const MODULE_DEFINITIONS: Record<
       customerStore: stores.customerStore,
       supplierStore: stores.supplierStore,
       unitStore: stores.unitStore,
+      // S9：PG 形态句柄；undefined 时模块回落内存实现（恒空页，零 DB boot 语义完整）
+      ...(stores.itemPriceLedgerStore === undefined ? {} : { itemPriceLedgerStore: stores.itemPriceLedgerStore }),
     }),
   workbench: (stores) => WorkbenchModule.register({ todoStore: stores.todoStore }),
   approval: (stores) =>
@@ -492,6 +501,11 @@ export const MODULE_DEFINITIONS: Record<
       issuePort: wiring.workorder?.issuePort,
       listingPort: wiring.workorder?.listingPort,
       inventoryPort: wiring.workorder?.inventoryPort,
+      // fix-wave-6 6b-2（S6 / RREQ-IS-037）：配件审批链二/三级或签角色解析
+      // ——org grant-role 绑定 ∩ 活动用户实时解析（不落库）；org 未装配回落
+      // 模块空目录（多级链该级审批明确拒绝）。审批链级数缺省单级零回归，
+      // 多级链经 serviceOptions.partsApprovalChain / partsChainResolver 启用。
+      approverPort: createOrgPartsApproverDirectory(stores.policyStore, stores.userStore),
     }),
   // M2 Wave-2 环节模块（同上按需启停；跨模块端口 workOrderFeed/inventory/receipt/
   // excel/materialValidation 暂用模块缺省——workOrderFeed 空实现时骨架走四类缺省集、
@@ -540,6 +554,7 @@ export const MODULE_DEFINITIONS: Record<
   inventory: (stores) =>
     InventoryModule.register({
       warehouseStore: stores.inventoryWarehouseStore,
+      goodsShelfStore: stores.inventoryGoodsShelfStore,
       accountStore: stores.inventoryAccountStore,
       locationBalanceStore: stores.inventoryLocationBalanceStore,
       movementStore: stores.inventoryMovementStore,
@@ -789,6 +804,8 @@ export interface BuildAppModuleOptions {
   readonly customerStore?: CustomerStore | undefined;
   readonly supplierStore?: SupplierStore | undefined;
   readonly unitStore?: UnitStore | undefined;
+  /** S9 价格台账句柄（可选注入；缺省模块内存回落）。 */
+  readonly itemPriceLedgerStore?: ItemPriceLedgerStore | undefined;
   readonly todoStore?: TodoStore | undefined;
   readonly approvalCaseStore?: ApprovalCaseStore | undefined;
   readonly approvalRecordStore?: ApprovalRecordStore | undefined;
@@ -821,6 +838,7 @@ export interface BuildAppModuleOptions {
   readonly inspectionDomainEventStore?: InspectionDomainEventStore | undefined;
   readonly inspectionMachineEventStore?: ApprovalEventStore | undefined;
   readonly inventoryWarehouseStore?: WarehouseStore | undefined;
+  readonly inventoryGoodsShelfStore?: GoodsShelfStore | undefined;
   readonly inventoryAccountStore?: StockAccountStore | undefined;
   readonly inventoryLocationBalanceStore?: StockLocationBalanceStore | undefined;
   readonly inventoryMovementStore?: StockMovementStore | undefined;
@@ -1144,6 +1162,7 @@ export function buildAppModule(
         customerStore: options.customerStore,
         supplierStore: options.supplierStore,
         unitStore: options.unitStore,
+      itemPriceLedgerStore: options.itemPriceLedgerStore,
         todoStore: effectiveTodoStore,
         approvalCaseStore: options.approvalCaseStore,
         approvalRecordStore: options.approvalRecordStore,
@@ -1177,6 +1196,7 @@ export function buildAppModule(
         inspectionDomainEventStore: options.inspectionDomainEventStore,
         inspectionMachineEventStore: options.inspectionMachineEventStore,
         inventoryWarehouseStore: options.inventoryWarehouseStore,
+        inventoryGoodsShelfStore: options.inventoryGoodsShelfStore,
         inventoryAccountStore: options.inventoryAccountStore,
         inventoryLocationBalanceStore: options.inventoryLocationBalanceStore,
         inventoryMovementStore: wiringStores.inventoryMovements,

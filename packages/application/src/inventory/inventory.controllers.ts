@@ -10,6 +10,16 @@
  *   POST /inventory/warehouses                    warehouse:write  （建仓库+库位）
  *   GET  /inventory/warehouses                    warehouse:read
  *   GET  /inventory/warehouses/:id                warehouse:read   （含库位）
+ *   POST /inventory/goods-shelves                 warehouse:write  （建货架+随建库位，B3）
+ *   GET  /inventory/goods-shelves                 warehouse:read   （货架目录）
+ *   GET  /inventory/goods-shelves/:id             warehouse:read   （含货架库位）
+ *   POST /inventory/goods-shelves/:id/update      warehouse:write  （改码/名称/备注）
+ *   POST /inventory/goods-shelves/:id/status      warehouse:write  （启停，结存保护）
+ *   POST /inventory/goods-shelves/:id/remove      warehouse:write  （删架，下属保护）
+ *   POST /inventory/goods-shelves/:id/locations   warehouse:write  （建货架库位）
+ *   POST /inventory/shelf-locations/:id/update    warehouse:write  （改码/名称/备注）
+ *   POST /inventory/shelf-locations/:id/status    warehouse:write  （启停，结存保护）
+ *   POST /inventory/shelf-locations/:id/remove    warehouse:write  （删位，结存+流水保护）
  *   POST /inventory/stock/receipts                stock:receive    （三类入库）
  *   POST /inventory/stock/issues                  stock:issue      （出库）
  *   POST /inventory/stock/transfers               stock:transfer   （调拨/移库）
@@ -94,9 +104,146 @@ export class WarehousesController {
   }
 }
 
-@Controller('inventory/stock')
-export class StockMovementCommandsController {
+/**
+ * 货架主数据（B3 / RREQ-IV-002）：建架（可随建库位）、目录/详情、改码锁与
+ * 停删保护。命令动词走 service.execute 分发；货架与货架库位沿用仓库主数据
+ * 权限码（warehouse:read/write——仓库四类主数据同族，不另设权限面）。
+ */
+@Controller('inventory/goods-shelves')
+export class GoodsShelvesController {
   constructor(
+    private readonly tenantContext: TenantContext,
+    private readonly inventory: InventoryService,
+  ) {}
+
+  @Post()
+  @RequirePermission('warehouse:write')
+  async define(@Req() request: AuthenticatedRequest, @Body() body: unknown): Promise<InventoryCommandResult> {
+    return this.inventory.execute(envelopeOf(this.tenantContext, request, body, 'goods-shelf.define.v1'));
+  }
+
+  @Get()
+  @RequirePermission('warehouse:read')
+  async list(
+    @Query('warehouseId') warehouseId?: string,
+  ): Promise<{ shelves: Awaited<ReturnType<InventoryService['listGoodsShelves']>> }> {
+    return {
+      shelves: await this.inventory.listGoodsShelves(
+        this.tenantContext.current(),
+        parseOptionalIdFilter(warehouseId, '仓库 id'),
+      ),
+    };
+  }
+
+  @Get(':id')
+  @RequirePermission('warehouse:read')
+  async get(@Param('id') id: string): Promise<Awaited<ReturnType<InventoryService['goodsShelfDetail']>>> {
+    return this.inventory.goodsShelfDetail(this.tenantContext.current(), parseIdParam(id, '货架 id'));
+  }
+
+  @Post(':id/update')
+  @RequirePermission('warehouse:write')
+  async update(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InventoryCommandResult> {
+    return this.inventory.execute(
+      envelopeOf(this.tenantContext, request, body, 'goods-shelf.update.v1'),
+      parseIdParam(id, '货架 id'),
+    );
+  }
+
+  @Post(':id/status')
+  @RequirePermission('warehouse:write')
+  async setStatus(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InventoryCommandResult> {
+    return this.inventory.execute(
+      envelopeOf(this.tenantContext, request, body, 'goods-shelf.set-status.v1'),
+      parseIdParam(id, '货架 id'),
+    );
+  }
+
+  @Post(':id/remove')
+  @RequirePermission('warehouse:write')
+  async remove(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InventoryCommandResult> {
+    return this.inventory.execute(
+      envelopeOf(this.tenantContext, request, body, 'goods-shelf.remove.v1'),
+      parseIdParam(id, '货架 id'),
+    );
+  }
+
+  @Post(':id/locations')
+  @RequirePermission('warehouse:write')
+  async defineLocation(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InventoryCommandResult> {
+    return this.inventory.execute(
+      envelopeOf(this.tenantContext, request, body, 'shelf-location.define.v1'),
+      parseIdParam(id, '货架 id'),
+    );
+  }
+}
+
+/** 货架库位（挂货架）的编辑/启停/删除面（结存与流水引用保护在用例层）。 */
+@Controller('inventory/shelf-locations')
+export class ShelfLocationsController {
+  constructor(
+    private readonly tenantContext: TenantContext,
+    private readonly inventory: InventoryService,
+  ) {}
+
+  @Post(':id/update')
+  @RequirePermission('warehouse:write')
+  async update(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InventoryCommandResult> {
+    return this.inventory.execute(
+      envelopeOf(this.tenantContext, request, body, 'shelf-location.update.v1'),
+      parseIdParam(id, '货架库位 id'),
+    );
+  }
+
+  @Post(':id/status')
+  @RequirePermission('warehouse:write')
+  async setStatus(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InventoryCommandResult> {
+    return this.inventory.execute(
+      envelopeOf(this.tenantContext, request, body, 'shelf-location.set-status.v1'),
+      parseIdParam(id, '货架库位 id'),
+    );
+  }
+
+  @Post(':id/remove')
+  @RequirePermission('warehouse:write')
+  async remove(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InventoryCommandResult> {
+    return this.inventory.execute(
+      envelopeOf(this.tenantContext, request, body, 'shelf-location.remove.v1'),
+      parseIdParam(id, '货架库位 id'),
+    );
+  }
+}
+
+@Controller('inventory/stock')
+export class StockMovementCommandsController {  constructor(
     private readonly tenantContext: TenantContext,
     private readonly inventory: InventoryService,
   ) {}

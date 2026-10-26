@@ -185,6 +185,10 @@ model ItemRecord {
   unit      String?
   category  String?
   active    Boolean  @default(true)
+  /// 初始价格（含税单价，分；可空 = 未维护——RREQ-MD-020，fix-wave-6 6b-1 S9。
+  /// 成本取价兜底联动归 costing 对账口径，本批不做）。Int 分口径与
+  /// listing unit_price_minor / 全库 minor 列一致。
+  initialPriceMinor Int?     @map("initial_price_minor")
   createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
 
   @@unique([tenantId, code])
@@ -1250,6 +1254,49 @@ model WarehouseLocationRecord {
   @@unique([tenantId, warehouseId, code])
   @@index([tenantId, warehouseId])
   @@map("warehouse_locations")
+}
+
+/// 货架主数据行（GoodsShelfStore 端口的 PG 持久化；fix-wave-6 6b-1 B3 /
+/// RREQ-IV-002——仓库主数据第三类，层级化库位组织的容器；(tenant, 仓, code)
+/// 唯一；运营表取舍同 warehouses——不套证据公共列；object_version 承载命令
+/// 信封 expectedRevision 乐观锁（条件更新 +1））。
+model GoodsShelfRecord {
+  id            String   @id @default(uuid(7))
+  tenantId      String   @map("tenant_id")
+  warehouseId   String   @map("warehouse_id")
+  code          String
+  name          String
+  remark        String?
+  status        String   @default("active")
+  objectVersion Int      @default(1) @map("object_version")
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, warehouseId, code])
+  @@index([tenantId, warehouseId])
+  @@map("goods_shelves")
+}
+
+/// 货架库位主数据行（GoodsShelfStore 端口的 PG 持久化；仓库主数据第四类——
+/// 编码以货架编码开头（应用侧收口）、(tenant, code) 表内唯一；收发存落位的
+/// 可选三级锚点；停删受正结存与流水引用保护（应用侧校验））。
+model ShelfLocationRecord {
+  id            String   @id @default(uuid(7))
+  tenantId      String   @map("tenant_id")
+  warehouseId   String   @map("warehouse_id")
+  goodsShelfId  String   @map("goods_shelf_id")
+  code          String
+  name          String?
+  remark        String?
+  status        String   @default("active")
+  objectVersion Int      @default(1) @map("object_version")
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, goodsShelfId])
+  @@index([tenantId, warehouseId])
+  @@map("shelf_locations")
 }
 
 /// 库存账投影行（StockAccountStore 端口的 PG 持久化；物料×仓库 维度，

@@ -199,6 +199,8 @@ async function bootstrap(): Promise<void> {
       customerStore: masterdataStore?.customerStore,
       supplierStore: masterdataStore?.supplierStore,
       unitStore: masterdataStore?.unitStore,
+      // S9 价格台账：PG 形态句柄透传（缺省内存恒空页，装配不断链）
+      itemPriceLedgerStore: masterdataStore?.itemPriceLedgerStore,
       todoStore: workbenchStore?.todoStore,
       approvalCaseStore: approvalStore?.caseStore,
       approvalRecordStore: approvalStore?.recordStore,
@@ -265,6 +267,7 @@ async function bootstrap(): Promise<void> {
       inspectionDomainEventStore: inspectionStoreHandle?.domainEventStore,
       inspectionMachineEventStore: inspectionStoreHandle?.machineEventStore,
       inventoryWarehouseStore: inventoryStoreHandle?.warehouseStore,
+      inventoryGoodsShelfStore: inventoryStoreHandle?.goodsShelfStore,
       inventoryAccountStore: inventoryStoreHandle?.accountStore,
       inventoryLocationBalanceStore: inventoryStoreHandle?.locationBalanceStore,
       inventoryMovementStore: inventoryStoreHandle?.movementStore,

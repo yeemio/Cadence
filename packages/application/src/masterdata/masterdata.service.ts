@@ -14,6 +14,7 @@ import {
   parseCreateSupplierInput,
   parseCreateUnitInput,
   parseIdParam,
+  parsePriceLedgerPageQuery,
   parseUpdateCustomerInput,
   parseUpdateItemInput,
   parseUpdateResourceInput,
@@ -25,6 +26,8 @@ import type {
   CustomerStore,
   ItemMaster,
   ItemStore,
+  ItemPriceLedgerStore,
+  ItemPurchasePriceEntry,
   ResourceMaster,
   ResourceStore,
   SupplierMaster,
@@ -34,9 +37,23 @@ import type {
 } from './masterdata-stores.js';
 import {
   InMemoryCustomerStore,
+  InMemoryItemPriceLedgerStore,
   InMemorySupplierStore,
   InMemoryUnitStore,
 } from './in-memory-masterdata-stores.js';
+
+/** 价格台账响应（RREQ-MD-019：单端点含物品摘要 + 初始价格 + 分页明细）。 */
+export interface ItemPurchasePriceLedgerView {
+  readonly itemId: string;
+  readonly itemCode: string;
+  readonly unit: string | null;
+  /** 初始价格（分；RREQ-MD-020——台账弹窗同屏维护口径，null = 未维护）。 */
+  readonly initialPriceMinor: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+  readonly entries: readonly ItemPurchasePriceEntry[];
+}
 
 export class MasterdataService {
   constructor(
@@ -46,6 +63,12 @@ export class MasterdataService {
     private readonly customers: CustomerStore = new InMemoryCustomerStore(),
     private readonly suppliers: SupplierStore = new InMemorySupplierStore(),
     private readonly units: UnitStore = new InMemoryUnitStore(),
+    /**
+     * 物品价格台账读面（fix-wave-6 6b-1 S9，RREQ-MD-019；可选尾参兼容既有
+     * 直接构造——缺省内存实现恒空页，PG 形态由组合根注入 business-store
+     * `./masterdata` 的只读实现）。
+     */
+    private readonly priceLedger: ItemPriceLedgerStore = new InMemoryItemPriceLedgerStore(),
   ) {}
 
   // ---- 物品 ----
@@ -65,6 +88,41 @@ export class MasterdataService {
       throw new MasterdataNotFoundError(`租户 '${tenant}' 内不存在物品 '${id}'`);
     }
     return updated;
+  }
+
+  /**
+   * 物品价格台账（RREQ-MD-019）：按物品查历史采购成交价明细，分页。
+   * 数据源 = 采购域订单明细（priceLedger 读面只读消费，listing 域禁碰）；
+   * 单位取物品主数据计量单位（订单明细无单位列，源 §2.4 unitName 同为
+   * 物料主数据单位）。与源两端点（§3.10 详情 + §3.11 分页）差异：合并为
+   * 单端点（物品摘要/初始价格顺带返回，登记）。
+   */
+  async listItemPurchasePrices(
+    tenant: TenantId,
+    idParam: string,
+    pageParam: string | null | undefined,
+    pageSizeParam: string | null | undefined,
+  ): Promise<ItemPurchasePriceLedgerView> {
+    const id = parseIdParam(idParam, '物品');
+    const item = await this.items.find(tenant, id);
+    if (item === null) {
+      throw new MasterdataNotFoundError(`租户 '${tenant}' 内不存在物品 '${id}'`);
+    }
+    const { page, pageSize } = parsePriceLedgerPageQuery(pageParam, pageSizeParam);
+    const ledgerPage = await this.priceLedger.listByItem(tenant, id, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return {
+      itemId: item.id,
+      itemCode: item.code,
+      unit: item.unit,
+      initialPriceMinor: item.initialPriceMinor,
+      page,
+      pageSize,
+      total: ledgerPage.total,
+      entries: ledgerPage.entries,
+    };
   }
 
   // ---- 资源 ----

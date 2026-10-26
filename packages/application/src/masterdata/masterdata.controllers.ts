@@ -6,11 +6,12 @@
  *   GET  /masterdata/items        item:read
  *   POST /masterdata/items        item:write
  *   PUT  /masterdata/items/:id    item:write
+ *   GET  /masterdata/items/:id/purchase-prices  item:read（价格台账只读，6b-1 S9）
  *   GET  /masterdata/resources    resource:read
  *   POST /masterdata/resources    resource:write
  *   PUT  /masterdata/resources/:id resource:write
  */
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { RequirePermission } from '../core/auth/require-permission.decorator.js';
 import { TenantContext } from '../core/tenant-context.js';
 import { MasterdataService } from './masterdata.service.js';
@@ -41,6 +42,22 @@ export class MasterdataItemsController {
     @Body() body: unknown,
   ): Promise<Awaited<ReturnType<MasterdataService['updateItem']>>> {
     return this.masterdata.updateItem(this.tenantContext.current(), id, body);
+  }
+
+  /** 价格台账（RREQ-MD-019，6b-1 S9）：只读挂 item:read；分页 page/pageSize。 */
+  @Get(':id/purchase-prices')
+  @RequirePermission('item:read')
+  async purchasePrices(
+    @Param('id') id: string,
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
+  ): Promise<Awaited<ReturnType<MasterdataService['listItemPurchasePrices']>>> {
+    return this.masterdata.listItemPurchasePrices(
+      this.tenantContext.current(),
+      id,
+      page,
+      pageSize,
+    );
   }
 }
 

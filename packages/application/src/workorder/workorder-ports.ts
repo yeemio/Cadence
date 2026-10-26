@@ -10,7 +10,9 @@
  * 端口方法一律异步（PG 实现天然异步，端口按异步定形调用方零改动——取舍同
  * engine-flow store.ts）。全部按租户收口。
  */
-import type { TenantId } from '@smes/business-core';
+import type { TenantId, UserId } from '@smes/business-core';
+import type { PolicyStore, PolicyRule } from '../core/auth/policy-store.js';
+import type { UserStore } from '../org/org-stores.js';
 import type { ListingKind } from './workorder-config.js';
 
 // ---- listing 端口：清单需求行（齐套判定的需求侧输入） ----
@@ -101,6 +103,52 @@ export interface CustomerDirectoryEntry {
 /** masterdata 端口：按引用解析客户（未知引用返回 null——不阻塞建单，展示层降级）。 */
 export interface CustomerDirectoryPort {
   findCustomer(tenant: TenantId, customerRef: string): Promise<CustomerDirectoryEntry | null>;
+}
+
+// ---- org 端口：配件审批链角色解析（S6 / RREQ-IS-037：待审批人实时按角色解析不落库） ----
+
+/**
+ * 配件二/三级审批的角色或签名单解析端口。实现方按租户读 org 域角色绑定与
+ * 活动用户（见 createOrgPartsApproverDirectory）；「实时」是合同口径——
+ * 名单绝不落库，每次审批/详情读时现解析，角色成员变化即时生效。
+ */
+export interface PartsApproverDirectoryPort {
+  /**
+   * 解析租户内角色下的活动审批人（或签名单）。角色未配置/角色下无活动用户/
+   * 端口未接线 → 空数组（调用方按「未配置或无审批人」提示，不静默放行）。
+   */
+  roleApprovers(tenant: TenantId, role: string): Promise<readonly UserId[]>;
+}
+
+/** 缺省角色解析端口：恒空名单（零接线 boot；多级链在该级审批时明确拒绝）。 */
+export const EMPTY_PARTS_APPROVER_DIRECTORY: PartsApproverDirectoryPort = {
+  roleApprovers: async () => [],
+};
+
+/**
+ * org 域实现工厂（组合根接线用）：角色名单 = PolicyStore grant-role 绑定 ∩
+ * UserStore 活动用户（停用用户即时退出或签名单——实时解析语义）。任一存储
+ * 未装配（undefined）返回缺省空端口（模块禁用时配件二/三级审批明确拒绝，
+ * 不静默换人）。
+ */
+export function createOrgPartsApproverDirectory(
+  policy: PolicyStore | undefined,
+  users: UserStore | undefined,
+): PartsApproverDirectoryPort {
+  if (policy === undefined || users === undefined) {
+    return EMPTY_PARTS_APPROVER_DIRECTORY;
+  }
+  const isGrant = (rule: PolicyRule, tenant: TenantId, role: string): rule is Extract<PolicyRule, { kind: 'grant-role' }> =>
+    rule.kind === 'grant-role' && rule.tenant === tenant && rule.role === role;
+  return {
+    roleApprovers: async (tenant, role) => {
+      const rules = await policy.load();
+      const bound = new Set<string>(rules.filter((rule) => isGrant(rule, tenant, role)).map((rule) => rule.user));
+      if (bound.size === 0) return [];
+      const accounts = await users.list(tenant);
+      return accounts.filter((account) => account.active && bound.has(account.id)).map((account) => account.id);
+    },
+  };
 }
 
 // ---- 缺省空实现（零接线 boot：语义完整、数据为空） ----

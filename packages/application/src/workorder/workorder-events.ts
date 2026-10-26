@@ -119,6 +119,11 @@ export interface PartsDecidedPayload {
   readonly remark: string;
   readonly objectVersion: number;
   readonly actor: string;
+  /**
+   * 本次决策的审批层级（1/2/3；S6 / RREQ-IS-037 多级链携带，单级链缺省
+   * 不带——零回归：基线事件载荷形状不变）。
+   */
+  readonly level?: number;
 }
 
 export interface PartsShippedPayload {

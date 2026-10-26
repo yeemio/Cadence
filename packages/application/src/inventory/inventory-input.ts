@@ -11,8 +11,10 @@
 import { OperationId, type ExpectedRevision } from '@smes/business-core';
 import { InventoryInputError } from './inventory-errors.js';
 import {
+  GOODS_SHELF_STATUSES,
   ISSUE_PURPOSES,
   RECEIPT_SOURCE_KINDS,
+  type GoodsShelfStatus,
   type IssuePurpose,
   type ReceiptSourceKind,
 } from './inventory-config.js';
@@ -21,6 +23,14 @@ import {
 
 export const INVENTORY_COMMAND_KINDS = [
   'warehouse.define.v1',
+  'goods-shelf.define.v1',
+  'goods-shelf.update.v1',
+  'goods-shelf.set-status.v1',
+  'goods-shelf.remove.v1',
+  'shelf-location.define.v1',
+  'shelf-location.update.v1',
+  'shelf-location.set-status.v1',
+  'shelf-location.remove.v1',
   'stock.receive.v1',
   'stock.issue.v1',
   'stock.transfer.v1',
@@ -191,6 +201,140 @@ export function parseWarehouseDefinePayload(input: unknown): WarehouseDefinePayl
     locations,
     remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null,
   };
+}
+
+// ---- goods-shelf.define 载荷（B3 / RREQ-IV-002） ----
+
+export interface GoodsShelfDefinePayload {
+  readonly warehouseId: string;
+  readonly code: string;
+  readonly name: string;
+  /** 建架时随建的初始货架库位（缺省空——可先建架后补库位）。 */
+  readonly locations: readonly { readonly code: string; readonly name: string | null; readonly remark: string | null }[];
+  readonly remark: string | null;
+}
+
+const MAX_SHELF_LOCATIONS = 200;
+
+export function parseGoodsShelfDefinePayload(input: unknown): GoodsShelfDefinePayload {
+  const record = requireObject(input, 'goods-shelf.define 载荷');
+  const code = requireCode(record['code'], '货架编码 code');
+  const rawLocations = record['locations'] ?? [];
+  if (!Array.isArray(rawLocations) || rawLocations.length > MAX_SHELF_LOCATIONS) {
+    throw new InventoryInputError(`locations 非法：须为 0~${MAX_SHELF_LOCATIONS} 个货架库位的数组（缺省不随建）`);
+  }
+  const locations = rawLocations.map((raw, index) => {
+    const location = requireObject(raw, `locations[${index}]`);
+    return {
+      code: requireCode(location['code'], `locations[${index}].code`),
+      name: optionalBoundedString(location['name'], `locations[${index}].name`, 1, 200) ?? null,
+      remark: optionalBoundedString(location['remark'], `locations[${index}].remark`, 1, 2000) ?? null,
+    };
+  });
+  const seen = new Set<string>();
+  for (const location of locations) {
+    if (seen.has(location.code)) {
+      throw new InventoryInputError(`货架库位编码 '${location.code}' 重复（表内唯一）`);
+    }
+    seen.add(location.code);
+    if (!location.code.startsWith(code) || location.code === code) {
+      throw new InventoryInputError(
+        `货架库位编码 '${location.code}' 须以货架编码 '${code}' 开头且长于货架编码`,
+      );
+    }
+  }
+  return {
+    warehouseId: requireBoundedString(record['warehouseId'], '仓库 warehouseId', 1, 128),
+    code,
+    name: requireBoundedString(record['name'], '货架名称 name', 1, 200),
+    locations,
+    remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null,
+  };
+}
+
+// ---- goods-shelf.update 载荷 ----
+
+export interface GoodsShelfUpdatePayload {
+  /** 改码在无下属货架库位时允许（有下属锁码——校验在用例层）。 */
+  readonly code: string | undefined;
+  readonly name: string | undefined;
+  readonly remark: string | null | undefined;
+}
+
+export function parseGoodsShelfUpdatePayload(input: unknown): GoodsShelfUpdatePayload {
+  const record = requireObject(input, 'goods-shelf.update 载荷');
+  const code = record['code'] === undefined || record['code'] === null ? undefined : requireCode(record['code'], '货架编码 code');
+  const name =
+    record['name'] === undefined || record['name'] === null
+      ? undefined
+      : requireBoundedString(record['name'], '货架名称 name', 1, 200);
+  const remark =
+    record['remark'] === undefined || record['remark'] === null
+      ? undefined
+      : optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null;
+  if (code === undefined && name === undefined && remark === undefined) {
+    throw new InventoryInputError('goods-shelf.update 载荷至少提供 code/name/remark 之一');
+  }
+  return { code, name, remark };
+}
+
+// ---- goods-shelf.set-status / shelf-location.set-status 载荷（两族共用） ----
+
+export interface GoodsShelfSetStatusPayload {
+  readonly status: GoodsShelfStatus;
+}
+
+export function parseGoodsShelfSetStatusPayload(input: unknown): GoodsShelfSetStatusPayload {
+  const record = requireObject(input, '货架启停命令载荷（goods-shelf/shelf-location.set-status）');
+  return {
+    status: requireKind(record['status'], GOODS_SHELF_STATUSES, '货架状态 status') as GoodsShelfStatus,
+  };
+}
+
+// ---- shelf-location.define 载荷（goodsShelfId 取路径参数） ----
+
+export interface ShelfLocationDefinePayload {
+  readonly code: string;
+  readonly name: string | null;
+  readonly remark: string | null;
+}
+
+export function parseShelfLocationDefinePayload(input: unknown): ShelfLocationDefinePayload {
+  const record = requireObject(input, 'shelf-location.define 载荷');
+  return {
+    code: requireCode(record['code'], '货架库位编码 code'),
+    name: optionalBoundedString(record['name'], '货架库位名称 name', 1, 200) ?? null,
+    remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null,
+  };
+}
+
+// ---- shelf-location.update 载荷 ----
+
+export interface ShelfLocationUpdatePayload {
+  /** 改码在未被出入库流水引用时允许（前缀与引用校验在用例层）。 */
+  readonly code: string | undefined;
+  readonly name: string | null | undefined;
+  readonly remark: string | null | undefined;
+}
+
+export function parseShelfLocationUpdatePayload(input: unknown): ShelfLocationUpdatePayload {
+  const record = requireObject(input, 'shelf-location.update 载荷');
+  const code =
+    record['code'] === undefined || record['code'] === null
+      ? undefined
+      : requireCode(record['code'], '货架库位编码 code');
+  const name =
+    record['name'] === undefined || record['name'] === null
+      ? undefined
+      : optionalBoundedString(record['name'], '货架库位名称 name', 1, 200) ?? null;
+  const remark =
+    record['remark'] === undefined || record['remark'] === null
+      ? undefined
+      : optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null;
+  if (code === undefined && name === undefined && remark === undefined) {
+    throw new InventoryInputError('shelf-location.update 载荷至少提供 code/name/remark 之一');
+  }
+  return { code, name, remark };
 }
 
 // ---- stock.receive 载荷 ----

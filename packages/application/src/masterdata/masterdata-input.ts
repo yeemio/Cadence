@@ -59,6 +59,36 @@ function optionalActive(value: unknown): boolean | undefined {
   return value;
 }
 
+/**
+ * 初始价格上界（RREQ-MD-020）：Int32 安全上界内的整数分——与 listing
+ * MAX_UNIT_PRICE_MINOR（PG Int 列）同口径；源侧"整数 16 位 BigDecimal"形态
+ * 不复刻（差异随需求登记）。
+ */
+export const MAX_INITIAL_PRICE_MINOR = 2_000_000_000;
+
+/**
+ * 初始价格（分）解析：undefined → 不动；null → 清空保存（取消初始价格）；
+ * 其余须为 [0, MAX_INITIAL_PRICE_MINOR] 整数（≥0 整数分，PRD RREQ-MD-020）。
+ */
+function optionalInitialPriceMinor(
+  value: unknown,
+  field: string,
+): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > MAX_INITIAL_PRICE_MINOR
+  ) {
+    throw new MasterdataInputError(
+      `字段 '${field}' 须为 [0, ${MAX_INITIAL_PRICE_MINOR}] 内的整数（分，≥0）：${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
 export interface CreateItemPayload {
   readonly code: string;
   readonly name: string;
@@ -66,6 +96,7 @@ export interface CreateItemPayload {
   readonly unit?: string | null;
   readonly category?: string | null;
   readonly active?: boolean;
+  readonly initialPriceMinor?: number | null;
 }
 
 /** 解析 POST /masterdata/items 请求体。 */
@@ -78,6 +109,7 @@ export function parseCreateItemInput(input: unknown): CreateItemPayload {
     unit?: string | null;
     category?: string | null;
     active?: boolean;
+    initialPriceMinor?: number | null;
   } = {
     code: requireCode(record['code'], '物品 code'),
     name: requireName(record['name']),
@@ -90,6 +122,8 @@ export function parseCreateItemInput(input: unknown): CreateItemPayload {
   if (category !== undefined) payload.category = category;
   const active = optionalActive(record['active']);
   if (active !== undefined) payload.active = active;
+  const initialPriceMinor = optionalInitialPriceMinor(record['initialPriceMinor'], 'initialPriceMinor');
+  if (initialPriceMinor !== undefined) payload.initialPriceMinor = initialPriceMinor;
   return payload;
 }
 
@@ -99,6 +133,7 @@ export interface UpdateItemPayload {
   readonly unit?: string | null;
   readonly category?: string | null;
   readonly active?: boolean;
+  readonly initialPriceMinor?: number | null;
 }
 
 /** 解析 PUT /masterdata/items/:id 请求体（字段级期望态：未提供即不变）。 */
@@ -113,6 +148,7 @@ export function parseUpdateItemInput(input: unknown): UpdateItemPayload {
     unit?: string | null;
     category?: string | null;
     active?: boolean;
+    initialPriceMinor?: number | null;
   } = {};
   if (record['name'] !== undefined) payload.name = requireName(record['name']);
   const spec = optionalText(record['spec'], 'spec', 256);
@@ -123,6 +159,8 @@ export function parseUpdateItemInput(input: unknown): UpdateItemPayload {
   if (category !== undefined) payload.category = category;
   const active = optionalActive(record['active']);
   if (active !== undefined) payload.active = active;
+  const initialPriceMinor = optionalInitialPriceMinor(record['initialPriceMinor'], 'initialPriceMinor');
+  if (initialPriceMinor !== undefined) payload.initialPriceMinor = initialPriceMinor;
   return payload;
 }
 
@@ -308,4 +346,53 @@ export function parseUpdateUnitInput(input: unknown): UpdateUnitPayload {
   const symbol = optionalText(record['symbol'], 'symbol', 32);
   if (symbol !== undefined) payload.symbol = symbol;
   return payload;
+}
+
+// ---------------------------------------------------------------------------
+// 价格台账分页查询解析（RREQ-MD-019，fix-wave-6 6b-1 S9）。页基 1、默认
+// pageSize 10（源 §2.4 分页 10/20/50 默认 10——我方放开为 1..100 任意值，
+// 档位约束属 UI 面）。查询串原值（URLSearchParams.get：缺参数 = null）。
+// ---------------------------------------------------------------------------
+
+/** 台账分页默认与上界（缺省 10；页大小 1..100 防全表拉取）。 */
+export const DEFAULT_PRICE_LEDGER_PAGE_SIZE = 10;
+export const MAX_PRICE_LEDGER_PAGE_SIZE = 100;
+
+/** 解析后的分页参数（页基 1 → store 侧 offset 收窄）。 */
+export interface PriceLedgerPageParams {
+  readonly page: number;
+  readonly pageSize: number;
+}
+
+/** 解析 GET /masterdata/items/:id/purchase-prices 的 page/pageSize 查询参数。 */
+export function parsePriceLedgerPageQuery(
+  page: string | null | undefined,
+  pageSize: string | null | undefined,
+): PriceLedgerPageParams {
+  const parsePositiveInt = (value: string | null | undefined, field: string): number => {
+    const trimmed = value === null || value === undefined ? '' : value.trim();
+    if (trimmed === '') {
+      throw new MasterdataInputError(`查询参数 '${field}' 须为正整数：${JSON.stringify(value ?? null)}`);
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new MasterdataInputError(`查询参数 '${field}' 须为正整数：${JSON.stringify(value)}`);
+    }
+    return parsed;
+  };
+  return {
+    page: page === null || page === undefined || page.trim() === '' ? 1 : parsePositiveInt(page, 'page'),
+    pageSize:
+      pageSize === null || pageSize === undefined || pageSize.trim() === ''
+        ? DEFAULT_PRICE_LEDGER_PAGE_SIZE
+        : (() => {
+            const size = parsePositiveInt(pageSize, 'pageSize');
+            if (size > MAX_PRICE_LEDGER_PAGE_SIZE) {
+              throw new MasterdataInputError(
+                `查询参数 'pageSize' 须为 1~${MAX_PRICE_LEDGER_PAGE_SIZE}：${JSON.stringify(pageSize)}`,
+              );
+            }
+            return size;
+          })(),
+  };
 }

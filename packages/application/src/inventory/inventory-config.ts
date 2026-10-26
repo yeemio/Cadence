@@ -97,6 +97,22 @@ export function movementKindLabel(kind: string): string {
   return labels[kind] ?? kind;
 }
 
+// ---- 货架/货架库位启停词汇（B3 / RREQ-IV-002；源 enable_status 字典的我方串化） ----
+
+/** 货架与货架库位状态：active=启用；disabled=停用（停用受正结存保护）。 */
+export const GOODS_SHELF_STATUSES = ['active', 'disabled'] as const;
+
+export type GoodsShelfStatus = (typeof GOODS_SHELF_STATUSES)[number];
+
+const GOODS_SHELF_STATUS_LABELS: Readonly<Record<GoodsShelfStatus, string>> = {
+  active: '启用',
+  disabled: '停用',
+};
+
+export function goodsShelfStatusLabel(status: string): string {
+  return (GOODS_SHELF_STATUS_LABELS as Readonly<Record<string, string>>)[status] ?? status;
+}
+
 // ---- 负库存策略（合同 §8：配置化，默认硬拒绝） ----
 
 /** 负库存策略：reject=硬拒绝（默认）；allow=允许账面负数暂存（对账阶段裁定口径）。 */

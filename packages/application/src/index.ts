@@ -158,6 +158,7 @@ export type {
 export {
   MasterdataModule,
   MASTERDATA_ITEM_STORE,
+  MASTERDATA_ITEM_PRICE_LEDGER_STORE,
   MASTERDATA_RESOURCE_STORE,
   MASTERDATA_CUSTOMER_STORE,
   MASTERDATA_SUPPLIER_STORE,
@@ -165,13 +166,16 @@ export {
 } from './masterdata/masterdata.module.js';
 export type { MasterdataModuleOptions } from './masterdata/masterdata.module.js';
 export { MasterdataService } from './masterdata/masterdata.service.js';
+export type { ItemPurchasePriceLedgerView } from './masterdata/masterdata.service.js';
 export {
   InMemoryCustomerStore,
+  InMemoryItemPriceLedgerStore,
   InMemoryItemStore,
   InMemoryResourceStore,
   InMemorySupplierStore,
   InMemoryUnitStore,
 } from './masterdata/in-memory-masterdata-stores.js';
+export type { InMemoryPriceLedgerRow } from './masterdata/in-memory-masterdata-stores.js';
 export {
   MasterdataConflictError,
   MasterdataInputError,
@@ -184,6 +188,7 @@ export {
   parseCreateSupplierInput,
   parseCreateUnitInput,
   parseIdParam,
+  parsePriceLedgerPageQuery,
   parseUpdateCustomerInput,
   parseUpdateItemInput,
   parseUpdateResourceInput,
@@ -199,7 +204,12 @@ export type {
   CustomerMaster,
   CustomerStore,
   ItemMaster,
+  ItemPriceLedgerStore,
+  ItemPurchasePriceEntry,
+  ItemPurchasePricePage,
+  ItemPurchasePriceQuery,
   ItemStore,
+  PriceLedgerOrderRow,
   ResourceMaster,
   ResourceStore,
   SupplierMaster,
@@ -212,12 +222,19 @@ export type {
   UpdateSupplierInput,
   UpdateUnitInput,
 } from './masterdata/masterdata-stores.js';
+export { buildItemPurchasePriceEntries } from './masterdata/masterdata-stores.js';
+export {
+  DEFAULT_PRICE_LEDGER_PAGE_SIZE,
+  MAX_INITIAL_PRICE_MINOR,
+  MAX_PRICE_LEDGER_PAGE_SIZE,
+} from './masterdata/masterdata-input.js';
 export type {
   CreateCustomerPayload,
   CreateItemPayload,
   CreateResourcePayload,
   CreateSupplierPayload,
   CreateUnitPayload,
+  PriceLedgerPageParams,
   UpdateCustomerPayload,
   UpdateItemPayload,
   UpdateResourcePayload,
@@ -683,6 +700,7 @@ export {
   WORKORDER_ISSUE_PORT,
   WORKORDER_PROGRESS_PORT,
   WORKORDER_CUSTOMER_PORT,
+  WORKORDER_APPROVER_PORT,
   WORKORDER_SERVICE_OPTIONS,
 } from './workorder/workorder.module.js';
 export type { WorkOrderModuleOptions } from './workorder/workorder.module.js';
@@ -697,6 +715,7 @@ export type {
   KitBoardRow,
   WorkOrderDeliverySituation,
   PartsRequestDetail,
+  PartsPendingApprovalView,
 } from './workorder/workorder.service.js';
 export {
   WorkOrderInputError,
@@ -713,12 +732,23 @@ export {
   PARTS_REQUEST_FLOW_ID,
   PARTS_REQUEST_STATE_IDS,
   DEFAULT_PARTS_REQUEST_FLOW_CONFIG,
+  PARTS_LEVEL2_REVIEW_STATE,
+  PARTS_LEVEL3_REVIEW_STATE,
+  PARTS_PENDING_STATE_IDS,
+  PARTS_REQUEST_STATES,
+  partsRequestStateLabel,
+  partsApprovalLevelOfState,
+  DEFAULT_PARTS_APPROVAL_CHAIN,
+  definePartsApprovalChain,
+  buildPartsRequestFlowConfig,
   LISTING_KINDS,
   DEFAULT_KIT_SCOPE_KINDS,
 } from './workorder/workorder-config.js';
 export type {
   WorkOrderStateId,
   PartsRequestStateId,
+  PartsPendingStateId,
+  PartsApprovalChain,
   ListingKind,
 } from './workorder/workorder-config.js';
 export {
@@ -797,6 +827,8 @@ export {
   NOOP_PARTS_ISSUE_PORT,
   EMPTY_PROGRESS_PORT,
   EMPTY_CUSTOMER_PORT,
+  EMPTY_PARTS_APPROVER_DIRECTORY,
+  createOrgPartsApproverDirectory,
   WORKORDER_TODO_SOURCE,
 } from './workorder/workorder-ports.js';
 export type {
@@ -806,6 +838,7 @@ export type {
   PartsIssueReceipt,
   PartsIssueCommand,
   PartsIssuePort,
+  PartsApproverDirectoryPort,
   ProgressStage,
   ProgressFact,
   ProgressFactPort,
@@ -1574,6 +1607,7 @@ export { AftercareClaimController } from './dispatch/aftercare-claim.controllers
 export {
   InventoryModule,
   INVENTORY_WAREHOUSE_STORE,
+  INVENTORY_GOODS_SHELF_STORE,
   INVENTORY_ACCOUNT_STORE,
   INVENTORY_LOCATION_BALANCE_STORE,
   INVENTORY_MOVEMENT_STORE,
@@ -1604,6 +1638,7 @@ export {
   DEFAULT_NEGATIVE_STOCK_POLICY,
   DEFAULT_SHIPPING_FLOW_CONFIG,
   DEFAULT_STOCKTAKE_FLOW_CONFIG,
+  GOODS_SHELF_STATUSES,
   ISSUE_PURPOSES,
   NEGATIVE_STOCK_POLICIES,
   RECEIPT_SOURCE_KINDS,
@@ -1615,6 +1650,7 @@ export {
   STOCKTAKE_STATE_IDS,
   STOCKTAKE_STATES,
   STOCK_MOVEMENT_KINDS,
+  goodsShelfStatusLabel,
   movementDirection,
   movementKindLabel,
   receiptKindLabel,
@@ -1622,6 +1658,7 @@ export {
   stocktakeStateLabel,
 } from './inventory/inventory-config.js';
 export type {
+  GoodsShelfStatus,
   IssuePurpose,
   NegativeStockPolicy,
   ReceiptSourceKind,
@@ -1634,6 +1671,8 @@ export type {
 export {
   WarehouseId,
   LocationId,
+  GoodsShelfId,
+  ShelfLocationId,
   StockAccountId,
   StockMovementId,
   StocktakeId,
@@ -1641,6 +1680,8 @@ export {
   ShippingOrderId,
   newWarehouseId,
   newLocationId,
+  newGoodsShelfId,
+  newShelfLocationId,
   newStockAccountId,
   newStockMovementId,
   newStocktakeId,
@@ -1675,6 +1716,11 @@ export {
   parseCommandEnvelopeBody as parseInventoryCommandEnvelopeBody,
   parseCommandBodyForKind as parseInventoryCommandBodyForKind,
   parseWarehouseDefinePayload,
+  parseGoodsShelfDefinePayload,
+  parseGoodsShelfUpdatePayload,
+  parseGoodsShelfSetStatusPayload,
+  parseShelfLocationDefinePayload,
+  parseShelfLocationUpdatePayload,
   parseStockReceivePayload,
   parseStockIssuePayload,
   parseStockTransferPayload,
@@ -1691,6 +1737,11 @@ export type {
   InventoryCommand,
   InventoryEnvelopeBody,
   WarehouseDefinePayload,
+  GoodsShelfDefinePayload,
+  GoodsShelfUpdatePayload,
+  GoodsShelfSetStatusPayload,
+  ShelfLocationDefinePayload,
+  ShelfLocationUpdatePayload,
   StockReceivePayload,
   StockIssuePayload,
   StockTransferPayload,
@@ -1725,6 +1776,12 @@ export type {
   WarehouseLocation,
   DefineWarehouseInput,
   WarehouseStore,
+  GoodsShelf,
+  ShelfLocation,
+  DefineGoodsShelfInput,
+  AddShelfLocationInput,
+  ListGoodsShelvesFilter,
+  GoodsShelfStore,
   StockAdjustLine,
   StockAccount,
   ListStockAccountsFilter,
@@ -1764,6 +1821,7 @@ export {
 } from './inventory/inventory-stores.js';
 export {
   InMemoryWarehouseStore,
+  InMemoryGoodsShelfStore,
   InMemoryStockAccountStore,
   InMemoryStockLocationBalanceStore,
   InMemoryStockMovementStore,
@@ -1776,6 +1834,8 @@ export {
 } from './inventory/in-memory-inventory-stores.js';
 export {
   WarehousesController,
+  GoodsShelvesController,
+  ShelfLocationsController,
   StockMovementCommandsController,
   StocktakingController,
   ShippingOrdersController,

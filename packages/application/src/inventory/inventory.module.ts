@@ -22,6 +22,7 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { createInMemoryApprovalEventStore, type ApprovalEventStore } from '@smes/engine-flow';
 import {
+  InMemoryGoodsShelfStore,
   InMemoryInventoryDomainEventStore,
   InMemoryInventoryOperationStore,
   InMemoryReleaseFactStore,
@@ -34,6 +35,7 @@ import {
   InMemoryWarehouseStore,
 } from './in-memory-inventory-stores.js';
 import type {
+  GoodsShelfStore,
   InventoryDomainEventStore,
   InventoryOperationStore,
   ReleaseFactStore,
@@ -46,7 +48,9 @@ import type {
   WarehouseStore,
 } from './inventory-stores.js';
 import {
+  GoodsShelvesController,
   InventoryQueriesController,
+  ShelfLocationsController,
   ShippingOrdersController,
   StockMovementCommandsController,
   StocktakingController,
@@ -55,6 +59,7 @@ import {
 import { InventoryService, type InventoryServiceOptions } from './inventory.service.js';
 
 export const INVENTORY_WAREHOUSE_STORE = Symbol('smes.inventory.warehouseStore');
+export const INVENTORY_GOODS_SHELF_STORE = Symbol('smes.inventory.goodsShelfStore');
 export const INVENTORY_ACCOUNT_STORE = Symbol('smes.inventory.accountStore');
 export const INVENTORY_LOCATION_BALANCE_STORE = Symbol('smes.inventory.locationBalanceStore');
 export const INVENTORY_MOVEMENT_STORE = Symbol('smes.inventory.movementStore');
@@ -70,6 +75,8 @@ export const INVENTORY_SERVICE_OPTIONS = Symbol('smes.inventory.serviceOptions')
 export interface InventoryModuleOptions {
   /** 仓库/库位主数据存储；缺省 = 内存实现（重启即失）。显式 undefined 同缺省。 */
   readonly warehouseStore?: WarehouseStore | undefined;
+  /** 货架/货架库位主数据存储（B3 / RREQ-IV-002）；缺省 = 内存实现。 */
+  readonly goodsShelfStore?: GoodsShelfStore | undefined;
   /** 库存账存储；缺省 = 内存实现。 */
   readonly accountStore?: StockAccountStore | undefined;
   /** 库位余额存储；缺省 = 内存实现。 */
@@ -100,6 +107,10 @@ export class InventoryModule {
     const serviceOptions: Partial<InventoryServiceOptions> = options.serviceOptions ?? {};
     const providers: Provider[] = [
       { provide: INVENTORY_WAREHOUSE_STORE, useValue: options.warehouseStore ?? new InMemoryWarehouseStore() },
+      {
+        provide: INVENTORY_GOODS_SHELF_STORE,
+        useValue: options.goodsShelfStore ?? new InMemoryGoodsShelfStore(),
+      },
       { provide: INVENTORY_ACCOUNT_STORE, useValue: options.accountStore ?? new InMemoryStockAccountStore() },
       {
         provide: INVENTORY_LOCATION_BALANCE_STORE,
@@ -127,6 +138,7 @@ export class InventoryModule {
         provide: InventoryService,
         useFactory: (
           warehouses: WarehouseStore,
+          goodsShelves: GoodsShelfStore,
           accounts: StockAccountStore,
           locationBalances: StockLocationBalanceStore,
           movements: StockMovementStore,
@@ -152,9 +164,11 @@ export class InventoryModule {
             domainEvents,
             machineEvents,
             serviceOpts,
+            goodsShelves,
           ),
         inject: [
           INVENTORY_WAREHOUSE_STORE,
+          INVENTORY_GOODS_SHELF_STORE,
           INVENTORY_ACCOUNT_STORE,
           INVENTORY_LOCATION_BALANCE_STORE,
           INVENTORY_MOVEMENT_STORE,
@@ -174,6 +188,8 @@ export class InventoryModule {
       module: InventoryModule,
       controllers: [
         WarehousesController,
+        GoodsShelvesController,
+        ShelfLocationsController,
         StockMovementCommandsController,
         StocktakingController,
         ShippingOrdersController,

@@ -17,6 +17,14 @@ export type WarehouseId = ReturnType<typeof WarehouseId.create>;
 export const LocationId = defineId('LocationId');
 export type LocationId = ReturnType<typeof LocationId.create>;
 
+/** 货架 id（属于仓库；B3 / RREQ-IV-002 层级化库位组织的第三级容器）。 */
+export const GoodsShelfId = defineId('GoodsShelfId');
+export type GoodsShelfId = ReturnType<typeof GoodsShelfId.create>;
+
+/** 货架库位 id（挂货架；收发存落位的可选三级锚点）。 */
+export const ShelfLocationId = defineId('ShelfLocationId');
+export type ShelfLocationId = ReturnType<typeof ShelfLocationId.create>;
+
 /** 库存账 id（物料×仓库 维度的现存量与预占）。 */
 export const StockAccountId = defineId('StockAccountId');
 export type StockAccountId = ReturnType<typeof StockAccountId.create>;
@@ -67,6 +75,16 @@ export function newWarehouseId(): string {
 /** 库位 id：loc-<uuidv7>。 */
 export function newLocationId(): string {
   return `loc-${uuidv7()}`;
+}
+
+/** 货架 id：gs-<uuidv7>（B3 主数据第三级容器）。 */
+export function newGoodsShelfId(): string {
+  return `gs-${uuidv7()}`;
+}
+
+/** 货架库位 id：sloc-<uuidv7>（挂货架的库位锚点，与 loc- 前缀区分落位种类）。 */
+export function newShelfLocationId(): string {
+  return `sloc-${uuidv7()}`;
 }
 
 /** 库存账 id：sa-<uuidv7>。 */

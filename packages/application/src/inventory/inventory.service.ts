@@ -6,7 +6,9 @@
  * CommandOutcome 三分。七件事：
  *
  * 1. 主数据：warehouse.define 建仓库+库位（R4：主数据归本模块；第一个
- *    库位 = 默认库位）；
+ *    库位 = 默认库位）；goods-shelf 与 shelf-location 命令族（货架与货架
+ *    库位主数据 CRUD+保护，B3 / RREQ-IV-002：有下属锁码、正结存不得停删、
+ *    流水引用不得删——收发存落位解析器扩展到已启用货架库位）；
  * 2. 三类入库 stock.receive：质检放行（InspectionRelease 咬合——放行登记
  *    Σ − 已入 ≥ 本次才放行）/ 采购收货（receiptKey 幂等去重）/ 完工入库；
  * 3. 出库 stock.issue：预占核销（reservationKey）或直扣可用量——负库存
@@ -52,6 +54,7 @@ import {
   DEFAULT_NEGATIVE_STOCK_POLICY,
   DEFAULT_SHIPPING_FLOW_CONFIG,
   DEFAULT_STOCKTAKE_FLOW_CONFIG,
+  type GoodsShelfStatus,
   type NegativeStockPolicy,
   type ReceiptSourceKind,
   type StockMovementKind,
@@ -74,8 +77,13 @@ import {
   InventoryStateError,
 } from './inventory-errors.js';
 import {
+  parseGoodsShelfDefinePayload,
+  parseGoodsShelfSetStatusPayload,
+  parseGoodsShelfUpdatePayload,
   parseShippingConfirmPayload,
   parseShippingExecutePayload,
+  parseShelfLocationDefinePayload,
+  parseShelfLocationUpdatePayload,
   parseStockIssuePayload,
   parseStockReceivePayload,
   parseStockTransferPayload,
@@ -87,12 +95,15 @@ import {
   type InventoryCommandKind,
 } from './inventory-input.js';
 import type {
+  GoodsShelf,
+  GoodsShelfStore,
   InventoryDomainEventStore,
   InventoryOperationStore,
   ListLocationBalancesFilter,
   ListStockAccountsFilter,
   ListStockMovementsFilter,
   ReleaseFactStore,
+  ShelfLocation,
   ShippingLine,
   ShippingOrder,
   ShippingOrderStore,
@@ -110,14 +121,17 @@ import type {
 } from './inventory-stores.js';
 import {
   newDomainEventId,
+  newGoodsShelfId,
   newLocationId,
   newShippingOrderId,
+  newShelfLocationId,
   newStockMovementId,
   newStocktakeId,
   newTransferId,
   newWarehouseId,
   uuidv7,
 } from './inventory-ids.js';
+import { InMemoryGoodsShelfStore } from './in-memory-inventory-stores.js';
 
 // ---- 结果形状 ----
 
@@ -132,6 +146,8 @@ export interface StockLevelView {
 
 export interface InventoryCommitted extends CommittedOutcome {
   readonly warehouse?: Warehouse;
+  readonly goodsShelf?: GoodsShelf;
+  readonly shelfLocation?: ShelfLocation;
   readonly movement?: StockMovement;
   readonly movements?: readonly StockMovement[];
   /** receiptKey/issueKey 幂等命中（不重复入账，回执首次结果）。 */
@@ -195,6 +211,7 @@ function rejected(reason: string): RejectedOutcome {
 
 export class InventoryService {
   private readonly options: InventoryServiceOptions;
+  private readonly goodsShelves: GoodsShelfStore;
 
   constructor(
     private readonly warehouses: WarehouseStore,
@@ -209,6 +226,7 @@ export class InventoryService {
     private readonly domainEvents: InventoryDomainEventStore,
     private readonly machineEvents: ApprovalEventStore,
     options: Partial<InventoryServiceOptions> = {},
+    goodsShelves?: GoodsShelfStore | undefined,
   ) {
     this.options = {
       stocktakeConfig: options.stocktakeConfig ?? DEFAULT_STOCKTAKE_FLOW_CONFIG,
@@ -217,6 +235,10 @@ export class InventoryService {
       defaultWarehouseId: options.defaultWarehouseId ?? null,
       ...(options.now === undefined ? {} : { now: options.now }),
     };
+    // 尾参回落（写明取舍）：货架存储排在 options 后为可选尾参——既有直构调用方
+    // （跨模块端口测试/u-wave wiring）12 参口径零破坏；缺省回落内存实现
+    // （零 DB boot 语义），模块面 InventoryModule.register 恒显式注入。
+    this.goodsShelves = goodsShelves ?? new InMemoryGoodsShelfStore();
   }
 
   private now(): string {
@@ -236,6 +258,8 @@ export class InventoryService {
     const kind = envelope.command.kind;
     const createKinds: readonly InventoryCommandKind[] = [
       'warehouse.define.v1',
+      'goods-shelf.define.v1',
+      'shelf-location.define.v1',
       'stock.receive.v1',
       'stock.issue.v1',
       'stock.transfer.v1',
@@ -251,6 +275,22 @@ export class InventoryService {
     switch (kind) {
       case 'warehouse.define.v1':
         return this.defineWarehouse(envelope);
+      case 'goods-shelf.define.v1':
+        return this.defineGoodsShelf(envelope);
+      case 'goods-shelf.update.v1':
+        return this.updateGoodsShelf(envelope, this.requirePathId(pathId, kind));
+      case 'goods-shelf.set-status.v1':
+        return this.setGoodsShelfStatus(envelope, this.requirePathId(pathId, kind));
+      case 'goods-shelf.remove.v1':
+        return this.removeGoodsShelf(envelope, this.requirePathId(pathId, kind));
+      case 'shelf-location.define.v1':
+        return this.defineShelfLocation(envelope, this.requirePathId(pathId, kind));
+      case 'shelf-location.update.v1':
+        return this.updateShelfLocation(envelope, this.requirePathId(pathId, kind));
+      case 'shelf-location.set-status.v1':
+        return this.setShelfLocationStatus(envelope, this.requirePathId(pathId, kind));
+      case 'shelf-location.remove.v1':
+        return this.removeShelfLocation(envelope, this.requirePathId(pathId, kind));
       case 'stock.receive.v1':
         return this.receive(envelope);
       case 'stock.issue.v1':
@@ -323,6 +363,401 @@ export class InventoryService {
       events: [],
       warehouse: created,
     };
+  }
+
+  // ---- goods-shelf / shelf-location（B3 / RREQ-IV-002：货架与货架库位主数据） ----
+
+  /** 货架/货架库位是否被出入库流水引用（改码与删除的保护锚点）。 */
+  private async isShelfLocationReferenced(tenant: TenantId, locationId: string): Promise<boolean> {
+    const rows = await this.movements.list(tenant, { locationId });
+    return rows.length > 0;
+  }
+
+  /**
+   * 仓库内落位锚点是否可落（收发存落位解析器）：仓库直属库位，或同仓且
+   * 双层启用（库位 + 所属货架）的货架库位——三级形态的落位扩展点（B3）。
+   */
+  private async isSelectableStockLocation(
+    tenant: TenantId,
+    warehouseId: string,
+    locationId: string,
+  ): Promise<boolean> {
+    if ((await this.warehouses.findLocation(tenant, warehouseId, locationId)) !== null) {
+      return true;
+    }
+    const shelfLocation = await this.goodsShelves.findShelfLocation(tenant, locationId);
+    if (shelfLocation === null || shelfLocation.warehouseId !== warehouseId) return false;
+    if (shelfLocation.status !== 'active') return false;
+    const shelf = await this.goodsShelves.find(tenant, shelfLocation.goodsShelfId);
+    return shelf !== null && shelf.status === 'active';
+  }
+
+  /** 货架下属库位是否存在正结存（停用/删除货架的结存保护）。 */
+  private async shelfChildrenHavePositiveBalance(tenant: TenantId, shelf: GoodsShelf): Promise<boolean> {
+    const children = await this.goodsShelves.listShelfLocations(tenant, shelf.id);
+    if (children.length === 0) return false;
+    const balances = await this.balances.list(tenant, { warehouseId: shelf.warehouseId });
+    const childIds = new Set(children.map((child) => child.id));
+    return balances.some((row) => row.qty > 0 && childIds.has(row.locationId));
+  }
+
+  /** 货架库位是否存在正结存（停用/删除货架库位的结存保护）。 */
+  private async shelfLocationHasPositiveBalance(tenant: TenantId, location: ShelfLocation): Promise<boolean> {
+    const balances = await this.balances.list(tenant, { warehouseId: location.warehouseId });
+    return balances.some((row) => row.locationId === location.id && row.qty > 0);
+  }
+
+  private async defineGoodsShelf(
+    envelope: CommandEnvelope<InventoryCommand>,
+  ): Promise<InventoryCommandResult> {
+    const payload = parseGoodsShelfDefinePayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    const warehouse = await this.warehouses.find(tenant, payload.warehouseId);
+    if (warehouse === null) {
+      return rejected(`租户 '${tenant}' 内不存在仓库 '${payload.warehouseId}'`);
+    }
+    const existing = await this.goodsShelves.list(tenant, { warehouseId: payload.warehouseId });
+    if (existing.some((shelf) => shelf.code === payload.code)) {
+      return rejected(`货架编码 '${payload.code}' 在仓库 '${payload.warehouseId}' 内已存在（仓内唯一）`);
+    }
+    for (const location of payload.locations) {
+      const duplicateLocation = await this.goodsShelves.findShelfLocationByCode(tenant, location.code);
+      if (duplicateLocation !== null) {
+        return rejected(`货架库位编码 '${location.code}' 已存在（表内唯一：${duplicateLocation.id}）`);
+      }
+    }
+
+    const shelfId = newGoodsShelfId();
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: 'goods-shelf',
+      aggregateId: shelfId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    // 并发竞态（同码两建）由存储层唯一键兜底（InventoryConflictError → 409）。
+    const created = await this.goodsShelves.create({
+      tenant,
+      id: shelfId,
+      warehouseId: payload.warehouseId,
+      code: payload.code,
+      name: payload.name,
+      remark: payload.remark,
+      locations: payload.locations.map((location) => ({
+        id: newShelfLocationId(),
+        code: location.code,
+        name: location.name,
+        remark: location.remark,
+      })),
+    });
+    // 主数据无状态机/无域事件（同 warehouse.define 取舍）。
+    return { status: 'committed', newRevision: 1, events: [], goodsShelf: created };
+  }
+
+  private async updateGoodsShelf(
+    envelope: CommandEnvelope<InventoryCommand>,
+    shelfId: string,
+  ): Promise<InventoryCommandResult> {
+    const payload = parseGoodsShelfUpdatePayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    const shelf = await this.goodsShelves.find(tenant, shelfId);
+    if (shelf === null) {
+      return rejected(`租户 '${tenant}' 内不存在货架 '${shelfId}'`);
+    }
+    if (envelope.expectedRevision === 'initial' || envelope.expectedRevision !== shelf.objectVersion) {
+      return rejected(
+        `货架 '${shelfId}' 版本不符：expectedRevision 须为当前 objectVersion ${shelf.objectVersion}`,
+      );
+    }
+    if (payload.code !== undefined && payload.code !== shelf.code) {
+      const children = await this.goodsShelves.listShelfLocations(tenant, shelfId);
+      if (children.length > 0) {
+        return rejected(`货架 '${shelf.code}' 已配置库位（${children.length} 个），货架编码不可修改`);
+      }
+    }
+
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: 'goods-shelf',
+      aggregateId: shelfId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const updated = await this.goodsShelves.update(tenant, shelfId, shelf.objectVersion, {
+      ...(payload.code === undefined ? {} : { code: payload.code }),
+      ...(payload.name === undefined ? {} : { name: payload.name }),
+      ...(payload.remark === undefined ? {} : { remark: payload.remark }),
+    });
+    if (updated === null) {
+      return rejected(`货架 '${shelfId}' 版本竞态：条件更新零行命中（并发修改窗口），请重读重试`);
+    }
+    return { status: 'committed', newRevision: updated.objectVersion, events: [], goodsShelf: updated };
+  }
+
+  private async setGoodsShelfStatus(
+    envelope: CommandEnvelope<InventoryCommand>,
+    shelfId: string,
+  ): Promise<InventoryCommandResult> {
+    const payload = parseGoodsShelfSetStatusPayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    const shelf = await this.goodsShelves.find(tenant, shelfId);
+    if (shelf === null) {
+      return rejected(`租户 '${tenant}' 内不存在货架 '${shelfId}'`);
+    }
+    if (envelope.expectedRevision === 'initial' || envelope.expectedRevision !== shelf.objectVersion) {
+      return rejected(
+        `货架 '${shelfId}' 版本不符：expectedRevision 须为当前 objectVersion ${shelf.objectVersion}`,
+      );
+    }
+    if (payload.status === 'disabled' && (await this.shelfChildrenHavePositiveBalance(tenant, shelf))) {
+      return rejected(`货架 '${shelf.code}' 下属库位存在库存（正结存），无法停用`);
+    }
+
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: 'goods-shelf',
+      aggregateId: shelfId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const updated = await this.goodsShelves.setStatus(tenant, shelfId, shelf.objectVersion, payload.status);
+    if (updated === null) {
+      return rejected(`货架 '${shelfId}' 版本竞态：条件更新零行命中（并发修改窗口），请重读重试`);
+    }
+    return { status: 'committed', newRevision: updated.objectVersion, events: [], goodsShelf: updated };
+  }
+
+  private async removeGoodsShelf(
+    envelope: CommandEnvelope<InventoryCommand>,
+    shelfId: string,
+  ): Promise<InventoryCommandResult> {
+    const tenant = envelope.tenantId;
+    const shelf = await this.goodsShelves.find(tenant, shelfId);
+    if (shelf === null) {
+      return rejected(`租户 '${tenant}' 内不存在货架 '${shelfId}'`);
+    }
+    if (envelope.expectedRevision === 'initial' || envelope.expectedRevision !== shelf.objectVersion) {
+      return rejected(
+        `货架 '${shelfId}' 版本不符：expectedRevision 须为当前 objectVersion ${shelf.objectVersion}`,
+      );
+    }
+    const children = await this.goodsShelves.listShelfLocations(tenant, shelfId);
+    if (children.length > 0) {
+      return rejected(`货架 '${shelf.code}' 已配置库位（${children.length} 个），无法删除（先删下属货架库位）`);
+    }
+
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: 'goods-shelf',
+      aggregateId: shelfId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const removed = await this.goodsShelves.remove(tenant, shelfId);
+    if (!removed) {
+      return rejected(`货架 '${shelfId}' 删除竞态：行已不存在（并发删除窗口）`);
+    }
+    return { status: 'committed', newRevision: envelope.expectedRevision, events: [] };
+  }
+
+  private async defineShelfLocation(
+    envelope: CommandEnvelope<InventoryCommand>,
+    goodsShelfId: string,
+  ): Promise<InventoryCommandResult> {
+    const payload = parseShelfLocationDefinePayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    const shelf = await this.goodsShelves.find(tenant, goodsShelfId);
+    if (shelf === null) {
+      return rejected(`租户 '${tenant}' 内不存在货架 '${goodsShelfId}'`);
+    }
+    if (!payload.code.startsWith(shelf.code) || payload.code === shelf.code) {
+      return rejected(`货架库位编码 '${payload.code}' 须以货架编码 '${shelf.code}' 开头且长于货架编码`);
+    }
+    const duplicate = await this.goodsShelves.findShelfLocationByCode(tenant, payload.code);
+    if (duplicate !== null) {
+      return rejected(`货架库位编码 '${payload.code}' 已存在（表内唯一：${duplicate.id}）`);
+    }
+
+    const locationId = newShelfLocationId();
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: 'shelf-location',
+      aggregateId: locationId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    // warehouseId 以货架主数据为准反写（源 §3.4.3：前端传仓不采信）。
+    const created = await this.goodsShelves.addShelfLocation({
+      tenant,
+      id: locationId,
+      goodsShelfId: shelf.id,
+      warehouseId: shelf.warehouseId,
+      code: payload.code,
+      name: payload.name,
+      remark: payload.remark,
+    });
+    return { status: 'committed', newRevision: 1, events: [], shelfLocation: created };
+  }
+
+  private async updateShelfLocation(
+    envelope: CommandEnvelope<InventoryCommand>,
+    locationId: string,
+  ): Promise<InventoryCommandResult> {
+    const payload = parseShelfLocationUpdatePayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    const location = await this.goodsShelves.findShelfLocation(tenant, locationId);
+    if (location === null) {
+      return rejected(`租户 '${tenant}' 内不存在货架库位 '${locationId}'`);
+    }
+    if (envelope.expectedRevision === 'initial' || envelope.expectedRevision !== location.objectVersion) {
+      return rejected(
+        `货架库位 '${locationId}' 版本不符：expectedRevision 须为当前 objectVersion ${location.objectVersion}`,
+      );
+    }
+    if (payload.code !== undefined && payload.code !== location.code) {
+      if (await this.isShelfLocationReferenced(tenant, locationId)) {
+        return rejected(`货架库位 '${location.code}' 已被出入库流水引用，编码不可修改`);
+      }
+      const shelf = await this.goodsShelves.find(tenant, location.goodsShelfId);
+      if (shelf === null || !payload.code.startsWith(shelf.code) || payload.code === shelf.code) {
+        const shelfCode = shelf === null ? location.goodsShelfId : shelf.code;
+        return rejected(`货架库位编码 '${payload.code}' 须以货架编码 '${shelfCode}' 开头且长于货架编码`);
+      }
+      const duplicate = await this.goodsShelves.findShelfLocationByCode(tenant, payload.code);
+      if (duplicate !== null && duplicate.id !== locationId) {
+        return rejected(`货架库位编码 '${payload.code}' 已存在（表内唯一：${duplicate.id}）`);
+      }
+    }
+
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: 'shelf-location',
+      aggregateId: locationId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const updated = await this.goodsShelves.updateShelfLocation(tenant, locationId, location.objectVersion, {
+      ...(payload.code === undefined ? {} : { code: payload.code }),
+      ...(payload.name === undefined ? {} : { name: payload.name }),
+      ...(payload.remark === undefined ? {} : { remark: payload.remark }),
+    });
+    if (updated === null) {
+      return rejected(`货架库位 '${locationId}' 版本竞态：条件更新零行命中（并发修改窗口），请重读重试`);
+    }
+    return { status: 'committed', newRevision: updated.objectVersion, events: [], shelfLocation: updated };
+  }
+
+  private async setShelfLocationStatus(
+    envelope: CommandEnvelope<InventoryCommand>,
+    locationId: string,
+  ): Promise<InventoryCommandResult> {
+    const payload = parseGoodsShelfSetStatusPayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    const location = await this.goodsShelves.findShelfLocation(tenant, locationId);
+    if (location === null) {
+      return rejected(`租户 '${tenant}' 内不存在货架库位 '${locationId}'`);
+    }
+    if (envelope.expectedRevision === 'initial' || envelope.expectedRevision !== location.objectVersion) {
+      return rejected(
+        `货架库位 '${locationId}' 版本不符：expectedRevision 须为当前 objectVersion ${location.objectVersion}`,
+      );
+    }
+    if (payload.status === 'disabled' && (await this.shelfLocationHasPositiveBalance(tenant, location))) {
+      return rejected(`货架库位 '${location.code}' 存在库存（正结存），无法停用`);
+    }
+
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: 'shelf-location',
+      aggregateId: locationId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const updated = await this.goodsShelves.setShelfLocationStatus(
+      tenant,
+      locationId,
+      location.objectVersion,
+      payload.status,
+    );
+    if (updated === null) {
+      return rejected(`货架库位 '${locationId}' 版本竞态：条件更新零行命中（并发修改窗口），请重读重试`);
+    }
+    return { status: 'committed', newRevision: updated.objectVersion, events: [], shelfLocation: updated };
+  }
+
+  private async removeShelfLocation(
+    envelope: CommandEnvelope<InventoryCommand>,
+    locationId: string,
+  ): Promise<InventoryCommandResult> {
+    const tenant = envelope.tenantId;
+    const location = await this.goodsShelves.findShelfLocation(tenant, locationId);
+    if (location === null) {
+      return rejected(`租户 '${tenant}' 内不存在货架库位 '${locationId}'`);
+    }
+    if (envelope.expectedRevision === 'initial' || envelope.expectedRevision !== location.objectVersion) {
+      return rejected(
+        `货架库位 '${locationId}' 版本不符：expectedRevision 须为当前 objectVersion ${location.objectVersion}`,
+      );
+    }
+    if (await this.shelfLocationHasPositiveBalance(tenant, location)) {
+      return rejected(`货架库位 '${location.code}' 存在库存（正结存），无法删除`);
+    }
+    if (await this.isShelfLocationReferenced(tenant, locationId)) {
+      return rejected(`货架库位 '${location.code}' 存在入库或出库记录，无法删除`);
+    }
+
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: 'shelf-location',
+      aggregateId: locationId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const removed = await this.goodsShelves.removeShelfLocation(tenant, locationId);
+    if (!removed) {
+      return rejected(`货架库位 '${locationId}' 删除竞态：行已不存在（并发删除窗口）`);
+    }
+    return { status: 'committed', newRevision: envelope.expectedRevision, events: [] };
   }
 
   // ---- stock.receive（三类入库；放行咬合 + receiptKey 幂等） ----
@@ -400,8 +835,8 @@ export class InventoryService {
       return rejected(`租户 '${tenant}' 内不存在仓库 '${input.warehouseId}'`);
     }
     const locationId = input.locationId ?? warehouse.defaultLocationId;
-    if (await this.warehouses.findLocation(tenant, input.warehouseId, locationId) === null) {
-      return rejected(`仓库 '${input.warehouseId}' 内不存在库位 '${locationId}'`);
+    if (!(await this.isSelectableStockLocation(tenant, input.warehouseId, locationId))) {
+      return rejected(`仓库 '${input.warehouseId}' 内不存在可落位的库位 '${locationId}'（含已启用货架库位）`);
     }
 
     // 放行咬合（inspection 来源）：放行登记总量 − 已入量 ≥ 本次。
@@ -800,11 +1235,11 @@ export class InventoryService {
     }
     const fromLocationId = payload.fromLocationId ?? from.defaultLocationId;
     const toLocationId = payload.toLocationId ?? to.defaultLocationId;
-    if ((await this.warehouses.findLocation(tenant, payload.fromWarehouseId, fromLocationId)) === null) {
-      return rejected(`源仓库 '${payload.fromWarehouseId}' 内不存在库位 '${fromLocationId}'`);
+    if (!(await this.isSelectableStockLocation(tenant, payload.fromWarehouseId, fromLocationId))) {
+      return rejected(`源仓库 '${payload.fromWarehouseId}' 内不存在可落位的库位 '${fromLocationId}'（含已启用货架库位）`);
     }
-    if ((await this.warehouses.findLocation(tenant, payload.toWarehouseId, toLocationId)) === null) {
-      return rejected(`目的仓库 '${payload.toWarehouseId}' 内不存在库位 '${toLocationId}'`);
+    if (!(await this.isSelectableStockLocation(tenant, payload.toWarehouseId, toLocationId))) {
+      return rejected(`目的仓库 '${payload.toWarehouseId}' 内不存在可落位的库位 '${toLocationId}'（含已启用货架库位）`);
     }
 
     const intra = payload.fromWarehouseId === payload.toWarehouseId;
@@ -1309,8 +1744,8 @@ export class InventoryService {
         return rejected(`发货行 ${index + 1}：租户 '${tenant}' 内不存在仓库 '${warehouseId}'`);
       }
       const locationId = line.locationId ?? warehouse.defaultLocationId;
-      if ((await this.warehouses.findLocation(tenant, warehouseId, locationId)) === null) {
-        return rejected(`发货行 ${index + 1}：仓库 '${warehouseId}' 内不存在库位 '${locationId}'`);
+      if (!(await this.isSelectableStockLocation(tenant, warehouseId, locationId))) {
+        return rejected(`发货行 ${index + 1}：仓库 '${warehouseId}' 内不存在可落位的库位 '${locationId}'（含已启用货架库位）`);
       }
       resolvedLines.push({
         itemId: line.itemId,
@@ -1580,6 +2015,30 @@ export class InventoryService {
       throw new InventoryNotFoundError(`租户 '${tenant}' 内不存在仓库 '${warehouseId}'`);
     }
     return warehouse;
+  }
+
+  /** 货架目录（code 升序；warehouseId 过滤可选）。 */
+  async listGoodsShelves(
+    tenant: TenantId,
+    warehouseId?: string,
+  ): Promise<readonly GoodsShelf[]> {
+    return this.goodsShelves.list(
+      tenant,
+      warehouseId === undefined ? undefined : { warehouseId },
+    );
+  }
+
+  /** 货架详情（含下属货架库位，code 升序；不存在抛 InventoryNotFoundError）。 */
+  async goodsShelfDetail(
+    tenant: TenantId,
+    shelfId: string,
+  ): Promise<{ readonly shelf: GoodsShelf; readonly locations: readonly ShelfLocation[] }> {
+    const shelf = await this.goodsShelves.find(tenant, shelfId);
+    if (shelf === null) {
+      throw new InventoryNotFoundError(`租户 '${tenant}' 内不存在货架 '${shelfId}'`);
+    }
+    const locations = await this.goodsShelves.listShelfLocations(tenant, shelfId);
+    return { shelf, locations };
   }
 
   /** 实时库存（可用量口径；可用量=总量−预占，机器计算非存储列）。 */

@@ -30,6 +30,14 @@ export interface ItemMaster {
   /** 分类（自由文本，可空；行业词只进数据不进代码）。 */
   readonly category: string | null;
   readonly active: boolean;
+  /**
+   * 初始价格（含税单价，分；可空 = 未维护——RREQ-MD-020，fix-wave-6 6b-1 S9）。
+   * 语义：无历史采购成交价时成本取价以此兜底（**取价消费侧联动归 costing
+   * 对账口径，本批不做，登记**）；清空保存 = 取消初始价格。Int 分口径与
+   * listing unitPriceMinor / 全库 minor 列一致（源侧 BigDecimal 16 位整数
+   * 形态不复刻，差异随需求登记）。
+   */
+  readonly initialPriceMinor: number | null;
 }
 
 export interface CreateItemInput {
@@ -41,6 +49,8 @@ export interface CreateItemInput {
   readonly category?: string | null;
   /** 缺省 true。 */
   readonly active?: boolean;
+  /** 初始价格（分，≥0 整数；缺省 null = 未维护）。 */
+  readonly initialPriceMinor?: number | null;
 }
 
 /** 字段级期望态更新：未提供的键不变；code 不可变（唯一键稳定性）。 */
@@ -50,6 +60,8 @@ export interface UpdateItemInput {
   readonly unit?: string | null;
   readonly category?: string | null;
   readonly active?: boolean;
+  /** 初始价格（分）：未提供不变；null = 清空保存（取消初始价格）；整数 ≥0。 */
+  readonly initialPriceMinor?: number | null;
 }
 
 /**
@@ -195,4 +207,129 @@ export interface UnitStore {
   list(tenant: TenantId): Promise<readonly UnitMaster[]>;
   find(tenant: TenantId, id: string): Promise<UnitMaster | null>;
   update(tenant: TenantId, id: string, input: UpdateUnitInput): Promise<UnitMaster | null>;
+}
+
+// ---------------------------------------------------------------------------
+// 物品价格台账（RREQ-MD-019，fix-wave-6 6b-1 S9；U9 中止版按 PRD 11 册定义重做）
+//
+// 口径（与 U9 旧设计的差异，依 6b-1 派发冻结）：**不建 masterdata 自有价格
+// 历史表**——数据源 = 采购域订单明细（listing 的 purchase_orders.lines），
+// 只读消费；listing 域禁碰，读面在 masterdata 侧自建（端口在本包定义业务
+// 结果形状，PG 实现由 business-store `./masterdata` 只读查 listing 表——
+// 跨域只读消费先例 = standardreports r8 事实源直读 purchase_orders 行级）。
+// 成本取价兜底联动（RREQ-MD-021 批量取价 / costing 消费侧）本批不做，登记。
+// ---------------------------------------------------------------------------
+
+/** 价格台账行（采购订单明细行的成交价读面；PRD 列面 = 源文档 §2.4 表格）。 */
+export interface ItemPurchasePriceEntry {
+  /** 采购单号（listing 订单 id 即单号，po-<uuidv7>）。 */
+  readonly purchaseOrderId: string;
+  /** 订单内行号（1 起）。 */
+  readonly lineNo: number;
+  readonly supplierRef: string | null;
+  readonly supplierName: string | null;
+  /** 含税单价（分，整数精确；null = 未定价——**仍展示行**，PRD 明示）。 */
+  readonly unitPriceMinor: number | null;
+  /** 采购数量（订单明细订购数量）。 */
+  readonly quantity: number;
+  /** 订单状态（draft/submitted/approved/issued/received，listing 五态词汇）。 */
+  readonly orderState: string;
+  /** 下单时间（订单创建时间，ISO 8601）。 */
+  readonly orderedAt: string;
+  /** 审核时间（订单状态机 to='approved' 迁移时刻，ISO 8601；null = 未审核）。 */
+  readonly approvedAt: string | null;
+}
+
+/** 台账分页结果（total = 该物品全部明细行数，与页内条数无关）。 */
+export interface ItemPurchasePricePage {
+  readonly total: number;
+  readonly entries: readonly ItemPurchasePriceEntry[];
+}
+
+/** 分页请求（页基 1；limit 1..100——用例层解析收口，端口收窄后的值）。 */
+export interface ItemPurchasePriceQuery {
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/**
+ * 物品价格台账读面端口（只读，无写方法）。实现方保证：
+ *  - 行集 = 该物品出现在任一采购订单明细行的**全部行**（含未审核订单——
+ *    状态列供消费方自行区分；源 §3.11 仅排除"已删除"，我方无删除语义）；
+ *  - 排序口径（源 §3.11 同构）：occurredAt = COALESCE(approvedAt, orderedAt)
+ *    **降序**（审核时间优先、回落下单时间）→ purchaseOrderId 降序（源
+ *    o.id DESC 决胜）→ lineNo 升序（源 l.id ASC 决胜）；
+ *  - total 为全量行数（分页前）。
+ */
+export interface ItemPriceLedgerStore {
+  listByItem(
+    tenant: TenantId,
+    itemId: string,
+    query: ItemPurchasePriceQuery,
+  ): Promise<ItemPurchasePricePage>;
+}
+
+/** 台账物化的订单输入行（DB 无关形状：内存实现喂行 / PG 实现查表转换共用）。 */
+export interface PriceLedgerOrderRow {
+  readonly id: string;
+  readonly supplierRef: string | null;
+  readonly supplierName: string | null;
+  readonly state: string;
+  /** ISO 8601（PG 侧 Date → toISOString 后传入）。 */
+  readonly createdAt: string;
+  /** 订单明细行集（listing lines JSON 原值——防御性解析，坏行静默跳过）。 */
+  readonly lines: unknown;
+}
+
+/**
+ * 台账物化共享纯函数（内存 / PG 两实现同一排序口径的单点实现）：
+ * 展开订单 lines（{ lineNo, itemId, quantity, unitPriceMinor } 形状）过滤
+ * itemId → 组装行 → 按 `ItemPriceLedgerStore` 端口合同的排序口径排序。
+ * lines 非数组 / 行形状不符的条目跳过（只读投影，不 fail-fast——坏数据
+ * 不阻塞台账面，对账归 listing 域）。
+ */
+export function buildItemPurchasePriceEntries(
+  orders: readonly PriceLedgerOrderRow[],
+  approvedAtByOrder: ReadonlyMap<string, string>,
+  itemId: string,
+): readonly ItemPurchasePriceEntry[] {
+  const entries: ItemPurchasePriceEntry[] = [];
+  for (const order of orders) {
+    if (!Array.isArray(order.lines)) continue;
+    for (const raw of order.lines) {
+      if (typeof raw !== 'object' || raw === null) continue;
+      const line = raw as Record<string, unknown>;
+      if (line['itemId'] !== itemId) continue;
+      const lineNo = line['lineNo'];
+      const quantity = line['quantity'];
+      if (typeof lineNo !== 'number' || !Number.isInteger(lineNo)) continue;
+      if (typeof quantity !== 'number' || !Number.isFinite(quantity)) continue;
+      const unitPriceRaw = line['unitPriceMinor'];
+      const unitPriceMinor =
+        typeof unitPriceRaw === 'number' && Number.isInteger(unitPriceRaw)
+          ? unitPriceRaw
+          : null; // 缺失/非整数分 → 未定价（仍展示行）
+      entries.push({
+        purchaseOrderId: order.id,
+        lineNo,
+        supplierRef: order.supplierRef,
+        supplierName: order.supplierName,
+        unitPriceMinor,
+        quantity,
+        orderState: order.state,
+        orderedAt: order.createdAt,
+        approvedAt: approvedAtByOrder.get(order.id) ?? null,
+      });
+    }
+  }
+  const occurredOf = (entry: ItemPurchasePriceEntry): string =>
+    entry.approvedAt ?? entry.orderedAt; // COALESCE(approved, ordered)
+  entries.sort((a, b) => {
+    const byOccurred = occurredOf(b).localeCompare(occurredOf(a)); // 降序（近在前）
+    if (byOccurred !== 0) return byOccurred;
+    const byOrder = b.purchaseOrderId.localeCompare(a.purchaseOrderId); // 订单号降序
+    if (byOrder !== 0) return byOrder;
+    return a.lineNo - b.lineNo; // 行号升序
+  });
+  return entries;
 }

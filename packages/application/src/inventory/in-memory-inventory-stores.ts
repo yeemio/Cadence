@@ -14,23 +14,29 @@ import {
   type EventId,
   type OutboxRecord,
 } from '@smes/business-core';
-import type { ReservationStatus } from './inventory-config.js';
+import type { GoodsShelfStatus, ReservationStatus } from './inventory-config.js';
 import { InventoryConflictError } from './inventory-errors.js';
 import type {
+  AddShelfLocationInput,
   AppendReleaseFactInput,
   AppendStockMovementInput,
   CreateShippingOrderInput,
   CreateStockReservationInput,
   CreateStocktakeInput,
+  DefineGoodsShelfInput,
   DefineWarehouseInput,
+  GoodsShelf,
+  GoodsShelfStore,
   InventoryDomainEventStore,
   InventoryOperationRecord,
   InventoryOperationStore,
+  ListGoodsShelvesFilter,
   ListLocationBalancesFilter,
   ListStockAccountsFilter,
   ListStockMovementsFilter,
   ReleaseFact,
   ReleaseFactStore,
+  ShelfLocation,
   ShippingLine,
   ShippingOrder,
   ShippingOrderStore,
@@ -151,6 +157,259 @@ export class InMemoryWarehouseStore implements WarehouseStore {
   ): Promise<WarehouseLocation | null> {
     const warehouse = await this.find(tenant, warehouseId);
     return warehouse?.locations.find((location) => location.id === locationId) ?? null;
+  }
+}
+
+// ---- 货架与货架库位（主数据第三级，B3 / RREQ-IV-002） ----
+
+interface GoodsShelfRow {
+  readonly tenant: string;
+  readonly id: string;
+  readonly warehouseId: string;
+  code: string;
+  name: string;
+  remark: string | null;
+  status: GoodsShelfStatus;
+  objectVersion: number;
+  readonly createdAt: string;
+  updatedAt: string;
+}
+
+interface ShelfLocationRow {
+  readonly tenant: string;
+  readonly id: string;
+  readonly warehouseId: string;
+  readonly goodsShelfId: string;
+  code: string;
+  name: string | null;
+  remark: string | null;
+  status: GoodsShelfStatus;
+  objectVersion: number;
+  readonly createdAt: string;
+  updatedAt: string;
+}
+
+function toGoodsShelf(row: GoodsShelfRow): GoodsShelf {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenant),
+    warehouseId: row.warehouseId,
+    code: row.code,
+    name: row.name,
+    remark: row.remark,
+    status: row.status,
+    objectVersion: row.objectVersion,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toShelfLocation(row: ShelfLocationRow): ShelfLocation {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenant),
+    warehouseId: row.warehouseId,
+    goodsShelfId: row.goodsShelfId,
+    code: row.code,
+    name: row.name,
+    remark: row.remark,
+    status: row.status,
+    objectVersion: row.objectVersion,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export class InMemoryGoodsShelfStore implements GoodsShelfStore {
+  private readonly shelves = new Map<string, GoodsShelfRow>(); // key: `${tenant}|${id}`
+  private readonly shelfLocations = new Map<string, ShelfLocationRow>(); // key: `${tenant}|${id}`
+
+  async create(input: DefineGoodsShelfInput): Promise<GoodsShelf> {
+    const key = `${input.tenant}|${input.id}`;
+    if (this.shelves.has(key)) {
+      throw new InventoryConflictError(`货架 '${input.id}' 已存在`);
+    }
+    if (
+      [...this.shelves.values()].some(
+        (row) => row.tenant === input.tenant && row.warehouseId === input.warehouseId && row.code === input.code,
+      )
+    ) {
+      throw new InventoryConflictError(
+        `货架编码 '${input.code}' 已存在（(tenant, warehouse, code) 唯一）`,
+      );
+    }
+    const now = new Date().toISOString();
+    const row: GoodsShelfRow = {
+      tenant: input.tenant,
+      id: input.id,
+      warehouseId: input.warehouseId,
+      code: input.code,
+      name: input.name,
+      remark: input.remark,
+      status: 'active',
+      objectVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.shelves.set(key, row);
+    for (const location of input.locations) {
+      this.insertShelfLocation({
+        tenant: input.tenant,
+        id: location.id,
+        goodsShelfId: input.id,
+        warehouseId: input.warehouseId,
+        code: location.code,
+        name: location.name,
+        remark: location.remark,
+      });
+    }
+    return toGoodsShelf(row);
+  }
+
+  async find(tenant: TenantId, id: string): Promise<GoodsShelf | null> {
+    const row = this.shelves.get(`${tenant}|${id}`);
+    return row === undefined ? null : toGoodsShelf(row);
+  }
+
+  async list(tenant: TenantId, filter?: ListGoodsShelvesFilter): Promise<readonly GoodsShelf[]> {
+    return [...this.shelves.values()]
+      .filter(
+        (row) =>
+          row.tenant === tenant &&
+          (filter?.warehouseId === undefined || row.warehouseId === filter.warehouseId),
+      )
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(toGoodsShelf);
+  }
+
+  async update(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    patch: { readonly code?: string; readonly name?: string; readonly remark?: string | null },
+  ): Promise<GoodsShelf | null> {
+    const row = this.shelves.get(`${tenant}|${id}`);
+    if (row === undefined || row.objectVersion !== expectedObjectVersion) return null;
+    if (patch.code !== undefined) row.code = patch.code;
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.remark !== undefined) row.remark = patch.remark;
+    row.objectVersion += 1;
+    row.updatedAt = new Date().toISOString();
+    return toGoodsShelf(row);
+  }
+
+  async setStatus(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    status: GoodsShelfStatus,
+  ): Promise<GoodsShelf | null> {
+    const row = this.shelves.get(`${tenant}|${id}`);
+    if (row === undefined || row.objectVersion !== expectedObjectVersion) return null;
+    row.status = status;
+    row.objectVersion += 1;
+    row.updatedAt = new Date().toISOString();
+    return toGoodsShelf(row);
+  }
+
+  async remove(tenant: TenantId, id: string): Promise<boolean> {
+    return this.shelves.delete(`${tenant}|${id}`);
+  }
+
+  async findShelfLocation(tenant: TenantId, id: string): Promise<ShelfLocation | null> {
+    const row = this.shelfLocations.get(`${tenant}|${id}`);
+    return row === undefined ? null : toShelfLocation(row);
+  }
+
+  async findShelfLocationByCode(tenant: TenantId, code: string): Promise<ShelfLocation | null> {
+    const row = [...this.shelfLocations.values()].find(
+      (candidate) => candidate.tenant === tenant && candidate.code === code,
+    );
+    return row === undefined ? null : toShelfLocation(row);
+  }
+
+  async listShelfLocations(tenant: TenantId, goodsShelfId: string): Promise<readonly ShelfLocation[]> {
+    return [...this.shelfLocations.values()]
+      .filter((row) => row.tenant === tenant && row.goodsShelfId === goodsShelfId)
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(toShelfLocation);
+  }
+
+  async listShelfLocationsByWarehouse(tenant: TenantId, warehouseId: string): Promise<readonly ShelfLocation[]> {
+    return [...this.shelfLocations.values()]
+      .filter((row) => row.tenant === tenant && row.warehouseId === warehouseId)
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(toShelfLocation);
+  }
+
+  async addShelfLocation(input: AddShelfLocationInput): Promise<ShelfLocation> {
+    return toShelfLocation(this.insertShelfLocation(input));
+  }
+
+  async updateShelfLocation(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    patch: { readonly code?: string; readonly name?: string | null; readonly remark?: string | null },
+  ): Promise<ShelfLocation | null> {
+    const row = this.shelfLocations.get(`${tenant}|${id}`);
+    if (row === undefined || row.objectVersion !== expectedObjectVersion) return null;
+    if (patch.code !== undefined) row.code = patch.code;
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.remark !== undefined) row.remark = patch.remark;
+    row.objectVersion += 1;
+    row.updatedAt = new Date().toISOString();
+    return toShelfLocation(row);
+  }
+
+  async setShelfLocationStatus(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    status: GoodsShelfStatus,
+  ): Promise<ShelfLocation | null> {
+    const row = this.shelfLocations.get(`${tenant}|${id}`);
+    if (row === undefined || row.objectVersion !== expectedObjectVersion) return null;
+    row.status = status;
+    row.objectVersion += 1;
+    row.updatedAt = new Date().toISOString();
+    return toShelfLocation(row);
+  }
+
+  async removeShelfLocation(tenant: TenantId, id: string): Promise<boolean> {
+    return this.shelfLocations.delete(`${tenant}|${id}`);
+  }
+
+  private insertShelfLocation(input: AddShelfLocationInput): ShelfLocationRow {
+    const key = `${input.tenant}|${input.id}`;
+    if (this.shelfLocations.has(key)) {
+      throw new InventoryConflictError(`货架库位 '${input.id}' 已存在`);
+    }
+    if (
+      [...this.shelfLocations.values()].some(
+        (row) => row.tenant === input.tenant && row.code === input.code,
+      )
+    ) {
+      throw new InventoryConflictError(
+        `货架库位编码 '${input.code}' 已存在（(tenant, code) 表内唯一）`,
+      );
+    }
+    const now = new Date().toISOString();
+    const row: ShelfLocationRow = {
+      tenant: input.tenant,
+      id: input.id,
+      warehouseId: input.warehouseId,
+      goodsShelfId: input.goodsShelfId,
+      code: input.code,
+      name: input.name,
+      remark: input.remark,
+      status: 'active',
+      objectVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.shelfLocations.set(key, row);
+    return row;
   }
 }
 
@@ -412,7 +671,8 @@ export class InMemoryStockMovementStore implements StockMovementStore {
           (filter?.warehouseId === undefined || row.warehouseId === filter.warehouseId) &&
           (filter?.kind === undefined || row.kind === filter.kind) &&
           (filter?.workOrderId === undefined || row.workOrderId === filter.workOrderId) &&
-          (filter?.sourceRefId === undefined || row.sourceRefId === filter.sourceRefId),
+          (filter?.sourceRefId === undefined || row.sourceRefId === filter.sourceRefId) &&
+          (filter?.locationId === undefined || row.locationId === filter.locationId),
       )
       .sort((a, b) => a.seq - b.seq);
   }

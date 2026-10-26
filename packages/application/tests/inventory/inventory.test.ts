@@ -69,7 +69,9 @@ import {
 } from '../../src/inventory/in-memory-inventory-stores.js';
 import { InventoryModule } from '../../src/inventory/inventory.module.js';
 import {
+  GoodsShelvesController,
   InventoryQueriesController,
+  ShelfLocationsController,
   ShippingOrdersController,
   StockMovementCommandsController,
   StocktakingController,
@@ -370,7 +372,8 @@ describe('stock.receive（三类入库：质检放行/采购收货/完工入库�
     const badLocation = await h.service.execute(
       envelope('stock.receive.v1', { kind: 'production', itemId: 'item-002', warehouseId: ids.wh1, locationId: ids.ext, quantity: 1 }),
     );
-    expect(mustReject(badLocation)).toContain("不存在库位");
+    // B3 后落位解析器扩展：文案含"可落位的库位"（直属库位或已启用货架库位）。
+    expect(mustReject(badLocation)).toContain("可落位的库位");
   });
 
   it('被拒不占用 operationId（口径统一：先解析校验后记账）：仓库不存在被拒后建仓，同 id 重发 → committed', async () => {
@@ -1310,6 +1313,8 @@ describe('模块装配与权限码', () => {
     const module = InventoryModule.register();
     expect(module.controllers).toEqual([
       WarehousesController,
+      GoodsShelvesController,
+      ShelfLocationsController,
       StockMovementCommandsController,
       StocktakingController,
       ShippingOrdersController,
@@ -1319,11 +1324,21 @@ describe('模块装配与权限码', () => {
     expect(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, InventoryModule)).toBeUndefined();
   });
 
-  it('权限码：18 路由逐点声明（07-inventory.md §5 最小集）', () => {
+  it('权限码：28 路由逐点声明（07-inventory.md §5 最小集 + B3 货架面沿用仓库权限码）', () => {
     const expected: readonly [object, string, string][] = [
       [WarehousesController.prototype, 'define', 'warehouse:write'],
       [WarehousesController.prototype, 'list', 'warehouse:read'],
       [WarehousesController.prototype, 'get', 'warehouse:read'],
+      [GoodsShelvesController.prototype, 'define', 'warehouse:write'],
+      [GoodsShelvesController.prototype, 'list', 'warehouse:read'],
+      [GoodsShelvesController.prototype, 'get', 'warehouse:read'],
+      [GoodsShelvesController.prototype, 'update', 'warehouse:write'],
+      [GoodsShelvesController.prototype, 'setStatus', 'warehouse:write'],
+      [GoodsShelvesController.prototype, 'remove', 'warehouse:write'],
+      [GoodsShelvesController.prototype, 'defineLocation', 'warehouse:write'],
+      [ShelfLocationsController.prototype, 'update', 'warehouse:write'],
+      [ShelfLocationsController.prototype, 'setStatus', 'warehouse:write'],
+      [ShelfLocationsController.prototype, 'remove', 'warehouse:write'],
       [StockMovementCommandsController.prototype, 'receive', 'stock:receive'],
       [StockMovementCommandsController.prototype, 'issue', 'stock:issue'],
       [StockMovementCommandsController.prototype, 'transfer', 'stock:transfer'],
@@ -1340,7 +1355,7 @@ describe('模块装配与权限码', () => {
       [InventoryQueriesController.prototype, 'stocktakes', 'stocktake:read'],
       [InventoryQueriesController.prototype, 'stocktake', 'stocktake:read'],
     ];
-    expect(expected).toHaveLength(18);
+    expect(expected).toHaveLength(28);
     for (const [target, method, code] of expected) {
       const actual = Reflect.getMetadata(
         PERMISSION_METADATA_KEY,

@@ -155,4 +155,10 @@ export const RLS_TABLES: readonly RlsTableSpec[] = [
   // fix-wave-6 6b-3 线（2026-10-26 落库：A14 / RREQ-INT-032 用户表格列显隐
   // 偏好单表；守恒测试触发补登 + 全量重放迁移 20261026200100——104 表快照）
   tenantTable('column_preferences'),
+  // fix-wave-6 6b-1 B3 线（2026-10-26 落库：RREQ-IV-002 货架+货架库位两表
+  // ——层级化库位组织主数据（仓库主数据第三/四类）；守恒测试触发补登 +
+  // 全量重放迁移 20261026220600——106 表快照。同批 S9（20261026220000）
+  // 为 items 纯加列、无新表，不进本清单）
+  tenantTable('goods_shelves'),
+  tenantTable('shelf_locations'),
 ];

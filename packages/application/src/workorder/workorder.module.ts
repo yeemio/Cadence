@@ -9,7 +9,9 @@
  * 兄弟模块合流时经 register 注入真实端口——本模块只经端口互调（依赖铁律）。
  *
  * 配置注入形状：九态/配件两份 engine-flow 配置整体可注入（换配置 = 换合法集，
- * 编排代码零改动，ADR-0010 条 2）；齐套类目与风险窗口为初版口径参数。
+ * 编排代码零改动，ADR-0010 条 2）；齐套类目与风险窗口为初版口径参数；配件
+ * 审批链（S6：级数 1/2/3 + 二三级角色，缺省单级零回归）与角色解析端口
+ * 见 WorkOrderServiceOptions.partsApprovalChain / approverPort。
  *
  * 注册（总控合流接 app-registry，本文件不改注册表）：
  *   workorder: (stores) =>
@@ -42,6 +44,7 @@ import type {
   CustomerDirectoryPort,
   InventoryAvailabilityPort,
   ListingRequirementPort,
+  PartsApproverDirectoryPort,
   PartsIssuePort,
   ProgressFactPort,
 } from './workorder-ports.js';
@@ -49,6 +52,7 @@ import {
   EMPTY_CUSTOMER_PORT,
   EMPTY_INVENTORY_PORT,
   EMPTY_LISTING_PORT,
+  EMPTY_PARTS_APPROVER_DIRECTORY,
   EMPTY_PROGRESS_PORT,
   NOOP_PARTS_ISSUE_PORT,
 } from './workorder-ports.js';
@@ -72,6 +76,7 @@ export const WORKORDER_INVENTORY_PORT = Symbol('smes.workorder.inventoryPort');
 export const WORKORDER_ISSUE_PORT = Symbol('smes.workorder.issuePort');
 export const WORKORDER_PROGRESS_PORT = Symbol('smes.workorder.progressPort');
 export const WORKORDER_CUSTOMER_PORT = Symbol('smes.workorder.customerPort');
+export const WORKORDER_APPROVER_PORT = Symbol('smes.workorder.approverPort');
 export const WORKORDER_SERVICE_OPTIONS = Symbol('smes.workorder.serviceOptions');
 
 export interface WorkOrderModuleOptions {
@@ -101,7 +106,13 @@ export interface WorkOrderModuleOptions {
   readonly progressPort?: ProgressFactPort | undefined;
   /** masterdata 客户目录端口；缺省 = 空实现（客户名解析降级 null）。 */
   readonly customerPort?: CustomerDirectoryPort | undefined;
-  /** 服务选项（状态机配置/齐套类目/风险窗口/时钟）；缺省 = 初版默认。 */
+  /**
+   * 配件审批链角色解析端口（S6 / RREQ-IS-037）；缺省 = 空目录（多级链
+   * 二/三级审批明确拒绝）。组合根可用 createOrgPartsApproverDirectory
+   * 接 org 域 PolicyStore/UserStore 实时解析。
+   */
+  readonly approverPort?: PartsApproverDirectoryPort | undefined;
+  /** 服务选项（状态机配置/审批链/齐套类目/风险窗口/时钟）；缺省 = 初版默认。 */
   readonly serviceOptions?: Partial<WorkOrderServiceOptions> | undefined;
 }
 
@@ -135,6 +146,7 @@ export class WorkOrderModule {
       { provide: WORKORDER_ISSUE_PORT, useValue: options.issuePort ?? NOOP_PARTS_ISSUE_PORT },
       { provide: WORKORDER_PROGRESS_PORT, useValue: options.progressPort ?? EMPTY_PROGRESS_PORT },
       { provide: WORKORDER_CUSTOMER_PORT, useValue: options.customerPort ?? EMPTY_CUSTOMER_PORT },
+      { provide: WORKORDER_APPROVER_PORT, useValue: options.approverPort ?? EMPTY_PARTS_APPROVER_DIRECTORY },
       { provide: WORKORDER_SERVICE_OPTIONS, useValue: serviceOptions },
       {
         provide: WorkOrderService,
@@ -152,6 +164,7 @@ export class WorkOrderModule {
           issue: PartsIssuePort,
           progress: ProgressFactPort,
           customer: CustomerDirectoryPort,
+          approvers: PartsApproverDirectoryPort,
           serviceOpts: Partial<WorkOrderServiceOptions>,
         ) =>
           new WorkOrderService(
@@ -163,7 +176,7 @@ export class WorkOrderModule {
             domainEvents,
             machineEvents,
             todos,
-            { listing, inventory, issue, progress, customer },
+            { listing, inventory, issue, progress, customer, approvers },
             serviceOpts,
           ),
         inject: [
@@ -180,6 +193,7 @@ export class WorkOrderModule {
           WORKORDER_ISSUE_PORT,
           WORKORDER_PROGRESS_PORT,
           WORKORDER_CUSTOMER_PORT,
+          WORKORDER_APPROVER_PORT,
           WORKORDER_SERVICE_OPTIONS,
         ],
       },

@@ -16,6 +16,7 @@ import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
 import { TenantId } from '@smes/business-core';
 import {
   MasterdataConflictError,
+  buildItemPurchasePriceEntries,
   type CreateCustomerInput,
   type CreateItemInput,
   type CreateResourceInput,
@@ -24,7 +25,11 @@ import {
   type CustomerMaster,
   type CustomerStore,
   type ItemMaster,
+  type ItemPriceLedgerStore,
+  type ItemPurchasePricePage,
+  type ItemPurchasePriceQuery,
   type ItemStore,
+  type PriceLedgerOrderRow,
   type ResourceMaster,
   type ResourceStore,
   type SupplierMaster,
@@ -56,6 +61,7 @@ interface ItemDbRow {
   readonly unit: string | null;
   readonly category: string | null;
   readonly active: boolean;
+  readonly initialPriceMinor: number | null;
 }
 
 function toItemMaster(row: ItemDbRow): ItemMaster {
@@ -68,6 +74,7 @@ function toItemMaster(row: ItemDbRow): ItemMaster {
     unit: row.unit,
     category: row.category,
     active: row.active,
+    initialPriceMinor: row.initialPriceMinor,
   };
 }
 
@@ -86,6 +93,7 @@ export class PgItemStore implements ItemStore {
           unit: input.unit ?? null,
           category: input.category ?? null,
           active: input.active ?? true,
+          initialPriceMinor: input.initialPriceMinor ?? null,
         },
       });
       return toItemMaster(row);
@@ -122,6 +130,9 @@ export class PgItemStore implements ItemStore {
           ...(input.unit !== undefined ? { unit: input.unit } : {}),
           ...(input.category !== undefined ? { category: input.category } : {}),
           ...(input.active !== undefined ? { active: input.active } : {}),
+          ...(input.initialPriceMinor !== undefined
+            ? { initialPriceMinor: input.initialPriceMinor }
+            : {}),
         },
       });
       return toItemMaster(row);
@@ -223,7 +234,7 @@ export interface MasterdataStoreOptions {
   readonly datasourceUrl?: string;
 }
 
-/** 组合根装配句柄：五端口实现（物品/资源 + S1 客户/供应商/计量单位）+ 优雅断连。 */
+/** 组合根装配句柄：五端口实现（物品/资源 + S1 客户/供应商/计量单位）+ 价格台账只读读面 + 优雅断连。 */
 export interface MasterdataStoreHandle {
   readonly itemStore: ItemStore;
   readonly resourceStore: ResourceStore;
@@ -233,6 +244,8 @@ export interface MasterdataStoreHandle {
   readonly supplierStore: SupplierStore;
   /** 计量单位字典存储（S1 backfill：0920 #100）。 */
   readonly unitStore: UnitStore;
+  /** 物品价格台账读面（fix-wave-6 6b-1 S9，RREQ-MD-019；只读消费 listing 采购表）。 */
+  readonly itemPriceLedgerStore: ItemPriceLedgerStore;
   disconnect(): Promise<void>;
 }
 
@@ -250,6 +263,7 @@ export function connectMasterdataStore(
     customerStore: new PgCustomerStore(client),
     supplierStore: new PgSupplierStore(client),
     unitStore: new PgUnitStore(client),
+    itemPriceLedgerStore: new PgItemPriceLedgerStore(client),
     async disconnect(): Promise<void> {
       await client.$disconnect();
     },
@@ -486,5 +500,75 @@ export class PgUnitStore implements UnitStore {
       }
       throw error;
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 物品价格台账 PG 只读实现（RREQ-MD-019，fix-wave-6 6b-1 S9）。
+//
+// 数据源 = 采购域两张表**只读消费**（listing 域代码禁碰——本实现不改 listing
+// 任何端口/表/迁移，只 SELECT；跨域只读先例 = standardreports r8 事实源直读
+// purchase_orders 行级）：
+//   - purchase_orders（租户内全量订单，lines JSONB 行级展开过滤 itemId）；
+//   - listing_events（订单状态机 transitioned 事件，payload.to='approved' 的
+//     occurredAt = 审核时间；path 过滤谓词下推，Prisma Json filter）。
+// 取行取舍（同 metric-pack v1 / r8）：谓词/排序/分页在应用侧物化——不大规模
+// 下推 SQL（中小单租户订单量口径；对账阶段校准）。排序/回落/行形状复用
+// @smes/application 的 buildItemPurchasePriceEntries 共享纯函数（内存实现
+// 同一合同单点）。RLS：模型操作经 withRlsTenantSession 钩子自动 SET——
+// 零 raw SQL，租户谓词兜底（tenantId where）双保险。
+// ---------------------------------------------------------------------------
+
+/** 机器事件 payload.to='approved' 的 Prisma Json path 过滤（谓词下推形态）。 */
+const APPROVED_EVENT_PAYLOAD_FILTER = { path: ['to'], equals: 'approved' } as const;
+
+export class PgItemPriceLedgerStore implements ItemPriceLedgerStore {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async listByItem(
+    tenant: TenantId,
+    itemId: string,
+    query: ItemPurchasePriceQuery,
+  ): Promise<ItemPurchasePricePage> {
+    const orders = await this.prisma.purchaseOrderRecord.findMany({
+      where: { tenantId: tenant },
+      select: {
+        id: true,
+        supplierRef: true,
+        supplierName: true,
+        state: true,
+        lines: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const events = await this.prisma.listingEventRecord.findMany({
+      where: {
+        tenantId: tenant,
+        aggregateType: 'purchase-order',
+        payload: APPROVED_EVENT_PAYLOAD_FILTER,
+      },
+      select: { aggregateId: true, occurredAt: true },
+      orderBy: { seq: 'asc' },
+    });
+    // 每单审核时间 = 其 to='approved' 迁移的 occurredAt（seq 升序遍历，
+    // 同单多条时取最后一条——状态机不可逆下理论仅一条，防御性取末值）。
+    const approvedAtByOrder = new Map<string, string>();
+    for (const event of events) {
+      approvedAtByOrder.set(event.aggregateId, event.occurredAt.toISOString());
+    }
+    const rows: PriceLedgerOrderRow[] = orders.map((order) => ({
+      id: order.id,
+      supplierRef: order.supplierRef,
+      supplierName: order.supplierName,
+      state: order.state,
+      createdAt: order.createdAt.toISOString(),
+      lines: order.lines,
+    }));
+    const entries = buildItemPurchasePriceEntries(rows, approvedAtByOrder, itemId);
+    return {
+      total: entries.length,
+      entries: entries.slice(query.offset, query.offset + query.limit),
+    };
   }
 }

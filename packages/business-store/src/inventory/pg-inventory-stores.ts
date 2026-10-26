@@ -4,10 +4,14 @@
  * @prisma/client 依赖）。启动零 DB 依赖：connectInventoryStore 只构造
  * PrismaClient（惰性连接），无 DATABASE_URL 时组合根不调用本工厂。
  *
- * 十一个实现（表 ↔ 端口分工见 prisma/schema.prisma inventory 节与迁移头注）：
+ * 十二个实现（表 ↔ 端口分工见 prisma/schema.prisma inventory 节与迁移头注）：
  *  - PgWarehouseStore               → warehouses / warehouse_locations 主数据
  *                                      （(tenant, code) 与 (tenant, 仓, code)
  *                                      唯一，P2002 → InventoryConflictError）
+ *  - PgGoodsShelfStore              → goods_shelves / shelf_locations 主数据
+ *                                      （B3 / RREQ-IV-002：货架 (tenant, 仓,
+ *                                      code) 唯一、货架库位 (tenant, code) 表内
+ *                                      唯一；object_version 条件推进乐观锁）
  *  - PgStockAccountStore            → stock_accounts 投影（adjust = 原子守卫
  *                                      upsert：INSERT … ON CONFLICT DO UPDATE
  *                                      … WHERE 负库存守卫，零行命中 → 冲突拒）
@@ -63,20 +67,27 @@ import {
   STOCKTAKE_AGGREGATE_TYPE,
   STOCK_MOVEMENT_AUDIT_STATUS,
   InventoryConflictError,
+  type AddShelfLocationInput,
   type AppendReleaseFactInput,
   type AppendStockMovementInput,
   type CreateShippingOrderInput,
   type CreateStockReservationInput,
   type CreateStocktakeInput,
+  type DefineGoodsShelfInput,
   type DefineWarehouseInput,
+  type GoodsShelf,
+  type GoodsShelfStatus,
+  type GoodsShelfStore,
   type InventoryDomainEventStore,
   type InventoryOperationRecord,
   type InventoryOperationStore,
+  type ListGoodsShelvesFilter,
   type ListLocationBalancesFilter,
   type ListStockAccountsFilter,
   type ListStockMovementsFilter,
   type ReleaseFact,
   type ReleaseFactStore,
+  type ShelfLocation,
   type ShippingLine,
   type ShippingOrder,
   type ShippingOrderStore,
@@ -426,6 +437,66 @@ export function rowToInventoryEvent(row: InventoryEventDbRow): ApprovalEvent {
   });
 }
 
+/** goods_shelves 行 → 领域 GoodsShelf（B3 / RREQ-IV-002）。 */
+interface GoodsShelfDbRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly warehouseId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly remark: string | null;
+  readonly status: string;
+  readonly objectVersion: number;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+function rowToGoodsShelf(row: GoodsShelfDbRow): GoodsShelf {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenantId),
+    warehouseId: row.warehouseId,
+    code: row.code,
+    name: row.name,
+    remark: row.remark,
+    status: row.status as GoodsShelf['status'],
+    objectVersion: row.objectVersion,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+/** shelf_locations 行 → 领域 ShelfLocation。 */
+interface ShelfLocationDbRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly warehouseId: string;
+  readonly goodsShelfId: string;
+  readonly code: string;
+  readonly name: string | null;
+  readonly remark: string | null;
+  readonly status: string;
+  readonly objectVersion: number;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+function rowToShelfLocation(row: ShelfLocationDbRow): ShelfLocation {
+  return {
+    id: row.id,
+    tenant: TenantId.create(row.tenantId),
+    warehouseId: row.warehouseId,
+    goodsShelfId: row.goodsShelfId,
+    code: row.code,
+    name: row.name,
+    remark: row.remark,
+    status: row.status as ShelfLocation['status'],
+    objectVersion: row.objectVersion,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
 // ---- 仓库与库位（application WarehouseStore） ----
 
 export class PgWarehouseStore implements WarehouseStore {
@@ -520,6 +591,201 @@ export class PgWarehouseStore implements WarehouseStore {
       where: { tenantId: tenant, warehouseId, id: locationId },
     });
     return row === null ? null : rowToLocation(row);
+  }
+}
+
+// ---- 货架与货架库位（application GoodsShelfStore；B3 / RREQ-IV-002） ----
+
+export class PgGoodsShelfStore implements GoodsShelfStore {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async create(input: DefineGoodsShelfInput): Promise<GoodsShelf> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const row = await tx.goodsShelfRecord.create({
+          data: {
+            id: input.id,
+            tenantId: input.tenant,
+            warehouseId: input.warehouseId,
+            code: input.code,
+            name: input.name,
+            remark: input.remark,
+          },
+        });
+        for (const location of input.locations) {
+          await tx.shelfLocationRecord.create({
+            data: {
+              id: location.id,
+              tenantId: input.tenant,
+              warehouseId: input.warehouseId,
+              goodsShelfId: input.id,
+              code: location.code,
+              name: location.name,
+              remark: location.remark,
+            },
+          });
+        }
+        return rowToGoodsShelf(row);
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const target = Array.isArray((error as Prisma.PrismaClientKnownRequestError).meta?.target)
+          ? ((error as Prisma.PrismaClientKnownRequestError).meta?.target as string[])
+          : [];
+        throw new InventoryConflictError(
+          target.includes('warehouse_id')
+            ? `货架编码 '${input.code}' 已存在（(tenant, warehouse, code) 唯一）`
+            : `货架库位编码冲突（(tenant, code) 表内唯一）`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async find(tenant: TenantId, id: string): Promise<GoodsShelf | null> {
+    const row = await this.prisma.goodsShelfRecord.findFirst({ where: { tenantId: tenant, id } });
+    return row === null ? null : rowToGoodsShelf(row);
+  }
+
+  async list(tenant: TenantId, filter?: ListGoodsShelvesFilter): Promise<readonly GoodsShelf[]> {
+    const rows = await this.prisma.goodsShelfRecord.findMany({
+      where: {
+        tenantId: tenant,
+        ...(filter?.warehouseId === undefined ? {} : { warehouseId: filter.warehouseId }),
+      },
+      orderBy: { code: 'asc' },
+    });
+    return rows.map(rowToGoodsShelf);
+  }
+
+  async update(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    patch: { readonly code?: string; readonly name?: string; readonly remark?: string | null },
+  ): Promise<GoodsShelf | null> {
+    const changed = await this.prisma.goodsShelfRecord.updateMany({
+      where: { tenantId: tenant, id, objectVersion: expectedObjectVersion },
+      data: {
+        ...(patch.code === undefined ? {} : { code: patch.code }),
+        ...(patch.name === undefined ? {} : { name: patch.name }),
+        ...(patch.remark === undefined ? {} : { remark: patch.remark }),
+      },
+    });
+    if (changed.count === 0) return null;
+    const row = await this.prisma.goodsShelfRecord.findFirstOrThrow({ where: { tenantId: tenant, id } });
+    return rowToGoodsShelf(row);
+  }
+
+  async setStatus(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    status: GoodsShelfStatus,
+  ): Promise<GoodsShelf | null> {
+    const changed = await this.prisma.goodsShelfRecord.updateMany({
+      where: { tenantId: tenant, id, objectVersion: expectedObjectVersion },
+      data: { status },
+    });
+    if (changed.count === 0) return null;
+    const row = await this.prisma.goodsShelfRecord.findFirstOrThrow({ where: { tenantId: tenant, id } });
+    return rowToGoodsShelf(row);
+  }
+
+  async remove(tenant: TenantId, id: string): Promise<boolean> {
+    const changed = await this.prisma.goodsShelfRecord.deleteMany({ where: { tenantId: tenant, id } });
+    return changed.count > 0;
+  }
+
+  async findShelfLocation(tenant: TenantId, id: string): Promise<ShelfLocation | null> {
+    const row = await this.prisma.shelfLocationRecord.findFirst({ where: { tenantId: tenant, id } });
+    return row === null ? null : rowToShelfLocation(row);
+  }
+
+  async findShelfLocationByCode(tenant: TenantId, code: string): Promise<ShelfLocation | null> {
+    const row = await this.prisma.shelfLocationRecord.findUnique({
+      where: { tenantId_code: { tenantId: tenant, code } },
+    });
+    return row === null ? null : rowToShelfLocation(row);
+  }
+
+  async listShelfLocations(tenant: TenantId, goodsShelfId: string): Promise<readonly ShelfLocation[]> {
+    const rows = await this.prisma.shelfLocationRecord.findMany({
+      where: { tenantId: tenant, goodsShelfId },
+      orderBy: { code: 'asc' },
+    });
+    return rows.map(rowToShelfLocation);
+  }
+
+  async listShelfLocationsByWarehouse(tenant: TenantId, warehouseId: string): Promise<readonly ShelfLocation[]> {
+    const rows = await this.prisma.shelfLocationRecord.findMany({
+      where: { tenantId: tenant, warehouseId },
+      orderBy: { code: 'asc' },
+    });
+    return rows.map(rowToShelfLocation);
+  }
+
+  async addShelfLocation(input: AddShelfLocationInput): Promise<ShelfLocation> {
+    try {
+      const row = await this.prisma.shelfLocationRecord.create({
+        data: {
+          id: input.id,
+          tenantId: input.tenant,
+          warehouseId: input.warehouseId,
+          goodsShelfId: input.goodsShelfId,
+          code: input.code,
+          name: input.name,
+          remark: input.remark,
+        },
+      });
+      return rowToShelfLocation(row);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new InventoryConflictError(
+          `货架库位编码 '${input.code}' 已存在（(tenant, code) 表内唯一）`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async updateShelfLocation(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    patch: { readonly code?: string; readonly name?: string | null; readonly remark?: string | null },
+  ): Promise<ShelfLocation | null> {
+    const changed = await this.prisma.shelfLocationRecord.updateMany({
+      where: { tenantId: tenant, id, objectVersion: expectedObjectVersion },
+      data: {
+        ...(patch.code === undefined ? {} : { code: patch.code }),
+        ...(patch.name === undefined ? {} : { name: patch.name }),
+        ...(patch.remark === undefined ? {} : { remark: patch.remark }),
+      },
+    });
+    if (changed.count === 0) return null;
+    const row = await this.prisma.shelfLocationRecord.findFirstOrThrow({ where: { tenantId: tenant, id } });
+    return rowToShelfLocation(row);
+  }
+
+  async setShelfLocationStatus(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    status: GoodsShelfStatus,
+  ): Promise<ShelfLocation | null> {
+    const changed = await this.prisma.shelfLocationRecord.updateMany({
+      where: { tenantId: tenant, id, objectVersion: expectedObjectVersion },
+      data: { status },
+    });
+    if (changed.count === 0) return null;
+    const row = await this.prisma.shelfLocationRecord.findFirstOrThrow({ where: { tenantId: tenant, id } });
+    return rowToShelfLocation(row);
+  }
+
+  async removeShelfLocation(tenant: TenantId, id: string): Promise<boolean> {
+    const changed = await this.prisma.shelfLocationRecord.deleteMany({ where: { tenantId: tenant, id } });
+    return changed.count > 0;
   }
 }
 
@@ -713,6 +979,7 @@ export class PgStockMovementStore implements StockMovementStore {
         ...(filter?.kind === undefined ? {} : { kind: filter.kind }),
         ...(filter?.workOrderId === undefined ? {} : { workOrderId: filter.workOrderId }),
         ...(filter?.sourceRefId === undefined ? {} : { sourceRefId: filter.sourceRefId }),
+        ...(filter?.locationId === undefined ? {} : { locationId: filter.locationId }),
       },
       orderBy: { seq: 'asc' },
     });
@@ -1258,9 +1525,10 @@ export interface InventoryStoreOptions {
   readonly datasourceUrl?: string;
 }
 
-/** 组合根装配句柄：十端口实现（可直接喂 InventoryModule.register）+ 优雅断连。 */
+/** 组合根装配句柄：十二端口实现（可直接喂 InventoryModule.register）+ 优雅断连。 */
 export interface InventoryStoreHandle {
   readonly warehouseStore: WarehouseStore;
+  readonly goodsShelfStore: GoodsShelfStore;
   readonly accountStore: StockAccountStore;
   readonly locationBalanceStore: StockLocationBalanceStore;
   readonly movementStore: StockMovementStore;
@@ -1283,6 +1551,7 @@ export function connectInventoryStore(options: InventoryStoreOptions = {}): Inve
   const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
     warehouseStore: new PgWarehouseStore(client),
+    goodsShelfStore: new PgGoodsShelfStore(client),
     accountStore: new PgStockAccountStore(client),
     locationBalanceStore: new PgStockLocationBalanceStore(client),
     movementStore: new PgStockMovementStore(client),

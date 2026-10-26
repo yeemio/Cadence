@@ -8,6 +8,9 @@
  * m2-drafts README 纪律 2）：
  *  - warehouses / warehouse_locations        主数据投影（R4：仓库与库位归本
  *    模块；运营表，不套证据公共列）；
+ *  - goods_shelves / shelf_locations         货架与货架库位主数据（B3 /
+ *    RREQ-IV-002：仓库主数据第三/四类，层级化库位组织；同上运营表取舍，
+ *    行带 object_version 承载命令信封乐观锁）；
  *  - stock_accounts / stock_location_balances / stock_reservations /
  *    stocktakes / shipping_orders            投影（运营状态/余额，可 UPDATE，
  *    行级条件更新——不套证据公共列；stocktakes.lines / shipping_orders.lines
@@ -29,6 +32,7 @@ import type {
   UserId,
 } from '@smes/business-core';
 import type {
+  GoodsShelfStatus,
   ReceiptSourceKind,
   ReservationStatus,
   StockMovementKind,
@@ -81,6 +85,106 @@ export interface WarehouseStore {
   findByCode(tenant: TenantId, code: string): Promise<Warehouse | null>;
   list(tenant: TenantId): Promise<readonly Warehouse[]>;
   findLocation(tenant: TenantId, warehouseId: string, locationId: string): Promise<WarehouseLocation | null>;
+}
+
+// ---- 货架与货架库位（主数据第三级，B3 / RREQ-IV-002；层级化库位组织） ----
+
+/** 货架（属仓；(tenant, warehouse, code) 唯一；启停受下属库位正结存保护）。 */
+export interface GoodsShelf {
+  /** gs-<uuidv7>。 */
+  readonly id: string;
+  readonly tenant: TenantId;
+  readonly warehouseId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly remark: string | null;
+  /** active=启用；disabled=停用（停用时下属库位不得有正结存）。 */
+  readonly status: GoodsShelfStatus;
+  /** 主数据行版本（update/set-status/remove 命令信封 expectedRevision 的锚点）。 */
+  readonly objectVersion: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** 货架库位（挂货架；编码以货架编码开头、(tenant, code) 表内唯一）。 */
+export interface ShelfLocation {
+  /** sloc-<uuidv7>。 */
+  readonly id: string;
+  readonly tenant: TenantId;
+  readonly warehouseId: string;
+  readonly goodsShelfId: string;
+  readonly code: string;
+  readonly name: string | null;
+  readonly remark: string | null;
+  readonly status: GoodsShelfStatus;
+  readonly objectVersion: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface DefineGoodsShelfInput {
+  readonly tenant: TenantId;
+  readonly id: string;
+  readonly warehouseId: string;
+  readonly code: string;
+  readonly name: string;
+  readonly remark: string | null;
+  /** 建架时随建的初始货架库位（可空数组；编码前缀与表内唯一由用例层先校）。 */
+  readonly locations: readonly { readonly id: string; readonly code: string; readonly name: string | null; readonly remark: string | null }[];
+}
+
+export interface AddShelfLocationInput {
+  readonly tenant: TenantId;
+  readonly id: string;
+  readonly goodsShelfId: string;
+  readonly warehouseId: string;
+  readonly code: string;
+  readonly name: string | null;
+  readonly remark: string | null;
+}
+
+export interface ListGoodsShelvesFilter {
+  readonly warehouseId?: string | undefined;
+}
+
+/**
+ * 货架存储端口（货架 + 货架库位一体的主数据端口，体例同 WarehouseStore）。
+ * 实现方保证：
+ *  - create/addShelfLocation 在唯一键（货架 (tenant, warehouse, code)；库位
+ *    (tenant, code)）重复时抛 InventoryConflictError（并发竞态防线——用例层
+ *    另做前置查重给出可读拒绝）；
+ *  - update/setStatus/updateShelfLocation/setShelfLocationStatus 为条件推进：
+ *    objectVersion 匹配才写并 +1，不匹配/不存在返回 null（用例层翻 rejected）；
+ *  - list/listShelfLocations 按 code 升序；读按租户收口。
+ */
+export interface GoodsShelfStore {
+  create(input: DefineGoodsShelfInput): Promise<GoodsShelf>;
+  find(tenant: TenantId, id: string): Promise<GoodsShelf | null>;
+  list(tenant: TenantId, filter?: ListGoodsShelvesFilter): Promise<readonly GoodsShelf[]>;
+  update(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    patch: { readonly code?: string; readonly name?: string; readonly remark?: string | null },
+  ): Promise<GoodsShelf | null>;
+  setStatus(tenant: TenantId, id: string, expectedObjectVersion: number, status: GoodsShelfStatus): Promise<GoodsShelf | null>;
+  /** 删除（无下属库位时由用例层先校）；返回是否删除了行。 */
+  remove(tenant: TenantId, id: string): Promise<boolean>;
+
+  findShelfLocation(tenant: TenantId, id: string): Promise<ShelfLocation | null>;
+  /** 表内编码查重锚点（(tenant, code) 唯一的前置校验用）。 */
+  findShelfLocationByCode(tenant: TenantId, code: string): Promise<ShelfLocation | null>;
+  listShelfLocations(tenant: TenantId, goodsShelfId: string): Promise<readonly ShelfLocation[]>;
+  listShelfLocationsByWarehouse(tenant: TenantId, warehouseId: string): Promise<readonly ShelfLocation[]>;
+  addShelfLocation(input: AddShelfLocationInput): Promise<ShelfLocation>;
+  updateShelfLocation(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    patch: { readonly code?: string; readonly name?: string | null; readonly remark?: string | null },
+  ): Promise<ShelfLocation | null>;
+  setShelfLocationStatus(tenant: TenantId, id: string, expectedObjectVersion: number, status: GoodsShelfStatus): Promise<ShelfLocation | null>;
+  removeShelfLocation(tenant: TenantId, id: string): Promise<boolean>;
 }
 
 // ---- 库存账（物料×仓库：现存量与预占——恒等式的两个输入） ----
@@ -240,6 +344,8 @@ export interface ListStockMovementsFilter {
   readonly kind?: StockMovementKind | undefined;
   readonly workOrderId?: string | undefined;
   readonly sourceRefId?: string | undefined;
+  /** 落位锚点过滤（B3：货架库位被流水引用的删除/改码保护校验用）。 */
+  readonly locationId?: string | undefined;
 }
 
 /**

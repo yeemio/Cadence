@@ -22,9 +22,11 @@
  *    域事件是对外发布事实（listing/待办/IM/报表消费），与机器账本各自 append-only。
  *
  * 3. 联动：迁移 → 项目经理待办（source='workorder'）；关闭 → 清该工作令待办；
- *    齐套缺口 → 项目经理催办待办；配件提交 → 项目经理审批待办、决策后完成；
- *    parts.ship → inventory 出库端口（拒绝则命令 rejected 不落账，端口按
- *    requestId 幂等——重试不重复扣减）。
+ *    齐套缺口 → 项目经理催办待办；配件提交 → 当前待审级审批待办、决策后完成
+ *    （S6 / RREQ-IS-037 多级链：一级=工作令负责人、二/三级=参数角色或签，
+ *    待审批人实时解析不落库，缺省单级=基线零回归）；parts.ship → inventory
+ *    出库端口（拒绝则命令 rejected 不落账，端口按 requestId 幂等——重试不
+ *    重复扣减）。
  */
 import {
   EventId,
@@ -45,11 +47,16 @@ import {
 import type { TodoItem, TodoStore } from '../workbench/workbench-stores.js';
 import {
   DEFAULT_KIT_SCOPE_KINDS,
+  DEFAULT_PARTS_APPROVAL_CHAIN,
   DEFAULT_PARTS_REQUEST_FLOW_CONFIG,
   DEFAULT_WORK_ORDER_FLOW_CONFIG,
   LISTING_KINDS,
+  PARTS_PENDING_STATE_IDS,
+  buildPartsRequestFlowConfig,
+  partsApprovalLevelOfState,
   workOrderStateLabel,
   type ListingKind,
+  type PartsApprovalChain,
 } from './workorder-config.js';
 import {
   KIT_CHECK_AGGREGATE_TYPE,
@@ -94,12 +101,14 @@ import {
   EMPTY_CUSTOMER_PORT,
   EMPTY_INVENTORY_PORT,
   EMPTY_LISTING_PORT,
+  EMPTY_PARTS_APPROVER_DIRECTORY,
   EMPTY_PROGRESS_PORT,
   NOOP_PARTS_ISSUE_PORT,
   WORKORDER_TODO_SOURCE,
   type CustomerDirectoryPort,
   type InventoryAvailabilityPort,
   type ListingRequirementPort,
+  type PartsApproverDirectoryPort,
   type PartsIssuePort,
   type ProgressFactPort,
 } from './workorder-ports.js';
@@ -154,8 +163,23 @@ export type WorkOrderCommandResult = WorkOrderCommitted | RejectedOutcome;
 export interface WorkOrderServiceOptions {
   /** 九态配置（缺省 DEFAULT_WORK_ORDER_FLOW_CONFIG；可整体替换 = 换合法集）。 */
   readonly workOrderConfig: ApprovalFlowConfig;
-  /** 配件申请配置（缺省 DEFAULT_PARTS_REQUEST_FLOW_CONFIG）。 */
+  /** 配件申请配置（缺省 DEFAULT_PARTS_REQUEST_FLOW_CONFIG；多级链时由链派生，见 partsApprovalChain）。 */
   readonly partsConfig: ApprovalFlowConfig;
+  /**
+   * 配件审批链（S6 / RREQ-IS-037）：levels=1（缺省）＝单级基线，配件流配置
+   * 恒用 options.partsConfig（零回归锚点）；levels≥2 由链派生多级流配置
+   * （待审中间态 level2_review/level3_review，统一「审批中」文案）。
+   */
+  readonly partsApprovalChain?: PartsApprovalChain | undefined;
+  /**
+   * 配件审批链租户级解析器（沿 approval 域 flowConfigResolver 先例）：返回
+   * 该租户当前生效链配置，null/undefined 回落静态 partsApprovalChain。每次
+   * 建单/决策/重放按租户现解析；在途单由引擎重放守卫兜底（链级数切换导致
+   * 重放不一致即状态冲突，不静默漂移）。
+   */
+  readonly partsChainResolver?:
+    | ((tenant: TenantId) => Promise<PartsApprovalChain | null>)
+    | undefined;
   /** 齐套覆盖的清单类目（缺省 DEFAULT_KIT_SCOPE_KINDS：零件/标准件/电气件）。 */
   readonly kitScopeKinds: readonly ListingKind[];
   /** 建令时清单骨架提示类目（缺省四类全量——listing 消费方各建一张空清单）。 */
@@ -172,6 +196,8 @@ export interface WorkOrderCrossModulePorts {
   readonly issue: PartsIssuePort;
   readonly progress: ProgressFactPort;
   readonly customer: CustomerDirectoryPort;
+  /** 配件审批链二/三级角色解析（S6；缺省空目录——多级链该级审批明确拒绝）。 */
+  readonly approvers: PartsApproverDirectoryPort;
 }
 
 const DEFAULT_NOW = (): string => new Date().toISOString();
@@ -202,10 +228,13 @@ export class WorkOrderService {
       issue: ports.issue ?? NOOP_PARTS_ISSUE_PORT,
       progress: ports.progress ?? EMPTY_PROGRESS_PORT,
       customer: ports.customer ?? EMPTY_CUSTOMER_PORT,
+      approvers: ports.approvers ?? EMPTY_PARTS_APPROVER_DIRECTORY,
     };
     this.options = {
       workOrderConfig: options.workOrderConfig ?? DEFAULT_WORK_ORDER_FLOW_CONFIG,
       partsConfig: options.partsConfig ?? DEFAULT_PARTS_REQUEST_FLOW_CONFIG,
+      partsApprovalChain: options.partsApprovalChain ?? DEFAULT_PARTS_APPROVAL_CHAIN,
+      partsChainResolver: options.partsChainResolver,
       kitScopeKinds: options.kitScopeKinds ?? DEFAULT_KIT_SCOPE_KINDS,
       skeletonListingKinds: options.skeletonListingKinds ?? LISTING_KINDS,
       riskWindowDays: options.riskWindowDays ?? 7,
@@ -714,18 +743,20 @@ export class WorkOrderService {
     }
 
     const requestId = newPartsRequestId();
+    // 生效链/配置（租户级解析优先，缺省单级零回归）。
+    const { config: partsFlow, chain } = await this.partsFlowFor(envelope.tenantId);
     // 落账顺序（体例同 listing 订单提交）：先落 draft@v1 投影行（初始态无机器
     // 事件），再驱动 SUBMIT 迁移、append 机器事件账本（投影行已在，租户可解析）、
     // 乐观推进投影至 submitted@v2——pg-workorder-stores 按投影行解析租户，
     // 投影行先在是机器事件 append 的前置（孤儿聚合拒写）。
-    const submitRule = this.options.partsConfig.transitions.find(
-      (candidate) => candidate.from === this.options.partsConfig.initial && candidate.event === 'SUBMIT',
+    const submitRule = partsFlow.transitions.find(
+      (candidate) => candidate.from === partsFlow.initial && candidate.event === 'SUBMIT',
     );
     if (submitRule === undefined) {
-      return rejected(`初始态 '${this.options.partsConfig.initial}' 不支持提交（配置无 SUBMIT 规则）`);
+      return rejected(`初始态 '${partsFlow.initial}' 不支持提交（配置无 SUBMIT 规则）`);
     }
     const runtime = startApprovalFlow({
-      config: this.options.partsConfig,
+      config: partsFlow,
       subject: { aggregate: { id: requestId, type: PARTS_REQUEST_AGGREGATE_TYPE }, initialObjectVersion: 1 },
       now: () => this.now(),
       newEventId: () => EventId.create(newDomainEventId()),
@@ -747,8 +778,8 @@ export class WorkOrderService {
         tenant: envelope.tenantId,
         id: requestId,
         workOrderId: WorkOrderId.create(payload.workOrderId),
-        flowConfigId: this.options.partsConfig.flowId,
-        state: this.options.partsConfig.initial, // draft：初始态落库，无机器事件
+        flowConfigId: partsFlow.flowId,
+        state: partsFlow.initial, // draft：初始态落库，无机器事件
         objectVersion: 1,
         itemId: payload.itemId,
         quantity: payload.quantity,
@@ -783,19 +814,38 @@ export class WorkOrderService {
       const event = makePartsRequestedEvent(this.domainEventBase(envelope), eventPayload, requestId);
       await this.domainEvents.append(event);
 
-      // 待办联动：配件申请 → 项目经理审批待办。
+      // 待办联动：配件申请 → 当前待审级审批人（或签逐人一条）。
+      // 单级链（缺省零回归）：项目经理审批待办（基线行为原样）；多级链：
+      // 一级 = 工作令负责人（项目经理，空回落销售），名单空则不派待办
+      // （该级决策时明确拒绝——「未配置或无审批人」口径同源文档）。
       const todosCreated: TodoItem[] = [];
-      if (order.manager !== null) {
-        todosCreated.push(
-          await this.todos.create({
-            tenant: envelope.tenantId,
-            assignee: order.manager,
-            title: `配件申请待审批：${payload.itemId} × ${payload.quantity}（${order.projectName}）`,
-            source: WORKORDER_TODO_SOURCE,
-            refType: PARTS_REQUEST_AGGREGATE_TYPE,
-            refId: requestId,
-          }),
-        );
+      if (chain.levels === 1) {
+        if (order.manager !== null) {
+          todosCreated.push(
+            await this.todos.create({
+              tenant: envelope.tenantId,
+              assignee: order.manager,
+              title: `配件申请待审批：${payload.itemId} × ${payload.quantity}（${order.projectName}）`,
+              source: WORKORDER_TODO_SOURCE,
+              refType: PARTS_REQUEST_AGGREGATE_TYPE,
+              refId: requestId,
+            }),
+          );
+        }
+      } else {
+        const levelOne = await this.levelApproversFor(envelope.tenantId, 1, chain, order);
+        for (const approver of levelOne.approvers) {
+          todosCreated.push(
+            await this.todos.create({
+              tenant: envelope.tenantId,
+              assignee: approver,
+              title: `配件申请待审批：${payload.itemId} × ${payload.quantity}（${order.projectName}）`,
+              source: WORKORDER_TODO_SOURCE,
+              refType: PARTS_REQUEST_AGGREGATE_TYPE,
+              refId: requestId,
+            }),
+          );
+        }
       }
 
       return {
@@ -820,9 +870,10 @@ export class WorkOrderService {
     if (request === null) {
       return rejected(`租户 '${envelope.tenantId}' 内不存在配件申请 '${requestId}'`);
     }
-    if (request.flowConfigId !== this.options.partsConfig.flowId) {
+    const { config: partsFlow, chain } = await this.partsFlowFor(envelope.tenantId);
+    if (request.flowConfigId !== partsFlow.flowId) {
       return rejected(
-        `配件申请由配置 '${request.flowConfigId}' 驱动，与当前装配配置 '${this.options.partsConfig.flowId}' 不符`,
+        `配件申请由配置 '${request.flowConfigId}' 驱动，与当前装配配置 '${partsFlow.flowId}' 不符`,
       );
     }
     if (envelope.expectedRevision !== request.objectVersion) {
@@ -831,16 +882,37 @@ export class WorkOrderService {
       );
     }
 
-    const runtime = await this.replayPartsRequest(request);
+    const runtime = await this.replayPartsRequest(request, partsFlow);
     try {
       const from = runtime.state();
       const verb = payload.decision === 'approve' ? 'APPROVE' : 'REJECT';
-      const rule = this.options.partsConfig.transitions.find(
+      const rule = partsFlow.transitions.find(
         (candidate) => candidate.from === from && candidate.event === verb,
       );
       if (rule === undefined) {
         return rejected(`状态 '${from}' 不支持决策 '${payload.decision}'（配置无对应迁移规则）`);
       }
+
+      // 多级链或签门（S6 / RREQ-IS-037）：本级审批人实时解析（不落库），
+      // 决策人须在名单内（一级 = 工作令负责人；二/三级 = 角色或签）；名单
+      // 空 = 未配置或无审批人，明确拒绝。单级链（缺省）不做服务端人校验
+      // （基线口径：parts:approve 权限码守门——零回归）。
+      let orSignApprovers: readonly UserId[] | null = null;
+      const currentLevel = partsApprovalLevelOfState(from);
+      if (chain.levels >= 2 && currentLevel !== null) {
+        const order = await this.orders.find(envelope.tenantId, request.workOrderId);
+        const resolution = await this.levelApproversFor(envelope.tenantId, currentLevel, chain, order);
+        if (resolution.approvers.length === 0) {
+          return rejected(`第 ${currentLevel} 级审批未配置审批人（${resolution.note ?? '未配置或无审批人'}），无法决策`);
+        }
+        if (!resolution.approvers.some((approver) => approver === envelope.issuedBy)) {
+          return rejected(
+            `第 ${currentLevel} 级审批或签校验未通过：用户 '${envelope.issuedBy}' 不在本级审批人名单`,
+          );
+        }
+        orSignApprovers = resolution.approvers;
+      }
+
       const outcome = runtime.send(verb, {
         by: envelope.issuedBy,
         reason: payload.remark,
@@ -876,23 +948,65 @@ export class WorkOrderService {
         remark: payload.remark,
         objectVersion: runtime.objectVersion(),
         actor: envelope.issuedBy,
+        ...(chain.levels >= 2 && currentLevel !== null ? { level: currentLevel } : {}),
       };
       const event = makePartsDecidedEvent(this.domainEventBase(envelope), eventPayload, requestId);
       await this.domainEvents.append(event);
 
-      // 待办联动：决策人（项目经理）名下该申请的待办自动完成。
-      const todosCompleted = await this.completeTodosFor(
-        envelope.tenantId,
-        envelope.issuedBy,
-        PARTS_REQUEST_AGGREGATE_TYPE,
-        requestId,
-      );
+      // 待办联动：决策级或签名单全员的该申请待办自动完成（或签一人过即本级
+      // 完结）；单级链保持基线——仅决策人本人待办完成。
+      const todosCompleted: TodoItem[] = [];
+      if (orSignApprovers === null) {
+        for (const done of await this.completeTodosFor(
+          envelope.tenantId,
+          envelope.issuedBy,
+          PARTS_REQUEST_AGGREGATE_TYPE,
+          requestId,
+        )) {
+          todosCompleted.push(done);
+        }
+      } else {
+        for (const approver of orSignApprovers) {
+          for (const done of await this.completeTodosFor(
+            envelope.tenantId,
+            approver,
+            PARTS_REQUEST_AGGREGATE_TYPE,
+            requestId,
+          )) {
+            todosCompleted.push(done);
+          }
+        }
+      }
+
+      // 多级链推进：本级通过且目标态仍是待审态 → 下一级审批人或签逐人派待办
+      // （名单空不派——下一级决策时明确拒绝；口径同提交侧）。
+      const todosCreated: TodoItem[] = [];
+      if (chain.levels >= 2 && payload.decision === 'approve') {
+        const nextLevel = partsApprovalLevelOfState(runtime.state());
+        if (nextLevel !== null) {
+          const order = await this.orders.find(envelope.tenantId, request.workOrderId);
+          const projectName = order === null ? (request.workOrderId as string) : order.projectName;
+          const next = await this.levelApproversFor(envelope.tenantId, nextLevel, chain, order);
+          for (const approver of next.approvers) {
+            todosCreated.push(
+              await this.todos.create({
+                tenant: envelope.tenantId,
+                assignee: approver,
+                title: `配件申请待审批：${request.itemId} × ${request.quantity}（${projectName}）`,
+                source: WORKORDER_TODO_SOURCE,
+                refType: PARTS_REQUEST_AGGREGATE_TYPE,
+                refId: requestId,
+              }),
+            );
+          }
+        }
+      }
 
       return {
         status: 'committed',
         newRevision: runtime.objectVersion(),
         events: [event],
-        todosCreated: [],
+        todosCreated,
         todosCompleted,
         partsRequest: advanced,
       };
@@ -916,10 +1030,11 @@ export class WorkOrderService {
       );
     }
 
-    const runtime = await this.replayPartsRequest(request);
+    const { config: partsFlow } = await this.partsFlowFor(envelope.tenantId);
+    const runtime = await this.replayPartsRequest(request, partsFlow);
     try {
       const from = runtime.state();
-      const rule = this.options.partsConfig.transitions.find(
+      const rule = partsFlow.transitions.find(
         (candidate) => candidate.from === from && candidate.event === 'SHIP',
       );
       if (rule === undefined) {
@@ -1108,13 +1223,22 @@ export class WorkOrderService {
     stateFilter?: string,
     workOrderId?: string,
   ): Promise<readonly PartsRequest[]> {
+    const workOrderFilter =
+      workOrderId === undefined ? undefined : { workOrderId: WorkOrderId.create(workOrderId) };
+    // 「审批中」统一文案族（RREQ-IS-037）：待审三态互为同义词——族内任一
+    // 过滤值命中全族（submitted/level2_review/level3_review 同为「审批中」，
+    // 不因多级链把在途单从基线过滤口径里漏掉）。族外状态走存储端精确过滤。
+    if (stateFilter !== undefined && (PARTS_PENDING_STATE_IDS as readonly string[]).includes(stateFilter)) {
+      const rows = await this.parts.list(tenant, workOrderFilter);
+      return rows.filter((row) => (PARTS_PENDING_STATE_IDS as readonly string[]).includes(row.state));
+    }
     return this.parts.list(tenant, {
       ...(stateFilter === undefined ? {} : { state: stateFilter }),
-      ...(workOrderId === undefined ? {} : { workOrderId: WorkOrderId.create(workOrderId) }),
+      ...(workOrderFilter === undefined ? {} : workOrderFilter),
     });
   }
 
-  /** 配件申请详情（含机器迁移史）。 */
+  /** 配件申请详情（含机器迁移史 + 当前待审级实时解析的或签名单）。 */
   async partsDetail(tenant: TenantId, requestId: string): Promise<PartsRequestDetail> {
     const request = await this.parts.find(tenant, requestId);
     if (request === null) {
@@ -1124,7 +1248,9 @@ export class WorkOrderService {
       id: requestId,
       type: PARTS_REQUEST_AGGREGATE_TYPE,
     });
-    return { partsRequest: request, milestones: milestoneHistory(page.events) };
+    const { chain } = await this.partsFlowFor(tenant);
+    const pendingApproval = await this.pendingApprovalOf(tenant, request, chain);
+    return { partsRequest: request, milestones: milestoneHistory(page.events), pendingApproval };
   }
 
   // ---- 私有辅助 ----
@@ -1187,12 +1313,15 @@ export class WorkOrderService {
     return runtime;
   }
 
-  /** 重放配件申请机器事件账本（口径同 replayWorkOrder）。 */
-  private async replayPartsRequest(request: PartsRequest): Promise<ApprovalFlowRuntime> {
+  /** 重放配件申请机器事件账本（口径同 replayWorkOrder；配置 = 本次生效配件流配置）。 */
+  private async replayPartsRequest(
+    request: PartsRequest,
+    config: ApprovalFlowConfig,
+  ): Promise<ApprovalFlowRuntime> {
     const aggregate = { id: request.id, type: PARTS_REQUEST_AGGREGATE_TYPE };
     const page = await this.machineEvents.readByAggregate(aggregate);
     const runtime = startApprovalFlow({
-      config: this.options.partsConfig,
+      config,
       subject: { aggregate, initialObjectVersion: 1 },
       now: () => this.now(),
     });
@@ -1216,6 +1345,78 @@ export class WorkOrderService {
       );
     }
     return runtime;
+  }
+
+  // ---- 配件审批链辅助（S6 / RREQ-IS-037） ----
+
+  /**
+   * 配件流生效配置 + 审批链：租户级解析器优先（沿 approval 域
+   * flowConfigResolver 先例），null 回落静态链；levels=1 恒用
+   * options.partsConfig（零回归锚点——单级链与基线逐字节同路径），
+   * levels≥2 由链派生（buildPartsRequestFlowConfig）。
+   */
+  private async partsFlowFor(
+    tenant: TenantId,
+  ): Promise<{ readonly config: ApprovalFlowConfig; readonly chain: PartsApprovalChain }> {
+    const chain =
+      this.options.partsChainResolver === undefined
+        ? (this.options.partsApprovalChain ?? DEFAULT_PARTS_APPROVAL_CHAIN)
+        : ((await this.options.partsChainResolver(tenant)) ??
+          this.options.partsApprovalChain ??
+          DEFAULT_PARTS_APPROVAL_CHAIN);
+    if (chain.levels === 1) {
+      return { config: this.options.partsConfig, chain };
+    }
+    return { config: buildPartsRequestFlowConfig(chain), chain };
+  }
+
+  /**
+   * 第 level 级或签名单实时解析（不落库）：一级 = 工作令负责人（我方实态
+   * 项目经理，空回落销售——18 册 §2 口径）；二/三级 = 角色经目录端口解析。
+   * 名单空时 note 给出原因（角色未配置/角色无人/工作令无负责人），调用方
+   * 据此拒绝决策或读面展示「—」。
+   */
+  private async levelApproversFor(
+    tenant: TenantId,
+    level: number,
+    chain: PartsApprovalChain,
+    order: WorkOrder | null,
+  ): Promise<{ readonly approvers: readonly UserId[]; readonly note: string | null }> {
+    if (level === 1) {
+      const owner = order === null ? null : (order.manager ?? order.salesRep);
+      return owner === null
+        ? { approvers: [], note: '工作令未配置项目经理与销售，一级审批暂无审批人' }
+        : { approvers: [owner], note: null };
+    }
+    const role = level === 2 ? chain.level2Role : chain.level3Role;
+    if (role === undefined) {
+      return { approvers: [], note: `第 ${level} 级审批角色未配置（审批链 levels=${chain.levels}）` };
+    }
+    const approvers = await this.ports.approvers.roleApprovers(tenant, role);
+    return {
+      approvers,
+      note: approvers.length === 0 ? `角色 '${role}' 未配置或角色下暂无审批人` : null,
+    };
+  }
+
+  /** 详情读面：待审级实时解析（非待审态返回 null——approved 后无待审批人）。 */
+  private async pendingApprovalOf(
+    tenant: TenantId,
+    request: PartsRequest,
+    chain: PartsApprovalChain,
+  ): Promise<PartsPendingApprovalView | null> {
+    const level = partsApprovalLevelOfState(request.state);
+    if (level === null) {
+      return null;
+    }
+    const order = await this.orders.find(tenant, request.workOrderId);
+    const resolution = await this.levelApproversFor(tenant, level, chain, order);
+    return {
+      level,
+      state: request.state,
+      approvers: resolution.approvers,
+      note: resolution.note,
+    };
   }
 
   /** 完成指定经办人名下（source=workorder + refType + refId）的 open 待办。 */
@@ -1272,8 +1473,25 @@ export interface WorkOrderDeliverySituation {
   readonly generatedAt: string;
 }
 
-/** 配件申请详情（申请行 + 机器迁移史）。 */
+/**
+ * 待审级实时解析视图（S6 / RREQ-IS-037：待审批人实时按角色解析不落库）。
+ * 待审三态（submitted/level2_review/level3_review）统一「审批中」文案——
+ * 区分节点看 level，不看状态文案。
+ */
+export interface PartsPendingApprovalView {
+  /** 当前审批层级（1/2/3）。 */
+  readonly level: number;
+  /** 当前待审态 id（「审批中」族成员）。 */
+  readonly state: string;
+  /** 本级或签审批人（实时解析；空 = 未配置或无审批人，读面展示「—」）。 */
+  readonly approvers: readonly UserId[];
+  /** 名单为空时的原因说明（正常 null）。 */
+  readonly note: string | null;
+}
+
+/** 配件申请详情（申请行 + 机器迁移史 + 待审级实时解析）。 */
 export interface PartsRequestDetail {
   readonly partsRequest: PartsRequest;
   readonly milestones: readonly WorkOrderMilestone[];
+  readonly pendingApproval: PartsPendingApprovalView | null;
 }

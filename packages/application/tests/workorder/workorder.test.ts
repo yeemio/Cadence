@@ -26,8 +26,13 @@ import {
   DEFAULT_WORK_ORDER_FLOW_CONFIG,
   LISTING_KINDS,
   WORK_ORDER_STATE_IDS,
+  buildPartsRequestFlowConfig,
+  definePartsApprovalChain,
+  partsApprovalLevelOfState,
+  partsRequestStateLabel,
   workOrderStateLabel,
   type ListingKind,
+  type PartsApprovalChain,
 } from '../../src/workorder/workorder-config.js';
 import { PARTS_REQUEST_AGGREGATE_TYPE, WORKORDER_EVENT_TYPES, WORK_ORDER_AGGREGATE_TYPE } from '../../src/workorder/workorder-events.js';
 import {
@@ -46,6 +51,7 @@ import type {
   InventoryAvailabilityPort,
   ListingRequirementLine,
   ListingRequirementPort,
+  PartsApproverDirectoryPort,
   PartsIssueCommand,
   PartsIssuePort,
   ProgressFact,
@@ -106,6 +112,71 @@ class FakeProgressPort implements ProgressFactPort {
   }
 }
 
+/** 配件审批链角色目录假件（S6 / RREQ-IS-037：或签名单实时解析）。 */
+class FakeApproverDirectory implements PartsApproverDirectoryPort {
+  /** 角色 → 成员（空数组 = 角色无人；未登记角色 = 角色未配置）。 */
+  readonly roles = new Map<string, readonly UserId[]>();
+  readonly calls: Array<readonly [string, string]> = [];
+  async roleApprovers(_tenant: unknown, role: string): Promise<readonly UserId[]> {
+    this.calls.push([_tenant as string, role]);
+    return this.roles.get(role) ?? [];
+  }
+}
+
+const LEVEL2_ROLE = 'parts-manager';
+const LEVEL3_ROLE = 'parts-leader';
+const manager2 = UserId.create('mgr2-01'); // 二级审批角色成员甲
+const manager2b = UserId.create('mgr2-02'); // 二级审批角色成员乙（或签）
+const leader3 = UserId.create('leader3-01'); // 三级审批角色成员
+
+function newChainHarness(options: {
+  readonly levels?: 1 | 2 | 3;
+  readonly level2Role?: string;
+  readonly level3Role?: string;
+} = {}) {
+  const stores = {
+    orders: new InMemoryWorkOrderStore(),
+    attachments: new InMemoryWorkOrderAttachmentStore(),
+    parts: new InMemoryPartsRequestStore(),
+    kitChecks: new InMemoryKitCheckStore(),
+    operations: new InMemoryWorkOrderOperationStore(),
+    domainEvents: new InMemoryWorkOrderDomainEventStore(),
+    machineEvents: createInMemoryApprovalEventStore(),
+    todos: new InMemoryTodoStore(),
+  };
+  const issue = new FakeIssuePort();
+  const approvers = new FakeApproverDirectory();
+  approvers.roles.set(LEVEL2_ROLE, [manager2, manager2b]);
+  approvers.roles.set(LEVEL3_ROLE, [leader3]);
+  const service = new WorkOrderService(
+    stores.orders,
+    stores.attachments,
+    stores.parts,
+    stores.kitChecks,
+    stores.operations,
+    stores.domainEvents,
+    stores.machineEvents,
+    stores.todos,
+    {
+      listing: new FakeListingPort(),
+      inventory: new FakeInventoryPort(),
+      issue,
+      progress: new FakeProgressPort(),
+      customer: { findCustomer: async () => null },
+      approvers,
+    },
+    {
+      now: () => FIXED_NOW,
+      partsApprovalChain: definePartsApprovalChain({
+        levels: options.levels ?? 3,
+        level2Role: options.level2Role ?? LEVEL2_ROLE,
+        level3Role: options.level3Role ?? LEVEL3_ROLE,
+      }),
+    },
+  );
+  return { ...stores, issue, approvers, service };
+}
+
 function newHarness() {
   const orders = new InMemoryWorkOrderStore();
   const attachments = new InMemoryWorkOrderAttachmentStore();
@@ -125,6 +196,7 @@ function newHarness() {
     issue,
     progress,
     customer: { findCustomer: async () => null },
+    approvers: new FakeApproverDirectory(),
   };
   const service = new WorkOrderService(
     orders,
@@ -745,6 +817,248 @@ describe('配件申请（parts.request/approve/ship）', () => {
       partsRequest.id,
     );
     expect(stale.status).toBe('rejected');
+  });
+});
+
+describe('配件审批链三级（S6 / RREQ-IS-037：或签 + 实时解析 + 统一文案）', () => {
+  async function chainSubmitted(h: ReturnType<typeof newChainHarness>, actor = worker) {
+    const order = await createOrder(h.service, { projectName: '三级配件项目' });
+    const result = mustCommit(
+      await h.service.execute(
+        envelope('workorder.parts.request.v1', { workOrderId: order.id, itemId: 'item-9', quantity: 2 }, { actor }),
+      ),
+    );
+    return { order, partsRequest: result.partsRequest as NonNullable<typeof result.partsRequest> };
+  }
+
+  function decide(
+    h: ReturnType<typeof newChainHarness>,
+    requestId: string,
+    revision: number,
+    decision: 'approve' | 'reject',
+    actor: typeof pm,
+    remark = '同意',
+  ) {
+    return h.service.execute(
+      envelope('workorder.parts.approve.v1', { decision, remark }, { expectedRevision: revision, actor }),
+      requestId,
+    );
+  }
+
+  it('三级全链：submitted → level2_review → level3_review → approved → shipped；逐级或签 + 待办联动 + 事件带 level', async () => {
+    const h = newChainHarness();
+    const { order, partsRequest } = await chainSubmitted(h);
+    expect(partsRequest.state).toBe('submitted');
+    expect(partsRequest.objectVersion).toBe(2);
+    // 一级待办 = 工作令负责人（项目经理）；或签名单外用户不可决策
+    const outsider = await decide(h, partsRequest.id, 2, 'approve', manager2);
+    expect(outsider.status).toBe('rejected');
+    if (outsider.status === 'rejected') expect(outsider.reason).toContain('或签校验未通过');
+
+    const level1 = mustCommit(await decide(h, partsRequest.id, 2, 'approve', pm));
+    expect(level1.partsRequest?.state).toBe('level2_review');
+    expect(level1.partsRequest?.objectVersion).toBe(3);
+    // 一级审批人待办完成 + 二级或签两名成员各得一条待办
+    expect(level1.todosCompleted.length).toBe(1);
+    expect(level1.todosCreated.length).toBe(2);
+    const mgr2Todos = await h.todos.listOwn(t1, manager2);
+    expect(mgr2Todos.filter((todo) => todo.refId === partsRequest.id && todo.status === 'open').length).toBe(1);
+    // 详情读面：待审批人实时解析（二级角色两名成员），不落库
+    const detail2 = await h.service.partsDetail(t1, partsRequest.id);
+    expect(detail2.pendingApproval?.level).toBe(2);
+    expect(detail2.pendingApproval?.approvers).toEqual([manager2, manager2b]);
+    expect(detail2.pendingApproval?.note).toBeNull();
+    // 事件载荷携带审批层级
+    const events2 = await h.domainEvents.byAggregate({ id: partsRequest.id, type: 'parts-request' });
+    expect((events2[1]?.payload as { level?: number }).level).toBe(1);
+
+    // 二级或签：任一成员可过（乙过）；两名成员待办全部完成 + 三级待办派发
+    const level2 = mustCommit(await decide(h, partsRequest.id, 3, 'approve', manager2b));
+    expect(level2.partsRequest?.state).toBe('level3_review');
+    expect(level2.todosCompleted.length).toBe(2);
+    expect(level2.todosCreated.length).toBe(1);
+    expect(
+      (await h.todos.listOwn(t1, manager2)).every((todo) => todo.refId !== partsRequest.id || todo.status !== 'open'),
+    ).toBe(true);
+
+    const level3 = mustCommit(await decide(h, partsRequest.id, 4, 'approve', leader3));
+    expect(level3.partsRequest?.state).toBe('approved');
+    expect(level3.todosCreated.length).toBe(0);
+    // approved 后详情不再有待审批人（终态读面 null）
+    expect((await h.service.partsDetail(t1, partsRequest.id)).pendingApproval).toBeNull();
+
+    const shipped = mustCommit(
+      await h.service.execute(
+        envelope('workorder.parts.ship.v1', { shipmentRef: 'S6-SHIP' }, { expectedRevision: 5 }),
+        partsRequest.id,
+      ),
+    );
+    expect(shipped.partsRequest?.state).toBe('shipped');
+    expect(h.issue.calls).toEqual([
+      { requestId: partsRequest.id, workOrderId: order.id, itemId: 'item-9', quantity: 2 },
+    ]);
+  });
+
+  it('中间级驳回 → rejected 终态；未审级不再派待办', async () => {
+    const h = newChainHarness();
+    const { partsRequest } = await chainSubmitted(h);
+    mustCommit(await decide(h, partsRequest.id, 2, 'approve', pm));
+    const rejected = mustCommit(await decide(h, partsRequest.id, 3, 'reject', manager2, '数量不符'));
+    expect(rejected.partsRequest?.state).toBe('rejected');
+    expect(rejected.todosCreated.length).toBe(0);
+    // rejected 终态：三级角色成员不可再决策
+    const after = await decide(h, partsRequest.id, 4, 'approve', leader3);
+    expect(after.status).toBe('rejected');
+  });
+
+  it('角色无人/未配置 → 该级审批明确拒绝（不静默换人）', async () => {
+    const h = newChainHarness(); // LEVEL3_ROLE 成员在场
+    const { partsRequest } = await chainSubmitted(h);
+    mustCommit(await decide(h, partsRequest.id, 2, 'approve', pm));
+    mustCommit(await decide(h, partsRequest.id, 3, 'approve', manager2));
+    // 三级角色清空 → 决策拒绝，读面名单空带说明（展示「—」语义）
+    h.approvers.roles.set(LEVEL3_ROLE, []);
+    const refused = await decide(h, partsRequest.id, 4, 'approve', leader3);
+    expect(refused.status).toBe('rejected');
+    if (refused.status === 'rejected') {
+      expect(refused.reason).toContain('未配置审批人');
+      expect(refused.reason).toContain(LEVEL3_ROLE);
+    }
+    const detail = await h.service.partsDetail(t1, partsRequest.id);
+    expect(detail.pendingApproval?.approvers).toEqual([]);
+    expect(detail.pendingApproval?.note).toContain(LEVEL3_ROLE);
+  });
+
+  it('二级链（levels=2）：两级通过即 approved（无 level3_review）；缺省一级链零回归（无服务端或签校验）', async () => {
+    const two = newChainHarness({ levels: 2 });
+    const { partsRequest: first } = await chainSubmitted(two);
+    const level1 = mustCommit(await decide(two, first.id, 2, 'approve', pm));
+    expect(level1.partsRequest?.state).toBe('level2_review');
+    const approved = mustCommit(await decide(two, first.id, 3, 'approve', manager2));
+    expect(approved.partsRequest?.state).toBe('approved');
+
+    // 零回归：未配链的基线服务（newHarness）任何 parts:approve 持有者可决策
+    const base = newHarness();
+    const order = await createOrder(base.service, { projectName: '基线零回归' });
+    const created = mustCommit(
+      await base.service.execute(
+        envelope('workorder.parts.request.v1', { workOrderId: order.id, itemId: 'item-8', quantity: 1 }, { actor: worker }),
+      ),
+    );
+    const baseRequest = created.partsRequest as NonNullable<typeof created.partsRequest>;
+    expect(baseRequest.state).toBe('submitted');
+    const baseApproved = mustCommit(
+      await base.service.execute(
+        envelope('workorder.parts.approve.v1', { decision: 'approve', remark: '同意' }, { expectedRevision: 2, actor: worker }),
+        baseRequest.id,
+      ),
+    );
+    expect(baseApproved.partsRequest?.state).toBe('approved'); // 非负责人亦可（基线口径原样）
+    expect((baseApproved.events[0]?.payload as { level?: number }).level).toBeUndefined();
+  });
+
+  it('租户级链解析器（沿 approval flowConfigResolver 先例）：null 回落静态链', async () => {
+    const stores = {
+      orders: new InMemoryWorkOrderStore(),
+      attachments: new InMemoryWorkOrderAttachmentStore(),
+      parts: new InMemoryPartsRequestStore(),
+      kitChecks: new InMemoryKitCheckStore(),
+      operations: new InMemoryWorkOrderOperationStore(),
+      domainEvents: new InMemoryWorkOrderDomainEventStore(),
+      machineEvents: createInMemoryApprovalEventStore(),
+      todos: new InMemoryTodoStore(),
+    };
+    const chains = new Map<string, PartsApprovalChain>([
+      [t1 as string, definePartsApprovalChain({ levels: 2, level2Role: LEVEL2_ROLE })],
+    ]);
+    const service = new WorkOrderService(
+      stores.orders, stores.attachments, stores.parts, stores.kitChecks, stores.operations,
+      stores.domainEvents, stores.machineEvents, stores.todos,
+      {
+        listing: new FakeListingPort(), inventory: new FakeInventoryPort(), issue: new FakeIssuePort(),
+        progress: new FakeProgressPort(), customer: { findCustomer: async () => null },
+        approvers: new FakeApproverDirectory(),
+      },
+      {
+        now: () => FIXED_NOW,
+        partsApprovalChain: definePartsApprovalChain({ levels: 1 }),
+        partsChainResolver: async (tenant) => chains.get(tenant as string) ?? null,
+      },
+    );
+    const order = await createOrder(service, { projectName: '租户链' });
+    const created = mustCommit(
+      await service.execute(
+        envelope('workorder.parts.request.v1', { workOrderId: order.id, itemId: 'item-7', quantity: 1 }, { actor: worker }),
+      ),
+    );
+    const request = created.partsRequest as NonNullable<typeof created.partsRequest>;
+    // t1 解析出二级链：一级过后落 level2_review（静态链 levels=1 被解析器覆盖）
+    mustCommit(await service.execute(
+      envelope('workorder.parts.approve.v1', { decision: 'approve', remark: '同意' }, { expectedRevision: 2, actor: pm }),
+      request.id,
+    ));
+    expect((await stores.parts.find(t1, request.id))?.state).toBe('level2_review');
+  });
+
+  it('统一文案与状态过滤：待审三态同标签、族内过滤互为同义词；层级推导正确', async () => {
+    expect(['submitted', 'level2_review', 'level3_review'].map(partsRequestStateLabel)).toEqual([
+      '审批中', '审批中', '审批中',
+    ]);
+    expect(partsRequestStateLabel('approved')).toBe('已批准');
+    expect(partsRequestStateLabel('unknown_state')).toBe('unknown_state');
+    expect(
+      ['submitted', 'level2_review', 'level3_review', 'approved'].map(partsApprovalLevelOfState),
+    ).toEqual([1, 2, 3, null]);
+
+    const h = newChainHarness();
+    const order = await createOrder(h.service, { projectName: '过滤项目' });
+    const ids: string[] = [];
+    for (const itemId of ['item-a', 'item-b', 'item-c']) {
+      const created = mustCommit(
+        await h.service.execute(
+          envelope('workorder.parts.request.v1', { workOrderId: order.id, itemId, quantity: 1 }, { actor: worker }),
+        ),
+      );
+      ids.push((created.partsRequest as NonNullable<typeof created.partsRequest>).id);
+    }
+    // 三张单分别推进到 submitted / level2_review / level3_review
+    mustCommit(await decide(h, ids[0] as string, 2, 'approve', pm));
+    mustCommit(await decide(h, ids[1] as string, 2, 'approve', pm));
+    mustCommit(await decide(h, ids[1] as string, 3, 'approve', manager2));
+    expect((await h.service.listParts(t1)).map((row) => row.state).sort()).toEqual([
+      'level2_review', 'level3_review', 'submitted',
+    ]);
+    // 任一「审批中」族 id 过滤命中全族（统一文案语义）；族外状态仍精确
+    for (const filter of ['submitted', 'level2_review', 'level3_review'] as const) {
+      expect((await h.service.listParts(t1, filter)).length).toBe(3);
+    }
+    expect((await h.service.listParts(t1, 'approved')).length).toBe(0);
+  });
+
+  it('链配置校验（fail-fast）与流配置派生', () => {
+    expect(() => definePartsApprovalChain({ levels: 4 })).toThrow(/levels/);
+    expect(() => definePartsApprovalChain({ levels: 2 })).toThrow(/level2Role/);
+    expect(() => definePartsApprovalChain({ levels: 3, level2Role: 'parts-manager' })).toThrow(/level3Role/);
+    expect(() => definePartsApprovalChain({ levels: 2, level2Role: 'Bad Role' })).toThrow(/level2Role/);
+    expect(definePartsApprovalChain({ levels: 1 })).toEqual({ levels: 1 });
+    // levels=1 派生 = 基线配置（零回归锚点）；多级链同 flowId（请求行引用稳定）
+    expect(buildPartsRequestFlowConfig({ levels: 1 })).toBe(DEFAULT_PARTS_REQUEST_FLOW_CONFIG);
+    const three = buildPartsRequestFlowConfig(definePartsApprovalChain({ levels: 3, level2Role: 'r2', level3Role: 'r3' }));
+    expect(three.flowId).toBe(DEFAULT_PARTS_REQUEST_FLOW_CONFIG.flowId);
+    expect(three.transitions.map((rule) => [rule.from, rule.event, rule.to])).toContainEqual([
+      'submitted', 'APPROVE', 'level2_review',
+    ]);
+    expect(three.transitions.map((rule) => [rule.from, rule.event, rule.to])).toContainEqual([
+      'level2_review', 'APPROVE', 'level3_review',
+    ]);
+    expect(three.transitions.filter((rule) => rule.event === 'REJECT').map((rule) => rule.from).sort()).toEqual([
+      'level2_review', 'level3_review', 'submitted',
+    ]);
+    const two = buildPartsRequestFlowConfig(definePartsApprovalChain({ levels: 2, level2Role: 'r2' }));
+    expect(two.states.map((state) => state.id)).not.toContain('level3_review');
+    expect(two.transitions.map((rule) => [rule.from, rule.event, rule.to])).toContainEqual([
+      'level2_review', 'APPROVE', 'approved',
+    ]);
   });
 });
 

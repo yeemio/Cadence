@@ -11,6 +11,7 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import {
   InMemoryCustomerStore,
+  InMemoryItemPriceLedgerStore,
   InMemoryItemStore,
   InMemoryResourceStore,
   InMemorySupplierStore,
@@ -26,6 +27,7 @@ import {
 import { MasterdataService } from './masterdata.service.js';
 import type {
   CustomerStore,
+  ItemPriceLedgerStore,
   ItemStore,
   ResourceStore,
   SupplierStore,
@@ -37,6 +39,7 @@ export const MASTERDATA_RESOURCE_STORE = Symbol('smes.masterdata.resourceStore')
 export const MASTERDATA_CUSTOMER_STORE = Symbol('smes.masterdata.customerStore');
 export const MASTERDATA_SUPPLIER_STORE = Symbol('smes.masterdata.supplierStore');
 export const MASTERDATA_UNIT_STORE = Symbol('smes.masterdata.unitStore');
+export const MASTERDATA_ITEM_PRICE_LEDGER_STORE = Symbol('smes.masterdata.itemPriceLedgerStore');
 
 export interface MasterdataModuleOptions {
   /** 物品主数据存储；缺省 = 内存实现（重启即失）。显式 undefined 同缺省。 */
@@ -49,6 +52,12 @@ export interface MasterdataModuleOptions {
   readonly supplierStore?: SupplierStore | undefined;
   /** 计量单位存储（S1 backfill）；缺省 = 内存实现。 */
   readonly unitStore?: UnitStore | undefined;
+  /**
+   * 物品价格台账读面（fix-wave-6 6b-1 S9，RREQ-MD-019）；缺省 = 内存实现
+   * （恒空页）。PG 形态（business-store `./masterdata` 只读消费 listing 采购
+   * 表）由组合根注入。
+   */
+  readonly itemPriceLedgerStore?: ItemPriceLedgerStore | undefined;
 }
 
 @Module({})
@@ -70,6 +79,10 @@ export class MasterdataModule {
       },
       { provide: MASTERDATA_UNIT_STORE, useValue: options.unitStore ?? new InMemoryUnitStore() },
       {
+        provide: MASTERDATA_ITEM_PRICE_LEDGER_STORE,
+        useValue: options.itemPriceLedgerStore ?? new InMemoryItemPriceLedgerStore(),
+      },
+      {
         provide: MasterdataService,
         useFactory: (
           items: ItemStore,
@@ -77,13 +90,15 @@ export class MasterdataModule {
           customers: CustomerStore,
           suppliers: SupplierStore,
           units: UnitStore,
-        ) => new MasterdataService(items, resources, customers, suppliers, units),
+          priceLedger: ItemPriceLedgerStore,
+        ) => new MasterdataService(items, resources, customers, suppliers, units, priceLedger),
         inject: [
           MASTERDATA_ITEM_STORE,
           MASTERDATA_RESOURCE_STORE,
           MASTERDATA_CUSTOMER_STORE,
           MASTERDATA_SUPPLIER_STORE,
           MASTERDATA_UNIT_STORE,
+          MASTERDATA_ITEM_PRICE_LEDGER_STORE,
         ],
       },
     ];

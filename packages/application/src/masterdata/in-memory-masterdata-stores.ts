@@ -22,6 +22,9 @@ import type {
   CustomerStore,
   ItemMaster,
   ItemStore,
+  ItemPriceLedgerStore,
+  ItemPurchasePriceEntry,
+  ItemPurchasePriceQuery,
   ResourceMaster,
   ResourceStore,
   SupplierMaster,
@@ -34,6 +37,7 @@ import type {
   UpdateSupplierInput,
   UpdateUnitInput,
 } from './masterdata-stores.js';
+import { buildItemPurchasePriceEntries } from './masterdata-stores.js';
 
 let memoryCounter = 0;
 
@@ -52,6 +56,7 @@ interface ItemRow {
   unit: string | null;
   category: string | null;
   active: boolean;
+  initialPriceMinor: number | null;
 }
 
 export class InMemoryItemStore implements ItemStore {
@@ -75,6 +80,7 @@ export class InMemoryItemStore implements ItemStore {
       unit: input.unit ?? null,
       category: input.category ?? null,
       active: input.active ?? true,
+      initialPriceMinor: input.initialPriceMinor ?? null,
     };
     this.items.set(`${row.tenant}|${row.id}`, row);
     return toMaster(row);
@@ -100,6 +106,7 @@ export class InMemoryItemStore implements ItemStore {
     if (input.unit !== undefined) row.unit = input.unit;
     if (input.category !== undefined) row.category = input.category;
     if (input.active !== undefined) row.active = input.active;
+    if (input.initialPriceMinor !== undefined) row.initialPriceMinor = input.initialPriceMinor;
     return toMaster(row);
   }
 }
@@ -173,6 +180,7 @@ function toMaster(row: ItemRow): ItemMaster {
     unit: row.unit,
     category: row.category,
     active: row.active,
+    initialPriceMinor: row.initialPriceMinor,
   };
 }
 
@@ -379,4 +387,97 @@ function toUnitMaster(row: UnitRow): UnitMaster {
     name: row.name,
     symbol: row.symbol,
   };
+}
+
+// ---------------------------------------------------------------------------
+// 物品价格台账内存实现（RREQ-MD-019，fix-wave-6 6b-1 S9）——零 DB boot 语义
+// 完整（无采购数据时台账恒空页）。真实数据源在 PG 实现（business-store
+// `./masterdata` 只读消费 listing 采购订单/事件表）；内存形态由测试/演示
+// 直接喂台账行（构造注入，只读），排序/回落口径复用共享纯函数保证两实现
+// 同合同。
+// ---------------------------------------------------------------------------
+
+/**
+ * 内存台账喂行形状 = 端口行形状 + 归属（tenant, itemId）双键——与其它内存
+// store 的租户收口同口径（显式 tenant 列过滤；台账行无独立 id，不用
+ * `${tenant}|${id}` 键）。构造后只读——台账是只读投影，无写方法。
+ */
+export interface InMemoryPriceLedgerRow extends ItemPurchasePriceEntry {
+  readonly tenant: TenantId;
+  readonly itemId: string;
+}
+
+export class InMemoryItemPriceLedgerStore implements ItemPriceLedgerStore {
+  private readonly rows: readonly InMemoryPriceLedgerRow[];
+
+  constructor(rows: readonly InMemoryPriceLedgerRow[] = []) {
+    this.rows = rows;
+  }
+
+  async listByItem(
+    tenant: TenantId,
+    itemId: string,
+    query: ItemPurchasePriceQuery,
+  ): Promise<{ total: number; entries: readonly ItemPurchasePriceEntry[] }> {
+    const tenantRows = this.rows.filter(
+      (row) => row.tenant === tenant && row.itemId === itemId,
+    );
+    // 排序口径与 PG 实现同一纯函数（端口合同：occurredAt 降序 → 单号降序 → 行号升序）
+    const entries = buildItemPurchasePriceEntries(
+      toLedgerOrderRows(tenantRows),
+      approvedAtByRows(tenantRows),
+      itemId,
+    );
+    return {
+      total: entries.length,
+      entries: entries.slice(query.offset, query.offset + query.limit),
+    };
+  }
+}
+
+/** 内存台账行 → 物化纯函数的订单形状（按订单聚合行集）。 */
+function toLedgerOrderRows(
+  rows: readonly InMemoryPriceLedgerRow[],
+): Parameters<typeof buildItemPurchasePriceEntries>[0] {
+  const byOrder = new Map<
+    string,
+    {
+      id: string;
+      supplierRef: string | null;
+      supplierName: string | null;
+      state: string;
+      createdAt: string;
+      lines: { lineNo: number; itemId: string; quantity: number; unitPriceMinor: number | null }[];
+    }
+  >();
+  for (const row of rows) {
+    let order = byOrder.get(row.purchaseOrderId);
+    if (order === undefined) {
+      order = {
+        id: row.purchaseOrderId,
+        supplierRef: row.supplierRef,
+        supplierName: row.supplierName,
+        state: row.orderState,
+        createdAt: row.orderedAt,
+        lines: [],
+      };
+      byOrder.set(row.purchaseOrderId, order);
+    }
+    order.lines.push({
+      lineNo: row.lineNo,
+      itemId: row.itemId,
+      quantity: row.quantity,
+      unitPriceMinor: row.unitPriceMinor,
+    });
+  }
+  return [...byOrder.values()];
+}
+
+/** 内存台账行 → 每单审核时间 Map（物化纯函数入参形状）。 */
+function approvedAtByRows(rows: readonly InMemoryPriceLedgerRow[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    if (row.approvedAt !== null) map.set(row.purchaseOrderId, row.approvedAt);
+  }
+  return map;
 }
