@@ -79,7 +79,8 @@ SaaS 多租户形态（可选）：`SMES_TENANT_MODE=saas SMES_DOMAIN=smes.examp
 - 前端：`apps/web/tests/`（menu/mobile/module-pages/e2e-module-chain 等）
 - 浏览器 e2e：`packages/testkit/e2e/`（Playwright，走查主壳与关键流程）
 - 行为对账场景包：`packages/testkit/fixtures/m2-scenarios/`（36 场景，reference 留空——对账已按 Owner 裁定取消，可用于自比对回归）
-- 文档口径对照：`architecture/coverage/DOCS-INVENTORY-DIFF.md`（73 份开发文档 → 实现映射与差异登记；需求源文档在仓外 `/Users/yeemio/AI/project/sieracMes-AI/docs/开发文档/`）
+- 产品需求基线：`architecture/requirements/`（PRD v1.0，2026-10-26 冻结——总纲+13 分域分册+追溯总表，506 需求项/506↔109↔源文档全链追溯；测试时产品应该是什么以此为准）
+- 文档口径对照：`architecture/coverage/DOCS-INVENTORY-DIFF.md`（73 份开发文档 → 实现映射与差异登记；需求源文档在仓外 `/Users/yeemio/AI/project/sieracMes-AI/docs/开发文档/`；已被 requirements/ 体系收编为上游输入，本文件仍作逐份映射登记簿）
 
 ## 6. 测试纪律（红线）
 
