@@ -102,11 +102,11 @@ interface Harness {
   readonly shippings: InMemoryShippingOrderStore;
   readonly releaseFacts: InMemoryReleaseFactStore;
   readonly domainEvents: InMemoryInventoryDomainEventStore;
-  /** 同一组 stores 上重建 service（改服务选项——默认仓/负库存策略切换用）。 */
-  rebuild(options: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseId?: string }): InventoryService;
+  /** 同一组 stores 上重建 service（改服务选项——默认仓/负库存策略切换用；D-16 起默认仓按 code 配置）。 */
+  rebuild(options: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string }): InventoryService;
 }
 
-function makeHarness(options: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseId?: string } = {}): Harness {
+function makeHarness(options: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string } = {}): Harness {
   const warehouses = new InMemoryWarehouseStore();
   const accounts = new InMemoryStockAccountStore();
   const balances = new InMemoryStockLocationBalanceStore();
@@ -116,7 +116,7 @@ function makeHarness(options: { negativeStockPolicy?: NegativeStockPolicy; defau
   const shippings = new InMemoryShippingOrderStore();
   const releaseFacts = new InMemoryReleaseFactStore();
   const domainEvents = new InMemoryInventoryDomainEventStore();
-  const build = (opts: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseId?: string }): InventoryService =>
+  const build = (opts: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string }): InventoryService =>
     new InventoryService(
       warehouses,
       accounts,
@@ -132,7 +132,7 @@ function makeHarness(options: { negativeStockPolicy?: NegativeStockPolicy; defau
       {
         now: () => FIXED_NOW,
         ...(opts.negativeStockPolicy === undefined ? {} : { negativeStockPolicy: opts.negativeStockPolicy }),
-        ...(opts.defaultWarehouseId === undefined ? {} : { defaultWarehouseId: opts.defaultWarehouseId }),
+        ...(opts.defaultWarehouseCode === undefined ? {} : { defaultWarehouseCode: opts.defaultWarehouseCode }),
       },
     );
   const service = build(options);
@@ -1072,7 +1072,7 @@ describe('shipping.execute / confirm（执行出库 + 确认联动）', () => {
   });
 
   it('未配置默认仓且行未带仓拒绝；发货记录查询（state/workOrderId 过滤）', async () => {
-    const h = makeHarness(); // 未配置 defaultWarehouseId
+    const h = makeHarness(); // 未配置 defaultWarehouseCode
     const ids = await seedWarehouses(h);
     await receiveProduction(h, 'item-303', ids.wh1, 5);
     const refused = await h.service.execute(
@@ -1080,7 +1080,7 @@ describe('shipping.execute / confirm（执行出库 + 确认联动）', () => {
     );
     expect(mustReject(refused)).toContain('未指定仓库且未配置默认仓');
 
-    const defaultedService = h.rebuild({ defaultWarehouseId: ids.wh1 });
+    const defaultedService = h.rebuild({ defaultWarehouseCode: 'WH1' });
     mustCommit(
       await defaultedService.execute(
         envelope('shipping.execute.v1', { workOrderId: 'wo-1', lines: [{ itemId: 'item-303', quantity: 2 }] }),
@@ -1137,7 +1137,7 @@ describe('跨模块端口适配器（组合根合流注入）', () => {
     expect(refused.received).toBe(false);
 
     const ids = await seedWarehouses(h);
-    const receipt = createInventoryReceiptAdapter(h.rebuild({ defaultWarehouseId: ids.wh2 }));
+    const receipt = createInventoryReceiptAdapter(h.rebuild({ defaultWarehouseCode: 'WH2' }));
     const first = await receipt.receivePurchase(t1, {
       receiptKey: 'po-2#1',
       purchaseOrderId: 'po-2',
@@ -1159,7 +1159,7 @@ describe('跨模块端口适配器（组合根合流注入）', () => {
     const h = makeHarness();
     const ids = await seedWarehouses(h);
     await receiveProduction(h, 'item-420', ids.wh1, 8);
-    const partsIssue = createPartsIssueAdapter(h.rebuild({ defaultWarehouseId: ids.wh1 }));
+    const partsIssue = createPartsIssueAdapter(h.rebuild({ defaultWarehouseCode: 'WH1' }));
     const first = await partsIssue.issueParts(t1, {
       requestId: 'pr-1',
       workOrderId: 'wo-1',
@@ -1241,6 +1241,121 @@ describe('跨模块端口适配器（组合根合流注入）', () => {
     expect(reuse.reserved).toBe(false);
     expect(reuse.refusedReason).toContain('不得复用');
     expect((await h.service.stockLevels(t1, ids.wh1, 'item-440'))[0]).toMatchObject({ qtyReserved: 0, availableQty: 10 });
+  });
+});
+
+// ---- D-16 默认仓按租户 code 解析（retest-8abac21：全局单值 id 只对一个租户有效） ----
+
+describe('D-16 默认仓按租户解析（服务选项 defaultWarehouseCode；各租户同 code 仓 id 不同）', () => {
+  const t3 = TenantId.create('t3');
+
+  /** 租户内建 code=MAIN 仓，返回仓 id。 */
+  async function defineMain(h: Harness, tenant: TenantId): Promise<string> {
+    const committed = mustCommit(
+      await h.service.execute(
+        envelope('warehouse.define.v1', { code: 'MAIN', name: '主仓', locations: [{ code: 'M1', name: null }] }, { tenant }),
+      ),
+    );
+    return (committed.warehouse as { readonly id: string }).id;
+  }
+
+  it('收货三态：同 code 回落各租户自己的 MAIN（t1/t2）；租户内无此编码仓拒绝；未配置拒绝', async () => {
+    // 态一：配置 code=MAIN + 各租户 MAIN 存在 → 同一服务实例按租户各自解析落位。
+    const h = makeHarness();
+    const mainT1 = await defineMain(h, t1);
+    const mainT2 = await defineMain(h, t2);
+    expect(mainT1).not.toBe(mainT2); // 各租户 MAIN 仓 id 不同（D-16 症状根因）
+
+    const defaulted = h.rebuild({ defaultWarehouseCode: 'MAIN' });
+    const receiptT1 = await defaulted.receivePurchaseStock(t1, {
+      receiptKey: 'po-d16-t1#1',
+      purchaseOrderId: 'po-d16-t1',
+      itemId: 'item-d16',
+      quantity: 2,
+    });
+    expect(receiptT1.received).toBe(true);
+    expect((await defaulted.stockLevels(t1, mainT1, 'item-d16'))[0]?.qtyOnHand).toBe(2);
+
+    const receiptT2 = await defaulted.receivePurchaseStock(t2, {
+      receiptKey: 'po-d16-t2#1',
+      purchaseOrderId: 'po-d16-t2',
+      itemId: 'item-d16',
+      quantity: 3,
+    });
+    expect(receiptT2.received).toBe(true);
+    expect((await defaulted.stockLevels(t2, mainT2, 'item-d16'))[0]?.qtyOnHand).toBe(3);
+    // 不串租户：t2 收货不落 t1 的 MAIN（id 不同即不存在于 t2）。
+    expect((await defaulted.stockLevels(t2, mainT1, 'item-d16')).length).toBe(0);
+
+    // 态二：配置了 code 但该租户内无此编码仓（t3 未建 MAIN）→ 明确拒绝（fail-visible）。
+    const refusedT3 = await defaulted.receivePurchaseStock(t3, {
+      receiptKey: 'po-d16-t3#1',
+      purchaseOrderId: 'po-d16-t3',
+      itemId: 'item-d16',
+      quantity: 1,
+    });
+    expect(refusedT3.received).toBe(false);
+    expect(refusedT3.refusedReason).toContain("租户 't3' 内不存在默认仓编码 'MAIN'");
+
+    // 态三：未配置默认仓（原 harness 服务）→ D-15 行为保持：必须显式传仓。
+    const refusedUnconfigured = await h.service.receivePurchaseStock(t1, {
+      receiptKey: 'po-d16-t1#2',
+      purchaseOrderId: 'po-d16-t1',
+      itemId: 'item-d16',
+      quantity: 1,
+    });
+    expect(refusedUnconfigured.received).toBe(false);
+    expect(refusedUnconfigured.refusedReason).toContain('未指定收货仓且未配置默认仓');
+  });
+
+  it('发料/预占同语义：code 回落租户内 MAIN；显式仓优先于默认仓', async () => {
+    const h = makeHarness();
+    const mainT1 = await defineMain(h, t1);
+    const otherCommitted = mustCommit(
+      await h.service.execute(
+        envelope('warehouse.define.v1', { code: 'WH-OTHER', name: '非默认仓', locations: [{ code: 'O1', name: null }] }),
+      ),
+    );
+    const otherId = (otherCommitted.warehouse as { readonly id: string }).id;
+    // 各仓先显式入账（未配默认仓的 h.service：显式仓收货 D-15 语义保持）。
+    for (const [warehouseId, quantity] of [
+      [mainT1, 6],
+      [otherId, 5],
+    ] as const) {
+      const received = await h.service.receivePurchaseStock(t1, {
+        receiptKey: `po-d16-x#${warehouseId}`,
+        purchaseOrderId: 'po-d16-x',
+        itemId: 'item-d16b',
+        quantity,
+        warehouseId,
+      });
+      expect(received.received).toBe(true);
+    }
+    const defaulted = h.rebuild({ defaultWarehouseCode: 'MAIN' });
+
+    // 预占回落：未带仓 → 解析到 t1 的 MAIN（预占量挂 mainT1）。
+    const reserved = await defaulted.reserveStock(t1, {
+      reservationKey: 'rsv-d16',
+      itemId: 'item-d16b',
+      quantity: 4,
+      refType: 'dispatch',
+      refId: 'dp-d16',
+    });
+    expect(reserved.reserved).toBe(true);
+    expect((await defaulted.stockLevels(t1, mainT1, 'item-d16b'))[0]).toMatchObject({ qtyOnHand: 6, qtyReserved: 4 });
+    await defaulted.releaseReservation(t1, 'rsv-d16', null);
+
+    // 发料显式仓优先：显式 otherId 落 other 仓，默认仓 MAIN 不动。
+    const issued = await defaulted.issuePartsStock(t1, {
+      requestId: 'pr-d16',
+      workOrderId: 'wo-d16',
+      itemId: 'item-d16b',
+      quantity: 3,
+      warehouseId: otherId,
+    });
+    expect(issued.issued).toBe(true);
+    expect((await defaulted.stockLevels(t1, otherId, 'item-d16b'))[0]?.qtyOnHand).toBe(2);
+    expect((await defaulted.stockLevels(t1, mainT1, 'item-d16b'))[0]?.qtyOnHand).toBe(6);
   });
 });
 

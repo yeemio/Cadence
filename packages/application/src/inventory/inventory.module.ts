@@ -16,7 +16,7 @@
  *   inventory: (stores) =>
  *     InventoryModule.register({
  *       warehouseStore: stores.inventoryWarehouseStore, // …PG 注入点，余类推
- *       serviceOptions: { defaultWarehouseId: 'wh-…' },
+ *       serviceOptions: { defaultWarehouseCode: 'MAIN' },
  *     }),
  */
 import { DynamicModule, Module, Provider } from '@nestjs/common';

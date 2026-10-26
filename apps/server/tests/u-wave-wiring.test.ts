@@ -670,20 +670,26 @@ describe('U6 wiring 装配面（全装形态三句柄）', () => {
   });
 });
 
-describe('D-15 装配面：env SMES_DEFAULT_WAREHOUSE_ID → inventory 服务选项 defaultWarehouseId', () => {
-  const ENV_KEY = 'SMES_DEFAULT_WAREHOUSE_ID';
+describe('D-16 装配面：env SMES_DEFAULT_WAREHOUSE_CODE → inventory 服务选项 defaultWarehouseCode（租户内解析）', () => {
+  const ENV_KEY = 'SMES_DEFAULT_WAREHOUSE_CODE';
+  const otherTenant = TenantId.create('t-u6-d16');
 
-  /** 预置已知 id 的仓（组合根 store 注入——零 DB 形态同源裁决点）。 */
+  /**
+   * 预置两租户各自同 code（WH-ENV）仓 + 显式收货仓（组合根 store 注入——
+   * 零 DB 形态同源裁决点）。各租户同 code 仓 id 不同 = D-16 症状根因。
+   */
   async function preseededWarehouseStore() {
     const warehouses = new InMemoryWarehouseStore();
-    await warehouses.create({
-      tenant,
-      id: 'wh-env-main',
-      code: 'WH-ENV',
-      name: 'env 默认仓',
-      defaultLocationId: 'loc-env-1',
-      locations: [{ id: 'loc-env-1', code: 'ENV-1', name: null }],
-    });
+    for (const [index, seededTenant] of [tenant, otherTenant].entries()) {
+      await warehouses.create({
+        tenant: seededTenant,
+        id: `wh-env-main-${index + 1}`,
+        code: 'WH-ENV',
+        name: 'env 默认仓',
+        defaultLocationId: `loc-env-${index + 1}`,
+        locations: [{ id: `loc-env-${index + 1}`, code: 'ENV-1', name: null }],
+      });
+    }
     await warehouses.create({
       tenant,
       id: 'wh-explicit',
@@ -695,9 +701,9 @@ describe('D-15 装配面：env SMES_DEFAULT_WAREHOUSE_ID → inventory 服务选
     return warehouses;
   }
 
-  it('env 已配：收货省略仓 → 落 env 默认仓；显式仓优先于 env；env 未配 → 拒收（D-15 症状）', async () => {
+  it('env 已配 code：两租户省略仓各落自己的 WH-ENV；显式仓优先；env 未配 → 拒收', async () => {
     const previous = process.env[ENV_KEY];
-    process.env[ENV_KEY] = 'wh-env-main';
+    process.env[ENV_KEY] = 'WH-ENV';
     try {
       const context = await NestFactory.create(
         buildAppModule(['core', 'inventory'], { inventoryWarehouseStore: await preseededWarehouseStore() }),
@@ -706,34 +712,44 @@ describe('D-15 装配面：env SMES_DEFAULT_WAREHOUSE_ID → inventory 服务选
       contexts.push(context);
       const inventory = context.get(InventoryService, { strict: false });
 
-      // 默认仓回落：载荷省略仓 → env 指定仓落位（env → serviceOptions 链路通）。
-      const received = await inventory.receivePurchaseStock(tenant, {
-        receiptKey: 'd15-po-1#1',
-        purchaseOrderId: 'd15-po-1',
-        itemId: 'itm-d15',
+      // 默认仓回落（租户内 code 解析）：载荷省略仓 → 各租户自己的 WH-ENV 仓
+      //（env → serviceOptions → findByCode(tenant, code) 链路通；D-16 修复面）。
+      const receivedA = await inventory.receivePurchaseStock(tenant, {
+        receiptKey: 'd16-po-1#1',
+        purchaseOrderId: 'd16-po-1',
+        itemId: 'itm-d16',
         quantity: 3,
       });
-      expect(received.received).toBe(true);
-      expect((await inventory.stockLevels(tenant, 'wh-env-main', 'itm-d15'))[0]?.qtyOnHand).toBe(3);
+      expect(receivedA.received).toBe(true);
+      expect((await inventory.stockLevels(tenant, 'wh-env-main-1', 'itm-d16'))[0]?.qtyOnHand).toBe(3);
+
+      const receivedB = await inventory.receivePurchaseStock(otherTenant, {
+        receiptKey: 'd16-po-1#1',
+        purchaseOrderId: 'd16-po-1',
+        itemId: 'itm-d16',
+        quantity: 2,
+      });
+      expect(receivedB.received).toBe(true);
+      expect((await inventory.stockLevels(otherTenant, 'wh-env-main-2', 'itm-d16'))[0]?.qtyOnHand).toBe(2);
 
       // 显式仓优先：显式 wh-explicit 落显式仓，env 默认仓不动。
       const explicit = await inventory.receivePurchaseStock(tenant, {
-        receiptKey: 'd15-po-2#1',
-        purchaseOrderId: 'd15-po-2',
-        itemId: 'itm-d15',
+        receiptKey: 'd16-po-2#1',
+        purchaseOrderId: 'd16-po-2',
+        itemId: 'itm-d16',
         quantity: 2,
         warehouseId: 'wh-explicit',
       });
       expect(explicit.received).toBe(true);
-      expect((await inventory.stockLevels(tenant, 'wh-explicit', 'itm-d15'))[0]?.qtyOnHand).toBe(2);
-      expect((await inventory.stockLevels(tenant, 'wh-env-main', 'itm-d15'))[0]?.qtyOnHand).toBe(3);
+      expect((await inventory.stockLevels(tenant, 'wh-explicit', 'itm-d16'))[0]?.qtyOnHand).toBe(2);
+      expect((await inventory.stockLevels(tenant, 'wh-env-main-1', 'itm-d16'))[0]?.qtyOnHand).toBe(3);
       await context.close();
     } finally {
       if (previous === undefined) delete process.env[ENV_KEY];
       else process.env[ENV_KEY] = previous;
     }
 
-    // env 未配（compose 缺省空串同义——`''` 经 `|| null` 归 null）：无默认仓拒收。
+    // env 未配（compose 显式置空同义——`''` 经 `|| null` 归 null）：无默认仓拒收。
     delete process.env[ENV_KEY];
     try {
       const bare = await NestFactory.create(buildAppModule(['core', 'inventory'], {}), {
@@ -742,9 +758,9 @@ describe('D-15 装配面：env SMES_DEFAULT_WAREHOUSE_ID → inventory 服务选
       contexts.push(bare);
       const inventory = bare.get(InventoryService, { strict: false });
       const refused = await inventory.receivePurchaseStock(tenant, {
-        receiptKey: 'd15-po-3#1',
-        purchaseOrderId: 'd15-po-3',
-        itemId: 'itm-d15',
+        receiptKey: 'd16-po-3#1',
+        purchaseOrderId: 'd16-po-3',
+        itemId: 'itm-d16',
         quantity: 1,
       });
       expect(refused.received).toBe(false);

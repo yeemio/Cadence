@@ -996,8 +996,8 @@ describe('采购订单五态全链（提交-审核-下发-收货）', () => {
 });
 
 describe('D-15 收货仓三态（payload.warehouseId 透传 + inventory 默认仓回落）', () => {
-  /** 真实 inventory 收货面（内存实现）；defaultWarehouseId = 服务选项回落位；warehouses 可共享（先建仓再带默认选项重建服务）。 */
-  function newInventoryFace(defaultWarehouseId: string | null, warehouses = new InMemoryWarehouseStore()) {
+  /** 真实 inventory 收货面（内存实现）；defaultWarehouseCode = 服务选项回落位（D-16 起按 code）；warehouses 可共享（先建仓再带默认选项重建服务）。 */
+  function newInventoryFace(defaultWarehouseCode: string | null, warehouses = new InMemoryWarehouseStore()) {
     const inventory = new InventoryService(
       warehouses,
       new InMemoryStockAccountStore(),
@@ -1010,7 +1010,7 @@ describe('D-15 收货仓三态（payload.warehouseId 透传 + inventory 默认�
       new InMemoryInventoryOperationStore(),
       new InMemoryInventoryDomainEventStore(),
       createInMemoryApprovalEventStore(),
-      defaultWarehouseId === null ? {} : { defaultWarehouseId },
+      defaultWarehouseCode === null ? {} : { defaultWarehouseCode },
     );
     return { inventory, warehouses, port: createInventoryReceiptAdapter(inventory) };
   }
@@ -1063,12 +1063,12 @@ describe('D-15 收货仓三态（payload.warehouseId 透传 + inventory 默认�
     expect((await face.inventory.stockLevels(t1, explicitId, 'item-d15'))[0]?.qtyOnHand).toBe(10);
   });
 
-  it('默认仓回落：payload 省略 warehouseId → inventory 服务选项 defaultWarehouseId 落位', async () => {
-    // 先建两仓（共享仓库账），再以带默认仓选项的服务收货——回落落位可区分。
+  it('默认仓回落：payload 省略 warehouseId → inventory 服务选项 defaultWarehouseCode 按租户解析落位（D-16）', async () => {
+    // 先建两仓（共享仓库账），再以默认仓 code 选项的服务收货——回落落位可区分。
     const scratch = newInventoryFace(null);
     const otherId = await defineWarehouse(scratch, 'WH-D15-OTHER', '非默认仓');
     const defaultId = await defineWarehouse(scratch, 'WH-D15-DEF', '默认收货仓');
-    const face = newInventoryFace(defaultId, scratch.warehouses);
+    const face = newInventoryFace('WH-D15-DEF', scratch.warehouses);
     const { h, order } = await issuedOrderWith(face.port);
 
     const received = mustCommit(

@@ -29,8 +29,23 @@
  * setTimeout 链：每次对齐下一个 UTC 00:10（源文档"当日结束时点快照"取日后
  * 跨零点稳定时点；跑数日 = 跑批时刻的前一自然日，幂等 upsert 重跑无害）。
  * 停机漏跑不回补历史（日表可运维手工触发补——runOnce 导出即为此）。
+ *
+ * == D-20 修复（2026-10-26）：定时节拍的 RLS 租户会话 ==
+ * 本文件两条节拍（帧广播 / A10 跑批）均在**请求上下文外**执行（setInterval /
+ * setTimeout 链不经租户中间件）——RLS 会话租户（rls-session 自持 ALS，跨实例
+ * 不可见）无显式包裹时回落 'default'：SaaS + app_user 形态（SMES_RLS_SESSION
+ * =on）下非 default 订阅租户聚合读 0 行 → 空帧推送（D-20：同一时刻快照接口
+ * 21 在制 / SSE 帧 0 的分叉根因；与 D-14 同类——非请求路径绕过租户会话）。
+ * 修复 = 每租户聚合/跑批以 `runWithRlsTenant(订阅租户, …)` 显式包裹（rls-
+ * session.ts 文件头明文的种子/后台任务入口；import 面仅该纯函数对——本模块
+ * 仍零 Nest import，不触 PrismaClient 构造）。防御取舍（写明）：帧信封是源
+ * 契约冻结面（上方"字段面零改"），**不**往帧里加 degraded 标记——包裹内会话
+ * 租户与订阅租户不一致（包裹被绕过/失效的兜底信号）时跳过推送 + warn，订阅
+ * 端保持上一好帧（与聚合失败同一呈现语义：短暂冻结优于断流/空帧）。缺省/
+ * superuser 形态包裹零行为变化（RLS 门控关闭时 ALS 无消费方）。
  */
 import { TenantId } from '@smes/business-core';
+import { currentRlsTenant, runWithRlsTenant } from '@smes/business-store/org';
 import type { MachiningDailyStatsService } from '@smes/application';
 import type { DigitalOperationScreenService } from '@smes/application';
 
@@ -103,18 +118,35 @@ export class ScreenFrameBroadcaster {
   /**
    * 单次节拍：逐订阅租户聚合帧并下行。单租户失败不炸节拍（记结构化日志后
    * 继续下一租户；订阅端保持上一好帧——大屏是呈现面，短暂冻结优于断流）。
+   *
+   * D-20：聚合以订阅租户经 runWithRlsTenant 包裹（定时节拍在请求上下文外，
+   * 不包裹则 RLS 会话回落 'default' → 非 default 租户读 0 行推空帧——文件头
+   * D-20 节）；包裹内会话租户与订阅租户不一致时跳过推送 + warn（防御锚，
+   * 取舍见文件头：不加 degraded 字段——帧信封是源契约冻结面）。
    */
   async tick(): Promise<void> {
     for (const [tenantKey, sinks] of this.subscribers) {
       try {
-        const envelope = await this.screen.buildFrame(TenantId.create(tenantKey), this.now().toISOString());
-        const frame = sseMessageOf(envelope);
-        for (const sink of sinks) {
-          try {
-            sink.write(frame);
-          } catch {
-            // 写面已断（连接半开）：摘除该订阅者，等 close 事件兜底清理。
-            sinks.delete(sink);
+        const tenant = TenantId.create(tenantKey);
+        const nowIso = this.now().toISOString();
+        let activeTenant = tenantKey;
+        const envelope = await runWithRlsTenant(tenant, async () => {
+          activeTenant = String(currentRlsTenant());
+          return activeTenant === tenantKey ? this.screen.buildFrame(tenant, nowIso) : null;
+        });
+        if (envelope === null) {
+          console.warn(
+            `[smes] screen frame skipped (tenant=${tenantKey}): RLS session tenant mismatch (active=${activeTenant}) — keep last good frame, no empty-frame push`,
+          );
+        } else {
+          const frame = sseMessageOf(envelope);
+          for (const sink of sinks) {
+            try {
+              sink.write(frame);
+            } catch {
+              // 写面已断（连接半开）：摘除该订阅者，等 close 事件兜底清理。
+              sinks.delete(sink);
+            }
           }
         }
       } catch (error) {
@@ -183,11 +215,17 @@ export class MachiningDailyScheduler {
     }
   }
 
-  /** 跑一轮（调度链与运维手工补数共用入口）：逐租户，单租户失败记日志继续。 */
+  /**
+   * 跑一轮（调度链与运维手工补数共用入口）：逐租户，单租户失败记日志继续。
+   * D-20 同类修复：跑批在定时器上下文执行（无请求租户），每租户以
+   * runWithRlsTenant 包裹——否则 RLS 形态下非 default 租户 find 读 0 行
+   * （created 误判）、upsert 被 WITH CHECK 拒（42501）。
+   */
   async runOnce(nowIso?: string): Promise<void> {
+    const now = nowIso ?? this.now().toISOString();
     for (const tenant of this.tenants) {
       try {
-        await this.daily.runDaily(tenant, { now: nowIso ?? this.now().toISOString() });
+        await runWithRlsTenant(tenant, () => this.daily.runDaily(tenant, { now }));
       } catch (error) {
         console.error(
           `[smes] machining daily stats run failed (tenant=${String(tenant)}):`,

@@ -565,14 +565,18 @@ export const MODULE_DEFINITIONS: Record<
       operationStore: stores.inventoryOperationStore,
       domainEventStore: stores.inventoryDomainEventStore,
       machineEventStore: stores.inventoryMachineEventStore,
-      // D-15：默认收货仓 env 注入（收货载荷未显式指定 warehouseId 时的落位仓）。
-      // 取舍（写明）：① 空串/未配 = 不设默认仓（compose 插值缺省空串，收货必须
-      // 显式传仓）；② 不做"唯一启用仓"自动回落——warehouse 模型无启用位、回落
-      // 判定逻辑属 InventoryService（禁碰面），且装配期查库违反零 DB boot 合同
-      // （启动不碰数据库，见 seed.mjs 头注）；env 配错 id 得到"仓库不存在"明确
-      // 拒绝，fail-visible 可诊断。
+      // D-16：默认仓按仓 code 配置（收货/发料/发货行/预占未显式指定仓库时，
+      // 命令期在租户内按 (tenant, code) 解析——全局单值 id 只能命中一个租户，
+      // SaaS 各租户 MAIN 仓 id 不同，retest-8abac21 D-16）。取舍（写明）：
+      // ① 空串/未配 = 不设默认仓（compose 插值缺省 MAIN——seed 按
+      // SMES_TENANTS 每租户幂等建 MAIN，开箱即回落各租户自己的 MAIN）；
+      // ② 不做"唯一启用仓"自动回落——warehouse 模型无启用位、回落判定逻辑
+      // 属 InventoryService（禁碰面），且装配期查库违反零 DB boot 合同
+      // （启动不碰数据库，见 seed.mjs 头注）；③ 解析在命令期惰性执行
+      // （InventoryService.fallbackWarehouse 经 store findByCode），env 配错
+      // code 得到"租户内不存在默认仓编码"明确拒绝，fail-visible 可诊断。
       serviceOptions: {
-        defaultWarehouseId: process.env['SMES_DEFAULT_WAREHOUSE_ID'] || null,
+        defaultWarehouseCode: process.env['SMES_DEFAULT_WAREHOUSE_CODE'] || null,
       },
     }),
   dispatch: (stores, wiring) =>

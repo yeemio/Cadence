@@ -50,7 +50,7 @@ export interface InventoryPurchaseReceiptSurface {
       readonly purchaseOrderId: string;
       readonly itemId: string;
       readonly quantity: number;
-      /** 收货仓（缺省 = 服务选项 defaultWarehouseId）。 */
+      /** 收货仓（缺省 = 服务选项 defaultWarehouseCode，租户内按 code 解析）。 */
       readonly warehouseId?: string;
     },
   ): Promise<{ readonly received: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }>;
@@ -76,7 +76,7 @@ export interface InventoryPartsIssueSurface {
       readonly workOrderId: string;
       readonly itemId: string;
       readonly quantity: number;
-      /** 发料仓（缺省 = 服务选项 defaultWarehouseId）。 */
+      /** 发料仓（缺省 = 服务选项 defaultWarehouseCode，租户内按 code 解析）。 */
       readonly warehouseId?: string;
     },
   ): Promise<{ readonly issued: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }>;
@@ -140,7 +140,7 @@ export function createStockReleaseRecorder(sink: InspectionReleaseSink): StockRe
 export interface StockReserveCommand {
   readonly reservationKey: string;
   readonly itemId: string;
-  /** 缺省 = 服务选项 defaultWarehouseId（未配置则拒绝）。 */
+  /** 缺省 = 服务选项 defaultWarehouseCode（租户内按 code 解析；未配置则拒绝）。 */
   readonly warehouseId?: string;
   readonly quantity: number;
   /** 占用方单据引用（dispatch 派工单/配件申请/发料任务）。 */

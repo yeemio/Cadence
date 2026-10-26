@@ -373,7 +373,7 @@ export function parsePurchaseOrderIssuePayload(input: unknown): PurchaseOrderIss
 
 export interface PurchaseOrderReceivePayload {
   readonly lines: readonly { readonly lineNo: number; readonly receivedQty: number }[];
-  /** 收货仓（可选；缺省回落 inventory 服务选项 defaultWarehouseId——D-15）。 */
+  /** 收货仓（可选；缺省回落 inventory 服务选项 defaultWarehouseCode（租户内按 code 解析）——D-15/D-16）。 */
   readonly warehouseId: string | null;
   readonly receiptRef: string | null;
   readonly remark: string | null;

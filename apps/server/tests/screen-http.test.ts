@@ -5,19 +5,29 @@
  *    恒带 machiningDailyStatsStore 键（options 注入优先；未注入 → 内存缺省）——
  *    修复前工厂调用处漏传该键，`!` 断言掩盖 → 端点 500；
  *  - ScreenFrameBroadcaster：无订阅零聚合、按订阅租户推帧、写面断连摘除；
+ *    D-20 锚定：tick 逐租户经 runWithRlsTenant 包裹（双租户各收本租户非空帧）；
  *  - MachiningDailyScheduler.runOnce：逐租户跑批（前一自然日幂等落行）；
+ *    D-20 同类锚定：runOnce 写面逐租户 RLS 会话包裹；
  *  - 纯函数：sseMessageOf / ssePreamble / nextDailyRunAt。
- * HTTP 面门禁与 SSE 真实通道见 screen-boot.e2e.test.ts。
+ * HTTP 面门禁与 SSE 真实通道见 screen-boot.e2e.test.ts；包裹失效防御
+ * （skip+warn）见 screen-rls-guard.test.ts（vi.mock 隔离故障形态）。
  */
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
-import { TenantId } from '@smes/business-core';
+import { TenantId, WorkOrderId } from '@smes/business-core';
 import type { TenantId as TenantIdType } from '@smes/business-core';
 import {
   DigitalOperationScreenService,
   InMemoryMachiningDailyStatsStore,
   MachiningDailyStatsService,
 } from '@smes/application';
+import type {
+  MachiningDailyStatsStore,
+  UpsertMachiningDailyStatsInput,
+  WorkOrder,
+} from '@smes/application';
+// D-20 锚定用：读 store 侧 RLS 会话租户（与实现同源——rls-session 自持 ALS）
+import { currentRlsTenant } from '@smes/business-store/org';
 import {
   MODULE_DEFINITIONS,
   buildAppModule,
@@ -157,6 +167,72 @@ describe('ScreenFrameBroadcaster（SSE 节拍推送）', () => {
     broadcaster.stop();
     expect(broadcaster.subscribedTenantCount).toBe(0);
   });
+
+  /** D-20 造数：一条在制工作令（KPI③/项目进度行的最小读面）。 */
+  function inProgressOrder(tenant: string, id: string, projectName: string): WorkOrder {
+    return {
+      id: WorkOrderId.create(id),
+      tenant: TenantId.create(tenant),
+      flowConfigId: 'wo-nine-state',
+      state: 'executing',
+      objectVersion: 1,
+      customerRef: null,
+      projectName,
+      salesRep: null,
+      manager: null,
+      plannedDeliveryAt: null,
+      packagingArrivalAt: null,
+      createdAt: '2026-10-20T00:00:00.000Z',
+      updatedAt: '2026-10-20T00:00:00.000Z',
+    };
+  }
+
+  it('D-20：tick 聚合逐租户经 runWithRlsTenant 包裹——双租户各收本租户非空帧（修复前回落 default 读 0 推空帧）', async () => {
+    // 读面记录「订阅租户@聚合时 RLS 会话租户」——包裹正确则两者恒相等
+    const seenContexts: string[] = [];
+    const ordersByTenant = new Map<string, readonly WorkOrder[]>([
+      ['tenant-a', [inProgressOrder('tenant-a', 'wo-a1', '项目A-1'), inProgressOrder('tenant-a', 'wo-a2', '项目A-2')]],
+      ['tenant-b', [inProgressOrder('tenant-b', 'wo-b1', '项目B-1')]],
+    ]);
+    const screen = new DigitalOperationScreenService({
+      workOrders: {
+        list: async (tenant) => {
+          seenContexts.push(`${String(tenant)}@${String(currentRlsTenant())}`);
+          return ordersByTenant.get(String(tenant)) ?? [];
+        },
+      },
+    });
+    const broadcaster = new ScreenFrameBroadcaster(
+      screen,
+      5_000,
+      () => new Date('2026-10-26T08:30:00.000Z'),
+    );
+    const framesA: string[] = [];
+    const framesB: string[] = [];
+    broadcaster.subscribe(TenantId.create('tenant-a'), { write: (chunk) => void framesA.push(chunk) });
+    broadcaster.subscribe(TenantId.create('tenant-b'), { write: (chunk) => void framesB.push(chunk) });
+    await broadcaster.tick();
+
+    // 每租户聚合发生在本租户 RLS 会话内（store 事务 SET app.current_tenant 的租户源）
+    expect(seenContexts).toEqual(['tenant-a@tenant-a', 'tenant-b@tenant-b']);
+
+    // 双租户各收本租户非空帧（数据面隔离：a 两令/b 一令，互不可见）
+    const payloadOf = (raw: string): {
+      kpi: { inProgressWorkOrders: number | null };
+      projectProgressRows: { projectName: string }[];
+    } => {
+      const envelope = JSON.parse(raw.slice('data: '.length).trim()) as {
+        payload: { kpi: { inProgressWorkOrders: number | null }; projectProgressRows: { projectName: string }[] };
+      };
+      return envelope.payload;
+    };
+    expect(framesA).toHaveLength(1);
+    expect(payloadOf(framesA[0]!).kpi.inProgressWorkOrders).toBe(2);
+    expect(payloadOf(framesA[0]!).projectProgressRows.map((row) => row.projectName)).toEqual(['项目A-1', '项目A-2']);
+    expect(framesB).toHaveLength(1);
+    expect(payloadOf(framesB[0]!).kpi.inProgressWorkOrders).toBe(1);
+    expect(payloadOf(framesB[0]!).projectProgressRows.map((row) => row.projectName)).toEqual(['项目B-1']);
+  });
 });
 
 describe('MachiningDailyScheduler.runOnce（A10 跑批逐租户）', () => {
@@ -172,6 +248,26 @@ describe('MachiningDailyScheduler.runOnce（A10 跑批逐租户）', () => {
     expect((await store.listRecent(TenantId.create('tb'), 30)).map((row) => row.statisticsDate)).toEqual(['2026-10-25']);
     await scheduler.runOnce('2026-10-26T13:00:00.000Z'); // 重跑同日
     expect(await store.listRecent(TenantId.create('ta'), 30)).toHaveLength(1);
+  });
+
+  it('D-20 同类：runOnce 写面逐租户经 runWithRlsTenant 包裹（跑批租户 = RLS 会话租户）', async () => {
+    const inner = new InMemoryMachiningDailyStatsStore();
+    const seenContexts: string[] = [];
+    const observing: MachiningDailyStatsStore = {
+      upsert: (input: UpsertMachiningDailyStatsInput) => {
+        seenContexts.push(`${String(input.tenant)}@${String(currentRlsTenant())}`);
+        return inner.upsert(input);
+      },
+      find: (tenant, statisticsDate) => inner.find(tenant, statisticsDate),
+      findLatest: (tenant) => inner.findLatest(tenant),
+      listRecent: (tenant, days) => inner.listRecent(tenant, days),
+    };
+    const scheduler = new MachiningDailyScheduler(new MachiningDailyStatsService(observing), [
+      TenantId.create('ta'),
+      TenantId.create('tb'),
+    ]);
+    await scheduler.runOnce('2026-10-26T12:00:00.000Z');
+    expect(seenContexts).toEqual(['ta@ta', 'tb@tb']);
   });
 });
 

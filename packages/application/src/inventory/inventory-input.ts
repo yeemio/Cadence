@@ -547,7 +547,7 @@ export function parseStocktakeApprovePayload(input: unknown): StocktakeApprovePa
 export interface ShippingExecuteLinePayload {
   readonly itemId: string;
   readonly quantity: number;
-  /** 缺省 = 服务选项 defaultWarehouseId（未配置则拒绝）。 */
+  /** 缺省 = 服务选项 defaultWarehouseCode（租户内按 code 解析；未配置则拒绝）。 */
   readonly warehouseId: string | null;
   readonly locationId: string | null;
   /** 核销的预占键（可空）。 */

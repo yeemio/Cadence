@@ -12,11 +12,15 @@
  *   - user-seed-approver → default 租户 approver 角色（M1 收尾波-① 审批演示
  *     策略：approval:read/write + workbench:read——可发起/决策并看到自己的
  *     审批待办计数；无 admin bypass，走 casbin 精确授权路径）
- *   - 默认收货仓（D-15）：wh-seed-main / MAIN + 默认库位 loc-seed-main /
- *     MAIN-01——采购收货未显式指定 warehouseId 且 env SMES_DEFAULT_WAREHOUSE_ID
- *     未配时的开箱兜底（演示/测试栈）。取舍（写明）：不做"唯一启用仓"自动
- *     回落——warehouse 模型无启用位且回落判定属 inventory 服务；seed 只种
- *     default 租户，SaaS 非默认租户须先建仓再配 env（见 deploy/README）。
+ *   - 默认收货仓（D-15，D-16 升级为按租户建）：每租户 code=MAIN 默认仓 +
+ *     默认库位 MAIN-01——采购收货未显式指定 warehouseId 且 env
+ *     SMES_DEFAULT_WAREHOUSE_CODE 配了 MAIN（compose 缺省）时，inventory
+ *     命令期在租户内按 (tenant, code) 解析开箱兜底（演示/测试栈）。租户
+ *     清单 = default 恒种 + env SMES_TENANTS（与 server 已知租户同源；单机
+ *     缺省空清单 = 只种 default，行为不变）。取舍（写明）：不做"唯一启用仓"
+ *     自动回落——warehouse 模型无启用位且回落判定属 inventory 服务；各租户
+ *     MAIN 仓 id 不同（default=wh-seed-main，其余 wh-seed-main-<tenant>），
+ *     env 用 code 而非 id 引用正是为此（全局单值 id 只能命中一个租户）。
  *
  * 口令（M1 收尾波-③ 真实认证）：全部种子身份默认口令 = demo-password
  * （明文写在此注释与下方常量——种子演示环境，非生产凭据；口令策略/改密
@@ -38,13 +42,33 @@ const TENANT = 'default';
 /** 种子演示环境默认口令（写明：demo-password）。 */
 const DEFAULT_SEED_PASSWORD = 'demo-password';
 
-/** D-15 默认收货仓（固定 id 供 SMES_DEFAULT_WAREHOUSE_ID 引用）。 */
-const WAREHOUSE_ID = 'wh-seed-main';
+/** D-15/D-16 默认收货仓（code=MAIN；default 固定 id 沿用 wh-seed-main 既有锚）。 */
 const WAREHOUSE_CODE = 'MAIN';
 const WAREHOUSE_NAME = '默认仓（种子）';
-const LOCATION_ID = 'loc-seed-main';
 const LOCATION_CODE = 'MAIN-01';
 const LOCATION_NAME = '默认库位（种子）';
+
+/**
+ * 种子租户清单（D-16）：default 恒种 + env SMES_TENANTS（SaaS 已知租户逗号
+ * 清单，与 server hostBased 解析同源——migrate 服务在 compose 同名透传）；
+ * 去重去空。身份/策略仍只种 default（租户开通流程属 M4 后续波，见 deploy/README）。
+ */
+function seedTenants() {
+  const extra = (process.env['SMES_TENANTS'] ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0 && entry !== TENANT);
+  return [TENANT, ...extra];
+}
+
+/** 各租户固定 id 方案（幂等锚 + 可诊断）：default 沿用 wh-seed-main；其余 wh-seed-main-<tenant>。 */
+function warehouseIdFor(tenant) {
+  return tenant === TENANT ? 'wh-seed-main' : `wh-seed-main-${tenant}`;
+}
+
+function locationIdFor(tenant) {
+  return tenant === TENANT ? 'loc-seed-main' : `loc-seed-main-${tenant}`;
+}
 
 function hashPassword(password) {
   const salt = randomBytes(16);
@@ -89,9 +113,9 @@ function policyToRow(rule) {
 }
 
 /**
- * 种子主逻辑（幂等）：users/policies 走 createMany skipDuplicates；默认仓走
- * upsert（(tenant, code) / (tenant, warehouse, code) 复合唯一键，update 空对象
- * ——重跑不重复、不动既有 MAIN 仓的任何字段）。
+ * 种子主逻辑（幂等）：users/policies 走 createMany skipDuplicates；每租户
+ * 默认仓走 upsert（(tenant, code) / (tenant, warehouse, code) 复合唯一键，
+ * update 空对象——重跑不重复、不动既有 MAIN 仓的任何字段）。
  */
 export async function seedMain(prisma) {
   const users = await prisma.userRecord.createMany({
@@ -107,32 +131,38 @@ export async function seedMain(prisma) {
     data: seedPolicies.map(policyToRow),
     skipDuplicates: true,
   });
-  const warehouse = await prisma.warehouseRecord.upsert({
-    where: { tenantId_code: { tenantId: TENANT, code: WAREHOUSE_CODE } },
-    create: {
-      id: WAREHOUSE_ID,
-      tenantId: TENANT,
-      code: WAREHOUSE_CODE,
-      name: WAREHOUSE_NAME,
-      defaultLocationId: LOCATION_ID,
-    },
-    update: {},
-  });
-  // 库位挂在 upsert 回读的实际仓 id 下（既有 MAIN 仓非种子建时不误挂固定 id）。
-  await prisma.warehouseLocationRecord.upsert({
-    where: { tenantId_warehouseId_code: { tenantId: TENANT, warehouseId: warehouse.id, code: LOCATION_CODE } },
-    create: {
-      id: LOCATION_ID,
-      tenantId: TENANT,
-      warehouseId: warehouse.id,
-      code: LOCATION_CODE,
-      name: LOCATION_NAME,
-    },
-    update: {},
-  });
+  const warehouses = [];
+  for (const tenant of seedTenants()) {
+    const warehouse = await prisma.warehouseRecord.upsert({
+      where: { tenantId_code: { tenantId: tenant, code: WAREHOUSE_CODE } },
+      create: {
+        id: warehouseIdFor(tenant),
+        tenantId: tenant,
+        code: WAREHOUSE_CODE,
+        name: WAREHOUSE_NAME,
+        defaultLocationId: locationIdFor(tenant),
+      },
+      update: {},
+    });
+    // 库位挂在 upsert 回读的实际仓 id 下（既有 MAIN 仓非种子建时不误挂固定 id）。
+    await prisma.warehouseLocationRecord.upsert({
+      where: {
+        tenantId_warehouseId_code: { tenantId: tenant, warehouseId: warehouse.id, code: LOCATION_CODE },
+      },
+      create: {
+        id: locationIdFor(tenant),
+        tenantId: tenant,
+        warehouseId: warehouse.id,
+        code: LOCATION_CODE,
+        name: LOCATION_NAME,
+      },
+      update: {},
+    });
+    warehouses.push(warehouse);
+  }
   console.log(
     `seed 完成：users +${users.count}（幂等跳过已存在），policies +${policies.count}` +
-      `（tenant '${TENANT}'），默认仓 ${warehouse.id}/${WAREHOUSE_CODE}（幂等）`,
+      `（tenant '${TENANT}'），默认仓 ${warehouses.map((w) => `${w.tenantId}=${w.id}/${WAREHOUSE_CODE}`).join(', ')}（每租户幂等）`,
   );
 }
 

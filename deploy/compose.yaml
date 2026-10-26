@@ -60,6 +60,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-cadenceSingleNodeDev}@pg:5432/cadence
+      # D-16：seed 按租户清单幂等建 MAIN 默认仓（与 server 同源 SMES_TENANTS；
+      # 单机缺省空清单 = 只种 default 租户，行为不变）。
+      SMES_TENANTS: ${SMES_TENANTS:-}
     command:
       - sh
       - -ec
@@ -98,10 +101,12 @@ services:
       SMES_DOMAIN: ${SMES_DOMAIN:-}
       # 已知租户清单（SaaS 形态）：逗号分隔静态列表（租户管理流程属 M4 后续波）。
       SMES_TENANTS: ${SMES_TENANTS:-}
-      # D-15：inventory 默认收货仓（采购收货未显式指定 warehouseId 时的落位仓；
-      # 值须为该租户已存在仓库 id——如 seed 的 wh-seed-main 或 warehouse.define
-      # 建仓返回的 id；空串/未配 = 无默认仓，收货载荷须显式传 warehouseId）。
-      SMES_DEFAULT_WAREHOUSE_ID: ${SMES_DEFAULT_WAREHOUSE_ID:-}
+      # D-16：inventory 默认仓（采购收货等未显式指定 warehouseId 时的落位仓）。
+      # 值 = 仓 code，命令期在租户内按 (tenant, code) 解析（全局单值 id 只对
+      # 一个租户有效，已废）；seed 按 SMES_TENANTS 每租户幂等建 MAIN，缺省
+      # MAIN 即开箱回落各租户自己的 MAIN。空串/未配 = 无默认仓，收货载荷须
+      # 显式传 warehouseId（显式仓优先于 env 默认仓）。
+      SMES_DEFAULT_WAREHOUSE_CODE: ${SMES_DEFAULT_WAREHOUSE_CODE-MAIN}
       # 模块启停透传（缺省=注册表 DEFAULT_MODULES_ENABLED 基础六模块；全量演示
       # 用 MODULES_ENABLED 显式传全清单——注册表 MODULE_DEFINITIONS 键，core 恒必装）。
       MODULES_ENABLED: ${MODULES_ENABLED:-}

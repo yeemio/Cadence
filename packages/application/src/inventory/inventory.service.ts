@@ -197,13 +197,22 @@ export interface InventoryServiceOptions {
   readonly shippingConfig: ApprovalFlowConfig;
   /** 负库存策略（合同 §8 配置化；缺省硬拒绝）。 */
   readonly negativeStockPolicy: NegativeStockPolicy;
-  /** 默认仓（收货/配件出库/发货行未带仓时的落位；null = 必须显式给仓）。 */
-  readonly defaultWarehouseId: string | null;
+  /**
+   * 默认仓编码（收货/配件出库/发货行/预占未带仓时的落位；null = 必须显式给仓）。
+   * D-16：全局单值 id 只能命中一个租户（SaaS 各租户 MAIN 仓 id 不同），改为
+   * 按 code 在**租户内**命令期解析（见 fallbackWarehouse）。
+   */
+  readonly defaultWarehouseCode: string | null;
   /** 时钟注入（测试确定性）。 */
   readonly now?: () => string;
 }
 
 const DEFAULT_NOW = (): string => new Date().toISOString();
+
+/** D-16 默认仓解析结果：warehouseId = 本租户解析到的仓 id；reason = 拒绝原因。 */
+type DefaultWarehouseFallback =
+  | { readonly warehouseId: string; readonly reason?: undefined }
+  | { readonly warehouseId?: undefined; readonly reason: string };
 
 function rejected(reason: string): RejectedOutcome {
   return { status: 'rejected', reason };
@@ -232,7 +241,7 @@ export class InventoryService {
       stocktakeConfig: options.stocktakeConfig ?? DEFAULT_STOCKTAKE_FLOW_CONFIG,
       shippingConfig: options.shippingConfig ?? DEFAULT_SHIPPING_FLOW_CONFIG,
       negativeStockPolicy: options.negativeStockPolicy ?? DEFAULT_NEGATIVE_STOCK_POLICY,
-      defaultWarehouseId: options.defaultWarehouseId ?? null,
+      defaultWarehouseCode: options.defaultWarehouseCode ?? null,
       ...(options.now === undefined ? {} : { now: options.now }),
     };
     // 尾参回落（写明取舍）：货架存储排在 options 后为可选尾参——既有直构调用方
@@ -247,6 +256,26 @@ export class InventoryService {
 
   private get allowNegative(): boolean {
     return this.options.negativeStockPolicy === 'allow';
+  }
+
+  /**
+   * D-16 默认仓解析：服务选项按仓 code 配置，命令期在租户内经
+   * WarehouseStore.findByCode 惰性解析（SaaS 各租户同 code 仓 id 不同，全局
+   * 单值 id 只能命中一个租户——retest-8abac21 D-16）。取舍（写明）：不在
+   * 装配期解析 id——保持启动零 DB 合同（装配不碰库）；未配置与租户内无此
+   * 编码仓分开拒绝，env 配错 code 得到明确原因（fail-visible 可诊断）。
+   * unconfiguredReason 由调用点给（保留各入口的语境化文案）。
+   */
+  private async fallbackWarehouse(tenant: TenantId, unconfiguredReason: string): Promise<DefaultWarehouseFallback> {
+    const code = this.options.defaultWarehouseCode;
+    if (code === null) {
+      return { reason: unconfiguredReason };
+    }
+    const warehouse = await this.warehouses.findByCode(tenant, code);
+    if (warehouse === null) {
+      return { reason: `租户 '${tenant}' 内不存在默认仓编码 '${code}'（服务选项 defaultWarehouseCode）` };
+    }
+    return { warehouseId: warehouse.id };
   }
 
   // ---- 命令入口（smes.command.v1 分发） ----
@@ -1735,9 +1764,16 @@ export class InventoryService {
     const resolvedLines: ShippingLine[] = [];
     const directTotals = new Map<string, number>(); // `${itemId}|${warehouseId}` → 直扣合计
     for (const [index, line] of payload.lines.entries()) {
-      const warehouseId = line.warehouseId ?? this.options.defaultWarehouseId;
+      let warehouseId = line.warehouseId;
       if (warehouseId === null || warehouseId === undefined) {
-        return rejected(`发货行 ${index + 1} 未指定仓库且未配置默认仓（服务选项 defaultWarehouseId）`);
+        const fallback = await this.fallbackWarehouse(
+          tenant,
+          `发货行 ${index + 1} 未指定仓库且未配置默认仓（服务选项 defaultWarehouseCode）`,
+        );
+        if (fallback.warehouseId === undefined) {
+          return rejected(fallback.reason);
+        }
+        warehouseId = fallback.warehouseId;
       }
       const warehouse = await this.warehouses.find(tenant, warehouseId);
       if (warehouse === null) {
@@ -2171,9 +2207,16 @@ export class InventoryService {
       readonly warehouseId?: string;
     },
   ): Promise<{ readonly received: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }> {
-    const warehouseId = command.warehouseId ?? this.options.defaultWarehouseId;
+    let warehouseId = command.warehouseId;
     if (warehouseId === null || warehouseId === undefined) {
-      return { received: false, refusedReason: '未指定收货仓且未配置默认仓（服务选项 defaultWarehouseId）' };
+      const fallback = await this.fallbackWarehouse(
+        tenant,
+        '未指定收货仓且未配置默认仓（服务选项 defaultWarehouseCode）',
+      );
+      if (fallback.warehouseId === undefined) {
+        return { received: false, refusedReason: fallback.reason };
+      }
+      warehouseId = fallback.warehouseId;
     }
     const envelope = this.systemEnvelope(tenant, 'stock.receive.v1', {
       kind: 'purchase',
@@ -2219,9 +2262,16 @@ export class InventoryService {
       readonly warehouseId?: string;
     },
   ): Promise<{ readonly issued: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }> {
-    const warehouseId = command.warehouseId ?? this.options.defaultWarehouseId;
+    let warehouseId = command.warehouseId;
     if (warehouseId === null || warehouseId === undefined) {
-      return { issued: false, refusedReason: '未指定发料仓且未配置默认仓（服务选项 defaultWarehouseId）' };
+      const fallback = await this.fallbackWarehouse(
+        tenant,
+        '未指定发料仓且未配置默认仓（服务选项 defaultWarehouseCode）',
+      );
+      if (fallback.warehouseId === undefined) {
+        return { issued: false, refusedReason: fallback.reason };
+      }
+      warehouseId = fallback.warehouseId;
     }
     const envelope = this.systemEnvelope(tenant, 'stock.issue.v1', {
       itemId: command.itemId,
@@ -2301,9 +2351,16 @@ export class InventoryService {
       readonly refId: string;
     },
   ): Promise<{ readonly reserved: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }> {
-    const warehouseId = command.warehouseId ?? this.options.defaultWarehouseId;
+    let warehouseId = command.warehouseId;
     if (warehouseId === null || warehouseId === undefined) {
-      return { reserved: false, refusedReason: '未指定仓库且未配置默认仓（服务选项 defaultWarehouseId）' };
+      const fallback = await this.fallbackWarehouse(
+        tenant,
+        '未指定仓库且未配置默认仓（服务选项 defaultWarehouseCode）',
+      );
+      if (fallback.warehouseId === undefined) {
+        return { reserved: false, refusedReason: fallback.reason };
+      }
+      warehouseId = fallback.warehouseId;
     }
     const existing = await this.reservations.findByKey(tenant, command.reservationKey);
     if (existing !== null && existing.status === 'active') {

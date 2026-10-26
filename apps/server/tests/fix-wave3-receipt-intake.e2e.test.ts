@@ -3,7 +3,7 @@
  *
  * 独立 app（core+listing+inspection 子集装配，沿 capability-modules.e2e 体例）：
  * 全装配形态下 #14 listing.receiptPort 接线后，inventory 服务未配置
- * defaultWarehouseId（app-registry 无该服务选项注入面）→ 收货命令被入库指令端口
+ * defaultWarehouseCode（本场景装配不含 inventory 模块）→ 收货命令被入库指令端口
  * 先行拒绝，无法走到 intake——本场景聚焦 intake 接线语义，装配面不含 inventory
  * （receipt 端口回落模块缺省恒放行；入库指令链路由 application/inventory 既有
  * 测试覆盖）。零 DB 真实起服：Nest 组合根 → bindCrossModuleWiring 迟到绑定 →

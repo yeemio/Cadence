@@ -1,5 +1,5 @@
 /**
- * seed 幂等锚定（D-15）：prisma/seed.mjs 的 seedMain 幂等可重跑 + 默认仓形状。
+ * seed 幂等锚定（D-15/D-16）：prisma/seed.mjs 的 seedMain 幂等可重跑 + 默认仓形状。
  *
  * 纯桩面（不连库；体例同 inventory-rls-raw.test.ts 的 mock 先例）：内存桩
  * PrismaClient 实现被 seed 用到的三个操作的真实语义——
@@ -7,14 +7,17 @@
  *     近似真库唯一约束，足够锚定"重跑不重复增行"）；
  *   - upsert 命中 where → 应用 update（空对象 = 不动既有行）；未命中 → create。
  *
- * 锚定三面：
+ * 锚定四面：
  *  1) 幂等：seedMain 连跑两次，四张"表"行数/内容不变（第二次零新增）；
  *  2) 默认仓形状：固定 id wh-seed-main / code MAIN / defaultLocationId
- *     loc-seed-main，库位同挂（SMES_DEFAULT_WAREHOUSE_ID 开箱可引用）；
+ *     loc-seed-main，库位同挂（SMES_DEFAULT_WAREHOUSE_CODE=MAIN 开箱可引用）；
  *  3) 既有 MAIN 仓不动：用户自建同名仓（不同 id）时 seed 不覆盖其字段，
- *     库位挂到实际仓 id 下（upsert update 空对象语义）。
+ *     库位挂到实际仓 id 下（upsert update 空对象语义）；
+ *  4) D-16 每租户 MAIN：env SMES_TENANTS=tenant-a,tenant-b 时 default/各租户
+ *     各建一条 MAIN（id 互不相同），同样幂等；用户自建的非 default 租户
+ *     MAIN 仓同样不动。
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@prisma/client', () => ({
   // seed.mjs 顶层 import 但仅直跑入口实例化（测试 argv[1] = vitest bin 不触发）
@@ -22,6 +25,13 @@ vi.mock('@prisma/client', () => ({
 }));
 
 import { seedMain } from '../prisma/seed.mjs';
+
+// SMES_TENANTS 确定性（D-16 租户清单源）：用例自管，恢复原值。
+const originalTenantsEnv = process.env['SMES_TENANTS'];
+afterEach(() => {
+  if (originalTenantsEnv === undefined) delete process.env['SMES_TENANTS'];
+  else process.env['SMES_TENANTS'] = originalTenantsEnv;
+});
 
 // ---- 内存桩表 ----
 
@@ -97,8 +107,9 @@ function makePrismaStub() {
   };
 }
 
-describe('seed.mjs 幂等（D-15 默认收货仓）', () => {
-  it('seedMain 连跑两次：四表零重复，默认仓固定形状（id/code/defaultLocationId 供 env 引用）', async () => {
+describe('seed.mjs 幂等（D-15/D-16 默认收货仓）', () => {
+  it('seedMain 连跑两次（无 SMES_TENANTS）：四表零重复，默认仓固定形状（id/code/defaultLocationId 供 env 引用）', async () => {
+    delete process.env['SMES_TENANTS']; // 单机缺省：只种 default 租户
     const { prisma, tables } = makePrismaStub();
     const logs: string[] = [];
     const originalLog = console.log;
@@ -121,7 +132,7 @@ describe('seed.mjs 幂等（D-15 默认收货仓）', () => {
     expect(tables.warehouses.rows).toHaveLength(1);
     expect(tables.warehouseLocations.rows).toHaveLength(1);
 
-    // 默认仓形状（D-15）：固定 id + 固定库位锚（SMES_DEFAULT_WAREHOUSE_ID=wh-seed-main 开箱可用）。
+    // 默认仓形状（D-15）：固定 id + 固定库位锚（SMES_DEFAULT_WAREHOUSE_CODE=MAIN + seed 形状开箱可用）。
     const warehouse = tables.warehouses.rows[0]!;
     expect(warehouse).toMatchObject({
       id: 'wh-seed-main',
@@ -142,7 +153,35 @@ describe('seed.mjs 幂等（D-15 默认收货仓）', () => {
     expect(tables.warehouseLocations.calls.every((call) => 'tenantId_warehouseId_code' in call.where)).toBe(true);
   });
 
+  it('D-16 每租户 MAIN：SMES_TENANTS=tenant-a,tenant-b → default/两租户各一条 MAIN（id 互不相同），幂等重跑不重复', async () => {
+    process.env['SMES_TENANTS'] = 'tenant-a, tenant-b, default'; // 含空白与重复 default（去重去空）
+    const { prisma, tables } = makePrismaStub();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await seedMain(prisma);
+      await seedMain(prisma);
+    } finally {
+      (console.log as unknown as { mockRestore: () => void }).mockRestore();
+    }
+
+    expect(tables.users.rows).toHaveLength(4); // 身份/策略仍只种 default
+    expect(tables.warehouses.rows).toHaveLength(3);
+    expect(tables.warehouseLocations.rows).toHaveLength(3);
+    const byTenant = new Map(tables.warehouses.rows.map((row) => [String(row['tenantId']), row]));
+    expect(byTenant.get('default')).toMatchObject({ id: 'wh-seed-main', code: 'MAIN', defaultLocationId: 'loc-seed-main' });
+    expect(byTenant.get('tenant-a')).toMatchObject({ id: 'wh-seed-main-tenant-a', code: 'MAIN', defaultLocationId: 'loc-seed-main-tenant-a' });
+    expect(byTenant.get('tenant-b')).toMatchObject({ id: 'wh-seed-main-tenant-b', code: 'MAIN', defaultLocationId: 'loc-seed-main-tenant-b' });
+    // 各租户 MAIN 仓 id 互不相同（D-16 症状根因被 code 语义消解）。
+    const ids = new Set(tables.warehouses.rows.map((row) => String(row['id'])));
+    expect(ids.size).toBe(3);
+    // 库位挂各自租户的仓。
+    for (const location of tables.warehouseLocations.rows) {
+      expect(location['warehouseId']).toBe(byTenant.get(String(location['tenantId']))?.['id']);
+    }
+  });
+
   it('既有 MAIN 仓（用户自建）不被覆盖：字段原样，种子库位挂到实际仓 id 下', async () => {
+    delete process.env['SMES_TENANTS'];
     const { prisma, tables } = makePrismaStub();
     // 预置用户自建 MAIN 仓（不同 id/name/defaultLocationId）。
     tables.warehouses.rows.push({

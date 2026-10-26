@@ -83,7 +83,7 @@ export interface InventoryReceiptCommand {
   readonly purchaseOrderId: string;
   readonly itemId: string;
   readonly quantity: number;
-  /** 收货仓（可选；缺省回落 inventory 服务选项 defaultWarehouseId——D-15）。 */
+  /** 收货仓（可选；缺省回落 inventory 服务选项 defaultWarehouseCode（租户内按 code 解析）——D-15/D-16）。 */
   readonly warehouseId?: string;
 }
 

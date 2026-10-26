@@ -5,7 +5,7 @@
 ## retest-8abac21 消化（2026-10-26 晚②）
 
 - **已修待复测**（grokbot 测 8abac21，修复在后续合流 dde51e8）：D-17 大屏鉴权（report:read 零凭据 401）/D-18 A10 装配（200）/D-19 web 大屏页/报表中心 404（控制器+六源 200+出数）——REWORK 批已闭环，拉最新即过
-- **新缺陷两修复在途**：D-20 SSE 推送帧空（定时器无租户会话=D-14 同类，修法=按订阅租户 runWithRlsTenant 包裹聚合）/D-16 默认仓 env 全局 id 只对 default 有效（修法=SMES_DEFAULT_WAREHOUSE_CODE 按租户解析）
+- **D-20/D-16 ✅ 全链闭环（晚②）**：实施（D-20 逐租户包裹+A10 同根因收口/D-16 code 语义+每租户 MAIN seed）→ 验收双 ACCEPT（agent_9c586cb8；全仓 timer 路径完备性核查无遗漏）→ **容器终验**：tenant-b 无仓收货 committed 回落本租户 MAIN；SSE 帧 kpi.inProgressWorkOrders=10 与快照接口一致（grokbot 缺陷场景双口径对齐）。收口坑登记：migrate target 镜像需单独 rebuild（server build 不覆盖）否则 seed 跑旧版；compose 缺省 -MAIN 保空串逃生口（验收裁定维持开箱兜底）
 - 复测确认修复：D-14（入库/发料/预占扣减 6→4）/D-15 显式仓路径/移动端 16 页无权限终态/核查预占（幂等+重启存活）——**上轮三残留全部闭环**
 - P3 登记：附件签名密钥内存生成（跨重启 URL 404 设计内；**多实例部署需 env 固化密钥——生产前置清单+1**）；B-2 计数再刷（server 103/web 168+14）；WO-09 已登记设计内
 

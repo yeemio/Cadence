@@ -821,7 +821,7 @@ async function main() {
     );
 
     // --- 源 5/6：purchase-amount-facts（95）——lineAmountMinor=receivedQty×unitPriceMinor ---
-    // 注记：本装配 receive 链被 inventory 默认仓缺省拦住（defaultWarehouseId=null，
+    // 注记：本装配 receive 链被 inventory 默认仓缺省拦住（defaultWarehouseCode=null，
     // 收货入库指令被拒），receivedQty 恒 0 → lineAmountMinor=0 是活库真值；
     // 行物化本身（读 purchase_orders + half-up 乘积）由本断言取证。
     const eval95 = await evaluate('purchase-amount-summary');

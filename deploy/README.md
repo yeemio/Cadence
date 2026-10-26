@@ -110,11 +110,15 @@ docker compose -f deploy/compose.yaml down -v --remove-orphans
   凭据对迁移台账只读；迁移恒走 superuser——pg-init 时序：业务表晚于 initdb 由
   迁移创建，default privileges 已对 app_user 授权 DML）。server
   `depends_on: migrate: service_completed_successfully`。
-- **默认收货仓 env（D-15）**：`SMES_DEFAULT_WAREHOUSE_ID` 透传给 server——
-  inventory 服务选项 `defaultWarehouseId`，采购收货（`purchase.order.receive`）
-  载荷未显式指定 `warehouseId` 时的落位仓；值须为该租户已存在仓库 id（seed
-  幂等种了 `default` 租户的 `wh-seed-main`/`MAIN` 仓；SaaS 非默认租户须先
-  `warehouse.define` 建仓再配其 id）。空串/未配 = 无默认仓，收货载荷须显式
+- **默认收货仓 env（D-15 → D-16 改 code 语义）**：
+  `SMES_DEFAULT_WAREHOUSE_CODE`（compose 缺省 `MAIN`）透传给 server——
+  inventory 服务选项 `defaultWarehouseCode`，采购收货（`purchase.order.receive`）
+  载荷未显式指定 `warehouseId` 时，**命令期在租户内按 (tenant, code) 解析**
+  落位仓（全局单值 id 只对一个租户有效，D-16 已废 `SMES_DEFAULT_WAREHOUSE_ID`）。
+  seed 按 `SMES_TENANTS`（migrate 服务同源透传）每租户幂等建 `MAIN` 仓
+  （default 固定 `wh-seed-main`，其余 `wh-seed-main-<tenant>`），缺省 `MAIN`
+  开箱即回落各租户自己的 MAIN；未种 MAIN 的租户须先 `warehouse.define`
+  建 code=`MAIN` 仓（或显式传仓）。空串/未配 = 无默认仓，收货载荷须显式
   传仓（显式仓优先于 env 默认仓）。
 - **PG 端口**（低危清偿）：`127.0.0.1:${PG_PORT:-55432}:5432`——栈内走 compose
   内网，宿主仅本机可达（迁移排障/psql 连查）；不选纯 `expose`：单机买断形态
