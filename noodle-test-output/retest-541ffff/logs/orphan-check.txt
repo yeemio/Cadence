@@ -1,7 +1,0 @@
-23
-117
-0
-smes.workorder.v1.created|2
-smes.listing.v1.purchase-order-submitted|1
-smes.reporting.v1.report-submitted|3
-smes.dispatch.v1.dispatch-assigned|4
