@@ -51,9 +51,11 @@ import {
   LISTING_EMPTY_INVENTORY_PORT,
   LISTING_NOOP_INSPECTION_INTAKE,
   LISTING_NOOP_RECEIPT_PORT,
+  LISTING_NOOP_USE_RESERVATION_PORT,
   LISTING_UNWIRED_MATERIAL_VALIDATION,
   type InventoryAvailabilityPort,
   type InventoryReceiptPort,
+  type InventoryUseReservationPort,
   type MaterialValidationExecutor,
   type WorkOrderCreatedFeedPort,
 } from './listing-ports.js';
@@ -85,6 +87,7 @@ export const LISTING_TODO_STORE = Symbol('smes.listing.todoStore');
 export const LISTING_WORK_ORDER_FEED = Symbol('smes.listing.workOrderFeed');
 export const LISTING_INVENTORY_PORT = Symbol('smes.listing.inventoryPort');
 export const LISTING_RECEIPT_PORT = Symbol('smes.listing.receiptPort');
+export const LISTING_USE_RESERVATION_PORT = Symbol('smes.listing.useReservationPort');
 export const LISTING_INSPECTION_INTAKE = Symbol('smes.listing.inspectionIntake');
 export const LISTING_EXCEL_PORT = Symbol('smes.listing.excelPort');
 export const LISTING_MATERIAL_VALIDATION = Symbol('smes.listing.materialValidation');
@@ -120,6 +123,8 @@ export interface ListingModuleOptions {
   readonly inventoryPort?: InventoryAvailabilityPort | undefined;
   /** inventory 入库指令端口（收货联动）；缺省 = 恒放行（合流替换）。 */
   readonly receiptPort?: InventoryReceiptPort | undefined;
+  /** inventory 利库预占端口（gap.check 确认→预占创建）；缺省 = NOOP（不预占）。 */
+  readonly useReservationPort?: InventoryUseReservationPort | undefined;
   /** inspection 采购质检投递端口（收货→三类采购质检，RQ-019）；缺省 = 空实现（不投递）。 */
   readonly inspectionIntake?: InspectionIntakePort | undefined;
   /** Excel 导入导出端口；缺省 = JsonTablesExcelPort（json-tables 源；ExcelJS 适配器合流替换）。 */
@@ -177,6 +182,10 @@ export class ListingModule {
       { provide: LISTING_INVENTORY_PORT, useValue: options.inventoryPort ?? LISTING_EMPTY_INVENTORY_PORT },
       { provide: LISTING_RECEIPT_PORT, useValue: options.receiptPort ?? LISTING_NOOP_RECEIPT_PORT },
       {
+        provide: LISTING_USE_RESERVATION_PORT,
+        useValue: options.useReservationPort ?? LISTING_NOOP_USE_RESERVATION_PORT,
+      },
+      {
         provide: LISTING_INSPECTION_INTAKE,
         useValue: options.inspectionIntake ?? LISTING_NOOP_INSPECTION_INTAKE,
       },
@@ -202,6 +211,7 @@ export class ListingModule {
           workOrderFeed: WorkOrderCreatedFeedPort,
           inventory: InventoryAvailabilityPort,
           receipt: InventoryReceiptPort,
+          useReservation: InventoryUseReservationPort,
           inspectionIntake: InspectionIntakePort,
           excel: ExcelPort,
           materialValidation: MaterialValidationExecutor,
@@ -218,7 +228,7 @@ export class ListingModule {
             domainEvents,
             machineEvents,
             todos,
-            { workOrderFeed, inventory, receipt, inspectionIntake, excel, materialValidation },
+            { workOrderFeed, inventory, receipt, useReservation, inspectionIntake, excel, materialValidation },
             serviceOpts,
           ),
         inject: [
@@ -235,6 +245,7 @@ export class ListingModule {
           LISTING_WORK_ORDER_FEED,
           LISTING_INVENTORY_PORT,
           LISTING_RECEIPT_PORT,
+          LISTING_USE_RESERVATION_PORT,
           LISTING_INSPECTION_INTAKE,
           LISTING_EXCEL_PORT,
           LISTING_MATERIAL_VALIDATION,

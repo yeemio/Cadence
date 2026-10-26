@@ -98,6 +98,10 @@ services:
       SMES_DOMAIN: ${SMES_DOMAIN:-}
       # 已知租户清单（SaaS 形态）：逗号分隔静态列表（租户管理流程属 M4 后续波）。
       SMES_TENANTS: ${SMES_TENANTS:-}
+      # D-15：inventory 默认收货仓（采购收货未显式指定 warehouseId 时的落位仓；
+      # 值须为该租户已存在仓库 id——如 seed 的 wh-seed-main 或 warehouse.define
+      # 建仓返回的 id；空串/未配 = 无默认仓，收货载荷须显式传 warehouseId）。
+      SMES_DEFAULT_WAREHOUSE_ID: ${SMES_DEFAULT_WAREHOUSE_ID:-}
       # 模块启停透传（缺省=注册表 DEFAULT_MODULES_ENABLED 基础六模块；全量演示
       # 用 MODULES_ENABLED 显式传全清单——注册表 MODULE_DEFINITIONS 键，core 恒必装）。
       MODULES_ENABLED: ${MODULES_ENABLED:-}

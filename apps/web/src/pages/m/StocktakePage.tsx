@@ -5,10 +5,16 @@
  * （complete=true 提交差异）+ POST :id/approval 审核调账（stocktake:approve）。
  * expectedRevision 取详情行 objectVersion（record 录行不推版本，后端口径）。
  * 权限码与后端 inventory.controllers.ts:123-160 同码。
+ *
+ * fix-wave-2 D-12/D-6 移动收尾：台账/详情两查询按 session 权限投影门禁——门禁码
+ * 取端点实码 stocktake:read（GET /inventory/stocktakes 的 @RequirePermission），
+ * 非导航注册码 stocktake:record（动作码不折算读码）。
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, LoaderCircle } from 'lucide-react';
+import { STOCKTAKE_READ } from '@smes/product-ui';
+import { useMobileDataAccess, MobileNoAccessHint } from './pageAccess';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { approveStocktake, openStocktake, recordStocktake } from '@/data/inventoryApi';
 import { fetchStocktakeDetail, fetchStocktakeList } from '@/data/mobile-ops';
@@ -28,15 +34,18 @@ export function MobileStocktakePage() {
   const queryClient = useQueryClient();
 
   // ---- 台账列表 + 选中详情 ----
+  // D-12：两查询按 session 权限投影（stocktake:read，端点实码；见文件头注释）。
+  const accessible = useMobileDataAccess(STOCKTAKE_READ);
   const listQuery = useQuery({
     queryKey: ['inventory', 'stocktakes'],
     queryFn: () => fetchStocktakeList(),
+    enabled: accessible,
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const detailQuery = useQuery({
     queryKey: ['inventory', 'stocktakes', selectedId],
     queryFn: () => fetchStocktakeDetail(selectedId as string),
-    enabled: selectedId !== null,
+    enabled: accessible && selectedId !== null,
   });
 
   // ---- 开单 ----
@@ -135,12 +144,18 @@ export function MobileStocktakePage() {
           {openMutation.isError && <ApiErrorHint error={openMutation.error} />}
           <OpsOutcome outcome={openMutation.data ?? null} />
 
-          {listQuery.isPending && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> 正在加载…
-            </p>
+          {!accessible ? (
+            <MobileNoAccessHint code={STOCKTAKE_READ} />
+          ) : (
+            <>
+              {listQuery.isPending && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> 正在加载…
+                </p>
+              )}
+              {listQuery.isError && <ApiErrorHint error={listQuery.error} />}
+            </>
           )}
-          {listQuery.isError && <ApiErrorHint error={listQuery.error} />}
           {listQuery.data !== undefined && rows.length === 0 && (
             <p className="text-sm text-muted-foreground">暂无盘点单。</p>
           )}

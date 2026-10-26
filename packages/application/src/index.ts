@@ -265,6 +265,60 @@ export {
   StandardReportsSourceError,
 } from './standardreports/standardreports-errors.js';
 
+// ---- standardreports/screen：数字运营大屏（A8 首波：RREQ-RP-023~027） ----
+export { DigitalOperationScreenService } from './standardreports/screen/screen.service.js';
+export {
+  hashOf,
+  hourBucketOf,
+  progressPercent,
+  remainingDaysOf,
+  riskLevelOf,
+  screenDispatchStatusCode,
+} from './standardreports/screen/screen.service.js';
+export type {
+  DigitalOperationScreenConfig,
+  ScreenSourceStores,
+} from './standardreports/screen/screen-ports.js';
+export { DEFAULT_SCREEN_CONFIG } from './standardreports/screen/screen-ports.js';
+export type {
+  DigitalOperationScreenEnvelope,
+  DigitalOperationScreenPayload,
+  ScreenAssemblyDetailRow,
+  ScreenAssemblyOnlineSnapshot,
+  ScreenAssemblyTypeCount,
+  ScreenDailyOutputPoint,
+  ScreenDeliveryRisk,
+  ScreenDispatchStatusCode,
+  ScreenDispatchStatusInfo,
+  ScreenHourlyInboundInspectionPoint,
+  ScreenHourlyOutputWipPoint,
+  ScreenKpi,
+  ScreenLed,
+  ScreenMachiningDispatchRow,
+  ScreenMachiningOnlineSnapshot,
+  ScreenOutsourceDispatchRow,
+  ScreenPendingFields,
+  ScreenPendingKind,
+  ScreenProjectProgressRow,
+  ScreenStoredTotal,
+  ScreenTopBar,
+  ScreenWorkReportRankRow,
+} from './standardreports/screen/screen-payload.js';
+export { SCREEN_DISPATCH_STATUS_INFO } from './standardreports/screen/screen-payload.js';
+export {
+  InMemoryMachiningDailyStatsStore,
+  type MachiningDailyStatsRow,
+  type MachiningDailyStatsStore,
+  type UpsertMachiningDailyStatsInput,
+} from './standardreports/screen/machining-daily-stores.js';
+export {
+  MACHINING_DAILY_JOB_ACTOR,
+  MACHINING_DAILY_PENDING_REASONS,
+  MachiningDailyStatsService,
+  utcDayKey,
+  type MachiningDailyRunResult,
+} from './standardreports/screen/machining-daily.service.js';
+
 // ---- workbench：工作台/待办（M1 增量 4-I，core 基础层章程） ----
 export { WorkbenchModule, WORKBENCH_TODO_STORE } from './workbench/workbench.module.js';
 export type { WorkbenchModuleOptions } from './workbench/workbench.module.js';
@@ -1100,6 +1154,7 @@ export {
   EMPTY_WORK_ORDER_CREATED_FEED,
   LISTING_EMPTY_INVENTORY_PORT,
   LISTING_NOOP_RECEIPT_PORT,
+  LISTING_NOOP_USE_RESERVATION_PORT,
   LISTING_UNWIRED_MATERIAL_VALIDATION,
   LISTING_TODO_SOURCE,
   materialValidationOperationId,
@@ -1112,6 +1167,10 @@ export type {
   InventoryReceiptCommand,
   InventoryReceiptResult,
   InventoryReceiptPort,
+  InventoryUseReserveCommand,
+  InventoryUseReserveLineReceipt,
+  InventoryUseReserveReceipt,
+  InventoryUseReservationPort,
   ListingRequirementSnapshotLine,
   ListingRequirementSource,
 } from './listing/listing-ports.js';

@@ -3,9 +3,14 @@
  * §3.4 #116 报工记录管理）：GET /reports/mine 本人双键 (tenant, reporter)——
  * "仅本人完成"数据权限边界由服务端合同保证（reporting.controllers.ts:103-110）。
  * 记录列表卡片呈现（五类 kind × 四态徽标）。
+ *
+ * fix-wave-2 D-12/D-6 移动收尾：查询按 session 权限投影门禁（report:read，
+ * 与后端 GET /reports/mine 同码）——无权限不发起请求，显式无权限终态。
  */
 import { useQuery } from '@tanstack/react-query';
 import { LoaderCircle } from 'lucide-react';
+import { REPORT_READ } from '@smes/product-ui';
+import { useMobileDataAccess, MobileNoAccessHint } from './pageAccess';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { fetchMyReports } from '@/data/mobile-ops';
 import {
@@ -18,9 +23,12 @@ import {
 import { REPORT_KIND_LABELS, REPORT_STATE_LABELS, labelOf } from './labels';
 
 export function MobileMinePage() {
+  // D-12：进页自动查询按 session 权限投影（report:read，与后端 GET /reports/mine 同码）。
+  const accessible = useMobileDataAccess(REPORT_READ);
   const mineQuery = useQuery({
     queryKey: ['reports', 'mine'],
     queryFn: fetchMyReports,
+    enabled: accessible,
   });
 
   const rows = mineQuery.data ?? [];
@@ -33,12 +41,18 @@ export function MobileMinePage() {
           <CardDescription>本人提交的全部报工记录（服务端按身份过滤）。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {mineQuery.isPending && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> 正在加载…
-            </p>
+          {!accessible ? (
+            <MobileNoAccessHint code={REPORT_READ} />
+          ) : (
+            <>
+              {mineQuery.isPending && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> 正在加载…
+                </p>
+              )}
+              {mineQuery.isError && <ApiErrorHint error={mineQuery.error} />}
+            </>
           )}
-          {mineQuery.isError && <ApiErrorHint error={mineQuery.error} />}
           {mineQuery.data !== undefined && rows.length === 0 && (
             <p className="text-sm text-muted-foreground">暂无报工记录——去报工页提交第一单。</p>
           )}

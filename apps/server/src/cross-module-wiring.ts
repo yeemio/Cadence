@@ -214,6 +214,19 @@
  *     机制：service 级迟到绑定——InspectionService.receiveSourceFact（#9 同体例；
  *     未绑定回落 LISTING_NOOP_INSPECTION_INTAKE 同构——事实不落地不报错）。
  *     kind 由 listing 收货侧经申请链推导后显式携带（PRD 14 §6）。
+ *
+ * 技术欠账清偿（HANDOFF §6 "IssueMaterialPort.reserveStock 无创建方（核销空集）"
+ * 精确化：U6 #28 已接发料核销/回滚，预占**创建**面缺调用方）：
+ * 38. listing.useReservationPort ← inventory 利库预占（gap.check 确认→预占创建）
+ *     机制：service+store 混级——写面 InventoryService.reserveStock（迟到绑定；
+ *     refType 'issue' 订单级锚立锚，键 = issue-rsv 约定追加 :g:<gapCheckId>:wh:<仓>
+ *     段——核查批次唯一不复用键（consumed 键不复用约束），锚点归并消费同 #28）；
+ *     跨仓可用拆分经 InventoryService.stockLevels（per-仓 availableQty 顺序
+ *     分配，仓库 id 升序确定性）；读面 StockReservationStore 共享实例按锚点汇
+ *     活跃预占（供给基数自有部分 + 写时折差收敛）。目标量 = min(Σ需求, 跨仓
+ *     可用+本令预占)（listing 侧算）；拒绝则 gap.check 整单 rejected 不落任何
+ *     账（端口先行，体例同 #14）。equipment 类目不入（外购设备四数量不走
+ *     预占账，PRD 17 RREQ-RQ-042 ④）。
  */
 import { randomUUID } from 'node:crypto';
 import type { INestApplicationContext, Type } from '@nestjs/common';
@@ -262,6 +275,7 @@ import {
   type IssueRecordStore,
   type IssueStockAllocationReceipt,
   type IssueSyncTrigger,
+  type InventoryUseReservationPort,
   type ListingLineStore,
   type ListingRequirementPort,
   type StockReservationStore,
@@ -400,6 +414,8 @@ export interface CrossModuleRegisterPorts {
     readonly workOrderFeed?: WorkOrderCreatedFeedPort | undefined;
     readonly inventoryPort?: ReturnType<typeof createInventoryAvailabilityAdapter> | undefined;
     readonly receiptPort?: ReturnType<typeof createInventoryReceiptAdapter> | undefined;
+    /** #38：inventory 利库预占（gap.check 确认→预占创建）；缺省回落模块 NOOP。 */
+    readonly useReservationPort?: InventoryUseReservationPort | undefined;
     readonly materialValidation?: MaterialValidationExecutor | undefined;
     /** Excel 导入导出（xlsx-bytes ↔ 结构化表，ExcelJS 适配器——本 wiring 构造）。 */
     readonly excelPort?: ExcelPort | undefined;
@@ -1245,6 +1261,14 @@ export function createTodoNotifyingStore(
  * （standard/electrical 确认发料的可核销集）；非空 = 设备级锚（equipment 行
  * 四数量只读面，本端口不核销）。撤销恢复键追加 `:rb:<enc(subKey)>` 段——
  * 解析归并为原锚（同 workOrder/equipment/item 维度）。
+ *
+ * 追加段约定（#38 利库预占创建面）：前 5 段之后允许成对追加 `tag:value` 段
+ * （tag ∈ {rb, wh, g}，任意组合、任意顺序——解析一律归并前 5 段锚）：
+ *  - `rb`：发料撤销恢复（#28 原有）；
+ *  - `wh`：仓库拆分段——利库预占跨仓顺序分配，每仓一行（同锚多行）；
+ *  - `g`：核查批次段（gapCheckId）——每批新建键不复用（reserveStock 合同
+ *    consumed/released 键不得复用；跨批增量经锚点活跃预占折差收敛）。
+ * #38 实际键形：`issue-rsv:v1:<wo>:<''>:<item>:g:<gapCheckId>:wh:<warehouseId>`。
  */
 export function buildIssueReservationKey(
   workOrderId: string,
@@ -1255,14 +1279,21 @@ export function buildIssueReservationKey(
   return `issue-rsv:v1:${enc(workOrderId)}:${enc(equipmentRef ?? '')}:${enc(itemId)}`;
 }
 
-/** 解析 issue 锚预占键；非本约定形状（含 decode 失败）返回 null（防御）。 */
+/**
+ * 解析 issue 锚预占键；非本约定形状（含 decode 失败）返回 null（防御）。
+ * 前 5 段为锚（issue-rsv/v1/工作令/设备/物料）；其后允许成对 `tag:value`
+ * 追加段（tag ∈ rb/wh/g——见 buildIssueReservationKey 头注），解析归并锚。
+ */
 export function parseIssueReservationKey(
   key: string,
 ): { readonly workOrderId: string; readonly equipmentRef: string; readonly itemId: string } | null {
   const parts = key.split(':');
-  if (parts.length !== 5 && parts.length !== 7) return null;
+  if (parts.length < 5 || (parts.length - 5) % 2 !== 0) return null;
   if (parts[0] !== 'issue-rsv' || parts[1] !== 'v1') return null;
-  if (parts.length === 7 && parts[5] !== 'rb') return null;
+  for (let index = 5; index < parts.length; index += 2) {
+    const tag = parts[index];
+    if (tag !== 'rb' && tag !== 'wh' && tag !== 'g') return null;
+  }
   try {
     return {
       workOrderId: decodeURIComponent(parts[2] as string),
@@ -1498,6 +1529,123 @@ export function createInventoryIssueMaterialPort(deps: InventoryIssueMaterialDep
         }
       }
       return { rolled: true };
+    },
+  };
+}
+
+// ---- #38：listing 利库预占 ← inventory 适配器（gap.check 确认→预占创建） ----
+
+/** 适配器依赖面（inventory service 迟到解析 + 预占 store 共享实例——#28 同体例）。 */
+export interface InventoryUseReservationDeps {
+  /** inventory service 解析面（bind 前后行为确定性：未绑定回落 NOOP 同构语义）。 */
+  readonly inventory: () => InventoryService | undefined;
+  readonly reservations: StockReservationStore;
+}
+
+/**
+ * InventoryUseReservationPort ← inventory 适配器（#38）。
+ *
+ * 读面 reservedForWorkOrder：issue 订单级锚（equipmentRef 空段）活跃预占按
+ * 物料汇总——与 #28 IssueMaterialPort.reservedQtyOf(equipmentRef=null) 同锚
+ * 同源（共享 StockReservationStore）；listing 侧用作利库供给基数的自有部分
+ * （重复核查不自我挤占）。
+ *
+ * 写面 reserveForWorkOrder：目标量 = 调用方算好的 min(Σ需求, 供给基数)；
+ * 写时重读锚点活跃预占折差（供给读与写之间的竞态在此收敛——不超目标量）。
+ * 折差跨仓顺序分配（stockLevels per-仓 availableQty，仓库 id 升序确定性），
+ * 每仓一行 reserveStock（refType 'issue' / refId 工作令——发料核销 #28 的
+ * 可核销集），键 = issue-rsv 约定 + `:g:<gapCheckId>:wh:<仓>` 段（批次唯一
+ * 不复用键；锚点归并消费）。分配不足（供给读后可用被并发占用）→ reserved
+ * false——listing 侧整单 rejected 不落任何账（端口先行，体例同 #14）；拒绝
+ * 前已立的仓段预占不回滚（挂在同锚上不丢账——下次核查折差收敛，取舍同
+ * #28 子命令中途拒绝的锚语义同源口径）。
+ */
+export function createInventoryUseReservationPort(
+  deps: InventoryUseReservationDeps,
+): InventoryUseReservationPort {
+  const orderAnchorActive = async (
+    tenant: TenantId,
+    workOrderId: string,
+    itemId: string,
+  ): Promise<number> => {
+    let total = 0;
+    for (const row of await deps.reservations.list(tenant, { status: 'active' })) {
+      if (row.refType !== 'issue' || row.refId !== workOrderId) continue;
+      if (row.itemId !== itemId) continue;
+      const anchor = parseIssueReservationKey(row.reservationKey);
+      if (anchor === null || anchor.equipmentRef !== '') continue; // 仅订单级锚
+      total += row.remaining;
+    }
+    return total;
+  };
+
+  return {
+    reservedForWorkOrder: async (tenant, workOrderId, itemIds) => {
+      const result = new Map<string, number>(itemIds.map((itemId) => [itemId, 0]));
+      const wanted = new Set(itemIds);
+      for (const row of await deps.reservations.list(tenant, { status: 'active' })) {
+        if (row.refType !== 'issue' || row.refId !== workOrderId) continue;
+        if (!wanted.has(row.itemId)) continue;
+        const anchor = parseIssueReservationKey(row.reservationKey);
+        if (anchor === null || anchor.equipmentRef !== '') continue; // 仅订单级锚
+        result.set(row.itemId, (result.get(row.itemId) ?? 0) + row.remaining);
+      }
+      return result;
+    },
+
+    reserveForWorkOrder: async (tenant, command) => {
+      const inventory = deps.inventory();
+      if (inventory === undefined) {
+        return { reserved: true, created: [] }; // NOOP 同构（bind 前窗口）
+      }
+      const ownActive = await orderAnchorActive(tenant, command.workOrderId, command.itemId);
+      const need = Math.max(0, command.quantity - ownActive);
+      if (need <= 0) {
+        return {
+          reserved: true,
+          created: [{ itemId: command.itemId, quantity: 0, reservationKeys: [] }], // 已覆盖（幂等收敛）
+        };
+      }
+
+      // 跨仓顺序分配：per-仓 availableQty（可用量恒等式口径），仓库 id 升序。
+      const levels = (await inventory.stockLevels(tenant, undefined, command.itemId))
+        .filter((level) => level.availableQty > 0)
+        .sort((a, b) => a.warehouseId.localeCompare(b.warehouseId));
+      const enc = (value: string): string => encodeURIComponent(value);
+      const base = buildIssueReservationKey(command.workOrderId, null, command.itemId);
+      let remaining = need;
+      const reservationKeys: string[] = [];
+      for (const level of levels) {
+        if (remaining <= 0) break;
+        const take = Math.min(level.availableQty, remaining);
+        const reservationKey = `${base}:g:${enc(command.gapCheckId)}:wh:${enc(level.warehouseId)}`;
+        const outcome = await inventory.reserveStock(tenant, {
+          reservationKey,
+          itemId: command.itemId,
+          warehouseId: level.warehouseId,
+          quantity: take,
+          refType: 'issue',
+          refId: command.workOrderId,
+        });
+        if (!outcome.reserved) {
+          return {
+            reserved: false,
+            refusedReason: `仓库 '${level.warehouseId}' 预占被拒：${outcome.refusedReason ?? '未知原因'}`,
+          };
+        }
+        reservationKeys.push(reservationKey);
+        remaining -= take;
+      }
+      if (remaining > 0) {
+        return {
+          reserved: false,
+          refusedReason: `可用量不足：物料 '${command.itemId}' 跨仓可分配 ${need - remaining} < 利库预占 ${need}（供给读取后可用被并发占用）`,
+        };
+      }
+      return {
+        reserved: true,
+        created: [{ itemId: command.itemId, quantity: need, reservationKeys }],
+      };
     },
   };
 }
@@ -2141,14 +2289,22 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
         })
       : undefined;
 
+  // #38 listing.useReservationPort（service+store 混级：写面迟到绑定 reserveStock/
+  // stockLevels + 预占共享实例读面；机制与键约定见适配器头注）。
+  const useReservationPort: InventoryUseReservationPort | undefined =
+    has('listing') && has('inventory') && stores.inventoryReservations !== undefined
+      ? createInventoryUseReservationPort({
+          inventory: () => lateInventory.resolve(),
+          reservations: stores.inventoryReservations,
+        })
+      : undefined;
+
   // U6 #29 dispatch→issue 派工生成钩子（store 装饰——advance→assigned 触发；
   // DispatchModule 经 app-registry 读 storeOverrides.dispatchOrders 拿装饰态实例）。
   const issueSyncDispatchOrders: DispatchOrderStore | undefined =
     has('dispatch') && has('issue') && stores.dispatchOrders !== undefined
       ? createIssueSyncDispatchStore(stores.dispatchOrders, () => lateIssue.resolve())
-      : undefined;
-
-  // U6 #30 aftercare-claim.reportPort（service 级迟到绑定：application 备好的
+      : undefined;  // U6 #30 aftercare-claim.reportPort（service 级迟到绑定：application 备好的
   // 投影 + 此处粘 reporting 查询面）。
   const aftercareReportPort: AftercareApprovedReportPort | undefined =
     has('aftercare-claim') && has('reporting')
@@ -2219,6 +2375,7 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
       ...(workOrderFeed !== undefined ||
       listingInventoryPort !== undefined ||
       receiptPort !== undefined ||
+      useReservationPort !== undefined ||
       materialValidation !== undefined ||
       listingInspectionIntake !== undefined ||
       (has('listing') && excel !== undefined)
@@ -2227,6 +2384,7 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
               ...(workOrderFeed !== undefined ? { workOrderFeed } : {}),
               ...(listingInventoryPort !== undefined ? { inventoryPort: listingInventoryPort } : {}),
               ...(receiptPort !== undefined ? { receiptPort } : {}),
+              ...(useReservationPort !== undefined ? { useReservationPort } : {}),
               ...(materialValidation !== undefined ? { materialValidation } : {}),
               ...(has('listing') && excel !== undefined ? { excelPort: excel } : {}),
               ...(listingInspectionIntake !== undefined ? { inspectionIntake: listingInspectionIntake } : {}),

@@ -1,45 +1,51 @@
 /**
- * 报表中心预置口径包（U 波：r2/r7/r12/r13 四张报表；v2 追加 r8）。
+ * 报表中心预置口径包（U 波：r2/r7/r12/r13 四张报表；v2 追加 r8；v3 追加
+ * r9 采购件汇总主口径 + r7 下钻明细口径——功能补齐第一波）。
  *
  * 定位声明（ADR-0010 自证边界）：本文件是**预置口径集（纯数据）**，不是引擎
  * 机制——引擎（filter/definition/evaluate/pack）零改动、不含任何硬编码口径；
- * "行业差异 = 另一份口径包"在此落地为一份随包分发的数据文件。刻意**不经
- * index.ts 转出口**（package exports 只暴露根）：消费接线（注册/HTTP 呈现）
- * 归后续波，届时由总控决定出口方式，本波只冻结口径本身。
+ * "行业差异 = 另一份口径包"在此落地为一份随包分发的数据文件。v2 起经包根
+ * index.ts 转出口（消费接线波已至：application standardreports 组合引用本包
+ * 冻结口径——单一事实源，不在消费侧重述）。
  *
  * 清洁室纪律：口径自需求开发文档**重述**（报表/工作令交付报表 r2、外协零件
  * 交货情况汇总 r7、逾期交货采购件报表 r8、质检汇总报表 r12、工时汇总报表
- * r13——Owner 解禁的正式需求输入），不抄现系统 SQL。原系统表名（mes_*）仅在
- * description 中作溯源对照，行字段一律用本引擎 camelCase 词汇。
+ * r13、采购件情况汇总表 r9——Owner 解禁的正式需求输入），不抄现系统 SQL。
+ * 原系统表名（mes_*）仅在 description 中作溯源对照，行字段一律用本引擎
+ * camelCase 词汇。
  *
  * 快照口径冻结范围（U 波合同）：跑批类（r7/r8/r12/r13）本版**只冻结口径定义**
  * ——跑批策略（JobHandler/Cron/入参/删除重入）逐条写进 metric description；
- * 调度实现与快照表落库归后续波。粒度取舍：引擎不支持分组粒度粗化（月去重 ≠
- * 日图号数相加、工序分列 ≠ 岗位合计），故 r12 拆日/月两条、r13 拆主表/工序
- * 子表两条口径——一条报表口径 = 其全部粒度定义的集合。包版本演进（体例）：
- * v1 = r2/r7/r12/r13 六条；v2 纯追加 r8 明细行日快照一条，既有六条不变。
+ * 调度实现与快照表落库归后续波（OQ-4）。粒度取舍：引擎不支持分组粒度粗化
+ * （月去重 ≠ 日图号数相加、工序分列 ≠ 岗位合计），故 r12 拆日/月两条、r13 拆
+ * 主表/工序子表两条口径——一条报表口径 = 其全部粒度定义的集合。包版本演进
+ * （体例）：v1 = r2/r7/r12/r13 六条；v2 纯追加 r8 明细行日快照一条；v3 纯追加
+ * r9 采购件汇总（A4 部分）+ r7 下钻明细两条，既有七条不变。
  */
 import { defineMetricPack, type MetricPack } from '../pack.js';
 
 export const REPORT_CENTER_PACK_ID = 'report-center';
 
 /**
- * 五张报表 × 七条粒度口径（v2）。快照/降级口径如实写进各 metric description：
+ * 六张报表 × 九条粒度口径（v3）。快照/降级口径如实写进各 metric description：
  *  - r2  工作令交付：实时无跑批；business=实际交付（未交付行回落行创建）。
- *  - r7  外协交货汇总：月×供应商；按期率为派生指标（呈现层由两度量计算）。
+ *  - r7  外协交货汇总：月×供应商；按期率为派生指标（呈现层由两度量计算）；
+ *      v3 追加未按期交货明细下钻口径（呈现层弹窗用）。
  *  - r8  逾期交货采购件：**明细行粒度日快照**（与既有订单头粒度催货事实面
  *     并存）；未入库数量每批重算、逾期零件数量一次性固化跨批沿用。
  *  - r12 质检汇总：日/月两粒度分立（当月图号去重 ≠ 各日图号数相加）。
  *  - r13 工时汇总：主表（岗位×日）+ 工序子表（机加工分列）两粒度分立；
  *     无法解析工序的机加工工时只进主表口径。
+ *  - r9  采购件情况汇总（v3，A4 部分）：工作令×零件类型的订单数/采购金额
+ *     汇总（实时求值形态；源文档跑批快照形态归后续波）。
  */
 export const REPORT_CENTER_PACK: MetricPack = defineMetricPack({
   schemaVersion: 1,
   packId: REPORT_CENTER_PACK_ID,
-  version: 2,
-  title: '报表中心口径包（r2/r7/r8/r12/r13）',
+  version: 3,
+  title: '报表中心口径包（r2/r7/r8/r9/r12/r13）',
   description:
-    '报表中心五张报表的版本化口径包（清洁室重述自开发文档）。跑批类（r7/r8/r12/r13）只冻结快照口径（见各 metric description），调度实现与 HTTP 呈现归后续波。v2 纯追加 r8 一条，v1 六条口径不变。',
+    '报表中心六张报表的版本化口径包（清洁室重述自开发文档）。跑批类（r7/r8/r12/r13）只冻结快照口径（见各 metric description），调度实现归后续波（OQ-4）。v2 纯追加 r8 一条；v3 纯追加 r9 采购件汇总主口径与 r7 未按期明细下钻口径两条，既有七条不变。',
   metrics: [
     {
       schemaVersion: 1,
@@ -191,6 +197,57 @@ export const REPORT_CENTER_PACK: MetricPack = defineMetricPack({
         { measureId: 'overdue-qty', aggregation: 'sum', field: 'overdueQty', format: { maximumFractionDigits: 5 } },
       ],
       filter: { kind: 'compare', op: 'gt', field: 'overdueQty', value: 0 },
+    },
+    {
+      schemaVersion: 1,
+      metricId: 'purchase-parts-summary',
+      version: 1,
+      display: '采购件情况汇总（r9）',
+      description:
+        '口径重述（r9，A4 部分·功能补齐第一波）：工作令×零件类型 汇总采购订单数与采购金额。粒度=(workOrderId, partType) 一行；采购订单数=orderId 去重（distinct-count，一张采购单只计一次）；采购金额=lineAmountMinor 合计（**分，整数**——默认口径=已收货数量×单价，源适配器物化 lineAmountMinor=receivedQty×unitPriceMinor，half-up 到分，对齐 PRD 20 册 RP-016 裁定与 listing 对账要点；源文档 r9 按申请子行 amount 的跑批口径差异按 PRD §7 裁决不采用）。partType 两分（v1 行为重述，对账阶段按活系统校正）：drawing-part 非标件（行挂图号）/ standard-part 标准件电气件（行无图号）；workOrderId 空落 null 组（Web 显示「—」）。行集（源适配器取行时施加）：排除 draft 态订单与未定价行（无价不归集——listing 先例）；源文档订单范围（已下发/进行中/已完成、行数量>0）一致性对账归 A4 后续。时间口径 business：businessTime=订单承诺到货时刻（promisedAt）、occurredAt=订单创建。**口径并存登记（PRD RP-016/OQ 体例）**：与 smes-machining-calib 包 purchase-amount-summary（#95，激活价售卖层）同源同根——本条为**随标准版交付形态**（standardreports 服务面），两包各持其版、演进各自走包版本；金额量纲统一为分。A4 其余缺口（勾选行 zip 双模板导出/日跑批快照形态/实际交付日期筛选）归后续波。',
+      timeBasis: 'business',
+      sourceKind: 'purchase-amount-facts',
+      dimensions: [
+        { field: 'workOrderId', label: '工作令' },
+        { field: 'partType', label: '零件类型' },
+      ],
+      measures: [
+        { measureId: 'purchase-amount-minor', aggregation: 'sum', field: 'lineAmountMinor', format: { unit: '分' } },
+        { measureId: 'order-count', aggregation: 'distinct-count', field: 'orderId' },
+      ],
+    },
+    {
+      schemaVersion: 1,
+      metricId: 'outsource-delivery-late-detail',
+      version: 1,
+      display: '外协交货未按期明细（r7 下钻）',
+      description:
+        '口径重述（r7 下钻·功能补齐第一波）：主口径 outsource-delivery-monthly 的下钻明细——未按期交货的外协派工明细行（呈现层弹窗用，r7 源文档「未按期交货明细」节）。粒度=供应商×计划交货月×派工单×图号×工序×计划交货日×实际交货日（同键多行合并由 line-count 呈现）；根过滤钉「未按期」（lateDrawingKey 非空——源适配器物化：实际质检日>计划交货日，或未质检且统计截止日（默认昨日）>计划交货日）+ 主口径纳入范围（派工单已下发 dispatchStatus>=2 且下发时间/计划交货日/供应商非空）。指标：late-days=延迟天数（max——逾期锚（实际质检日或统计截止日）−计划交货日的日历日差，同键多行取同值）；line-count=明细行数。时间口径 business：businessTime=计划交货时刻、occurredAt=派工下发时刻。按期率/汇总列在主口径；本明细只列未按期行。',
+      timeBasis: 'business',
+      sourceKind: 'outsource-delivery-facts',
+      dimensions: [
+        { field: 'supplierId', label: '供应商' },
+        { field: 'statMonth', label: '月份' },
+        { field: 'orderId', label: '外协派工单' },
+        { field: 'drawingNo', label: '图号' },
+        { field: 'processCode', label: '工序' },
+        { field: 'plannedDeliveryDate', label: '计划交货日' },
+        { field: 'actualInspectDate', label: '实际交货日' },
+      ],
+      measures: [
+        { measureId: 'late-days', aggregation: 'max', field: 'lateDays', format: { maximumFractionDigits: 0 } },
+        { measureId: 'line-count', aggregation: 'count' },
+      ],
+      filter: {
+        kind: 'and',
+        parts: [
+          { kind: 'compare', op: 'gte', field: 'dispatchStatus', value: 2 },
+          { kind: 'compare', op: 'ne', field: 'dispatchTime', value: null },
+          { kind: 'compare', op: 'ne', field: 'plannedDeliveryDate', value: null },
+          { kind: 'compare', op: 'ne', field: 'supplierId', value: null },
+          { kind: 'compare', op: 'ne', field: 'lateDrawingKey', value: null },
+        ],
+      },
     },
   ],
 });

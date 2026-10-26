@@ -4,10 +4,16 @@
  * POST /workorder/parts-requests/:id/approval（workorder.parts.approve.v1：
  * decision approve/reject + 决策理由 remark 必填 1~2000；expectedRevision 取行
  * objectVersion）。权限码与后端 workorder.controllers.ts:208-240 同码。
+ *
+ * fix-wave-2 D-12/D-6 移动收尾：待审队列查询按 session 权限投影门禁——门禁码
+ * 取端点实码 parts:read（GET /workorder/parts-requests 的 @RequirePermission），
+ * 非导航注册码 parts:approve（动作码不折算读码）。
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, LoaderCircle, XCircle } from 'lucide-react';
+import { PARTS_READ } from '@smes/product-ui';
+import { useMobileDataAccess, MobileNoAccessHint } from './pageAccess';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { fetchPartsRequests } from '@/data/mobile-ops';
 import { decidePartsRequest } from '@/data/workorderApi';
@@ -27,9 +33,12 @@ type Decision = 'approve' | 'reject';
 
 export function MobilePartsApprovalPage() {
   const queryClient = useQueryClient();
+  // D-12：待审队列查询按 session 权限投影（parts:read，端点实码；见文件头注释）。
+  const accessible = useMobileDataAccess(PARTS_READ);
   const queueQuery = useQuery({
     queryKey: ['workorder', 'parts-requests', 'submitted'],
     queryFn: () => fetchPartsRequests(),
+    enabled: accessible,
   });
 
   const [remarkInputs, setRemarkInputs] = useState<Record<string, string>>({});
@@ -67,12 +76,18 @@ export function MobilePartsApprovalPage() {
           <CardDescription>待审批申请（提交即待审）；批准进入发货链，拒绝即终结。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {queueQuery.isPending && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> 正在加载…
-            </p>
+          {!accessible ? (
+            <MobileNoAccessHint code={PARTS_READ} />
+          ) : (
+            <>
+              {queueQuery.isPending && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> 正在加载…
+                </p>
+              )}
+              {queueQuery.isError && <ApiErrorHint error={queueQuery.error} />}
+            </>
           )}
-          {queueQuery.isError && <ApiErrorHint error={queueQuery.error} />}
           {decideMutation.isError && <ApiErrorHint error={decideMutation.error} />}
           {queueQuery.data !== undefined && rows.length === 0 && (
             <p className="text-sm text-muted-foreground">暂无待审批的配件申请。</p>

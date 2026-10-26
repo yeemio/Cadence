@@ -184,7 +184,11 @@ export interface ListingLineStore {
 
 // ---- 缺口核查（不可变快照，业务事实） ----
 
-/** 缺口行（需求 vs 可用量的差集行；一键采购的发起锚点）。 */
+/**
+ * 缺口行（需求 vs 利库供给基数的差集行；一键采购的发起锚点）。
+ * availableQty = 跨仓可用 + 本令 issue 订单级锚活跃预占（利库预占接线后口径：
+ * 本令已预占仍属本令可供给，重复核查不自我挤占；未接线 = 纯可用量）。
+ */
 export interface GapLine {
   readonly kind: ListingKind;
   readonly listingLineId: string;

@@ -6,10 +6,15 @@
  *
  * 查询语义：进页加载全量（itemId 过滤缺省 = 全部物料行）；扫码自动填入
  * itemId 并即时按码过滤（车间查料主路径）；"查全部"一键清过滤。
+ *
+ * fix-wave-2 D-12/D-6 移动收尾：查询按 session 权限投影门禁（stock:read，
+ * 与后端 GET /inventory/stock 同码）——无权限不发起请求，显式无权限终态。
  */
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LoaderCircle, ScanLine, SearchX } from 'lucide-react';
+import { STOCK_READ } from '@smes/product-ui';
+import { useMobileDataAccess, MobileNoAccessHint } from './pageAccess';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { fetchStockLevels } from '@/data/inventoryApi';
 import { Button } from '@/components/ui/button';
@@ -30,9 +35,12 @@ export function MobileStockPage() {
   const [itemIdInput, setItemIdInput] = useState('');
   const [queryItemId, setQueryItemId] = useState<string | null>(null);
 
+  // D-12：进页自动查询按 session 权限投影（stock:read，与后端 GET /inventory/stock 同码）。
+  const accessible = useMobileDataAccess(STOCK_READ);
   const stockQuery = useQuery({
     queryKey: ['inventory', 'stock', queryItemId],
     queryFn: () => fetchStockLevels(queryItemId ?? undefined),
+    enabled: accessible,
   });
 
   // 最新扫码结果自动填入并按码查询（车间查料主路径：扫完即出数）
@@ -144,12 +152,18 @@ export function MobileStockPage() {
           <CardDescription>可用量 = 总量 − 预占（服务端机器计算，实时口径）。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {stockQuery.isPending && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> 正在加载…
-            </p>
+          {!accessible ? (
+            <MobileNoAccessHint code={STOCK_READ} />
+          ) : (
+            <>
+              {stockQuery.isPending && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> 正在加载…
+                </p>
+              )}
+              {stockQuery.isError && <ApiErrorHint error={stockQuery.error} />}
+            </>
           )}
-          {stockQuery.isError && <ApiErrorHint error={stockQuery.error} />}
           {stockQuery.data !== undefined && stockQuery.data.length === 0 && (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <SearchX className="size-4 shrink-0" />

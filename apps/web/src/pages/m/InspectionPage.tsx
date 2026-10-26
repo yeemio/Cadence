@@ -5,10 +5,16 @@
  * （inspection.judge.v1：passedQty/failedQty）与 :id/recheck 复检
  * （inspection.recheck.v1，failed 态卡提供）；expectedRevision 取行
  * objectVersion。权限码与后端 inspection.controllers.ts:63-114 同码。
+ *
+ * fix-wave-2 D-12/D-6 移动收尾：队列查询按 session 权限投影门禁——门禁码取
+ * 端点实码 inspection:read（GET /inspection/orders 的 @RequirePermission），
+ * 非导航注册码 inspection:judge（动作码不折算读码）。
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, LoaderCircle, RotateCw } from 'lucide-react';
+import { INSPECTION_READ } from '@smes/product-ui';
+import { useMobileDataAccess, MobileNoAccessHint } from './pageAccess';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { fetchInspectionQueue } from '@/data/mobile-ops';
 import { judgeInspectionOrder, recheckInspectionOrder } from '@/data/inspectionApi';
@@ -44,9 +50,12 @@ interface JudgeInput {
 export function MobileInspectionPage() {
   const queryClient = useQueryClient();
   const [kindFilter, setKindFilter] = useState<string | null>(null);
+  // D-12：队列查询按 session 权限投影（inspection:read，端点实码；见文件头注释）。
+  const accessible = useMobileDataAccess(INSPECTION_READ);
   const queueQuery = useQuery({
     queryKey: ['inspection', 'orders', kindFilter],
     queryFn: () => fetchInspectionQueue(kindFilter === null ? {} : { kind: kindFilter }),
+    enabled: accessible,
   });
 
   // 展开态：一张卡一个判定表单（quantity 预填通过数量）
@@ -139,12 +148,18 @@ export function MobileInspectionPage() {
             ))}
           </div>
 
-          {queueQuery.isPending && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> 正在加载…
-            </p>
+          {!accessible ? (
+            <MobileNoAccessHint code={INSPECTION_READ} />
+          ) : (
+            <>
+              {queueQuery.isPending && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> 正在加载…
+                </p>
+              )}
+              {queueQuery.isError && <ApiErrorHint error={queueQuery.error} />}
+            </>
           )}
-          {queueQuery.isError && <ApiErrorHint error={queueQuery.error} />}
           {judgeMutation.isError && <ApiErrorHint error={judgeMutation.error} />}
           {queueQuery.data !== undefined && rows.length === 0 && (
             <p className="text-sm text-muted-foreground">该过滤下暂无质检单。</p>

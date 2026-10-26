@@ -90,6 +90,8 @@ function toUserAccount(row: UserDbRow): UserAccount {
     username: row.username,
     displayName: row.displayName,
     active: row.active,
+    // D-2 P3 只读投影：从行内哈希派生存在性，哈希本体不出账户视图（与内存实现同形）。
+    hasPassword: row.passwordHash !== null,
   };
 }
 

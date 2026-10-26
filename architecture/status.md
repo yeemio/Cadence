@@ -1,6 +1,21 @@
 # 状态快照
 
-更新：2026-10-26 午②（**grokbot 测试报告修复循环 R 波：D-8/D-1/D-2 三缺陷全链闭环（修复+容器复证+验收 ACCEPT），wave-2/3 并行在途**；上一快照：PRD v1.0 冻结：13 分域分册+总纲+README+追溯总表，506 需求项全量需求化，验收 ACCEPT**；上一快照：10-26 凌晨②总控收口 0b8566c/109/109/U 波五模块 ACCEPT）
+更新：2026-10-26 午③（**功能补齐波开工（Owner 点向路线图"并行安排做完"）：第一波三线并行——六张报表 metric/数字运营大屏/低危三件套+在途核查预占接线；按写入面互斥分批滚动至 PRD 待实现路线图清完**；上一快照：R 波修复循环全线收口 0b7cd35）
+
+## 限额窗口总控接手收口（✅ 16:45，[1308] 5h 上限 16:34 触发/19:53 重置——三线 writer 全中断，总控主线程接手）
+
+- **收口成果**：全仓 `pnpm verify` exit 0。逐项盘点：①D-15 四件套 writer 已全部写完（payload warehouseId/装配 env/compose 透传/seed MAIN 仓）+预告 2 处 tsc 已修——总控验证收口；②大屏线：business-store 197/197+tsc 0（守恒计数收口完成）、engine-reporting pack 就绪、application screen 域层五文件就绪——**唯 module 装配层（ScreenHttpModule/parseDailyTenants）未写**，总控回退 app-registry 装配块（注释留位）保 verify 绿，归 19:53 后续做；③报表线：engine-reporting REPORT_CENTER_PACK+application report-center 就绪（陈旧 dist 假红经重建消除）
+- **验收欠账**（19:53 后补）：D-15 验收、大屏续做+验收、报表续验证+验收；已闭环：D-14（修复+容器复证+验收 ACCEPT）、#38（验收 ACCEPT）、移动端（验收 ACCEPT）、低危三件套（ACCEPT）
+- 教训复用：跨包 tsc 假红=兄弟包 dist 陈旧（第二线已登记坑），先 build 再判真红
+
+## 功能补齐波（进行中，2026-10-26 午③，Owner 指令"并行安排做完"=路线图点向）
+
+- 滚动策略：按写入面互斥分批，每批回传验收后滚下一批；每批 code-writer-pro 实施+code-reviewer 验收；跨域只读经既有端口，在途域禁碰（缺读面登记不做）
+- **第一波（4 线并行）**：①核查预占接线（欠账清偿，listing/inventory/wiring）②六张报表 metric（A1/A2/A4/A6/A7+D-RP-01 导出，standardreports/reporting 域+web 报表页）③数字运营大屏（A8 聚合+推送通道+前端页+A10 日统计，engine-reporting/新装配+web）④低危三件套（D-11 HTTP e2e/404 分叉 e2e/hasPassword 投影，org+server tests）
+- **第二批候选**（第一波回传后）：派工深功能批（S1/S2 转单审计+打印版式+D-DP 族）——等 dispatch 域空闲
+- **第三批候选**：零散功能批（S5 特采/S9 价格台账/B3 货架/批量质检/撤销质检/多人报工/S6 配件审批/A14 列显隐）
+- PRD 各册"已实现"状态升级随批次收口做增补登记（append-only）
+**grokbot 测试报告修复循环 R 波：D-8/D-1/D-2 三缺陷全链闭环（修复+容器复证+验收 ACCEPT），wave-2/3 并行在途**；上一快照：PRD v1.0 冻结：13 分域分册+总纲+README+追溯总表，506 需求项全量需求化，验收 ACCEPT**；上一快照：10-26 凌晨②总控收口 0b8566c/109/109/U 波五模块 ACCEPT）
 
 ## R 波修复循环（进行中，2026-10-26 午②；grokbot SaaS 功能测试报告驱动，报告源 noodle-test-output/ 三报告）
 

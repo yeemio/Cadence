@@ -3,10 +3,15 @@
  * 呈现面）：GET /hours/my?month=YYYY-MM 按月读回本人已审核净额（按日 +
  * 合计）。"本人"是服务端合同（workerId 只取会话身份）；月份输入用原生
  * type=month（移动浏览器自带滚轮选择器）；未选月（清空）= 全量口径。
+ *
+ * fix-wave-2 D-12/D-6 移动收尾：查询按 session 权限投影门禁（hours:read，
+ * 与后端 GET /hours/my 同码）——无权限不发起请求，显式无权限终态。
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LoaderCircle } from 'lucide-react';
+import { HOURS_READ } from '@smes/product-ui';
+import { useMobileDataAccess, MobileNoAccessHint } from './pageAccess';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { fetchMyHours } from '@/data/hoursApi';
 import {
@@ -25,9 +30,12 @@ function currentMonth(): string {
 
 export function MobileHoursPage() {
   const [month, setMonth] = useState<string>(currentMonth);
+  // D-12：进页自动查询按 session 权限投影（hours:read，与后端 GET /hours/my 同码）。
+  const accessible = useMobileDataAccess(HOURS_READ);
   const hoursQuery = useQuery({
     queryKey: ['hours', 'my', month],
     queryFn: () => fetchMyHours(month.length > 0 ? month : undefined),
+    enabled: accessible,
   });
 
   return (
@@ -48,12 +56,18 @@ export function MobileHoursPage() {
             />
           </label>
 
-          {hoursQuery.isPending && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> 正在加载…
-            </p>
+          {!accessible ? (
+            <MobileNoAccessHint code={HOURS_READ} />
+          ) : (
+            <>
+              {hoursQuery.isPending && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> 正在加载…
+                </p>
+              )}
+              {hoursQuery.isError && <ApiErrorHint error={hoursQuery.error} />}
+            </>
           )}
-          {hoursQuery.isError && <ApiErrorHint error={hoursQuery.error} />}
 
           {hoursQuery.data !== undefined && (
             <>

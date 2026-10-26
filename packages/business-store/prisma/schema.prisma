@@ -2588,3 +2588,37 @@ model AttachmentObjectRecord {
   @@index([tenantId, objectKey])
   @@map("attachment_objects")
 }
+
+// ---------------------------------------------------------------------------
+// A8/A10 首波（PRD 20 册 RREQ-RP-023~027）：每日机加工进度统计日表。
+// 报表域自持统计快照（PRD §6 写入面边界：本域对业务域只读，仅口径装载
+// 记录与统计快照表自持）。运营快照形态（存在则更新否则插入——不套证据
+// 公共列，取舍同 cost_price_entries / attachments 运营投影先例）；
+// (tenant_id, statistics_date) 唯一 = 一行一天。两指标列 nullable：清单行
+// 加工类型/入库状态 + 工序机加/表处分类三读面缺失（登记不做，公式冻结见
+// application machining-daily-stores.ts 头注），读面落地后本表结构不变。
+// pending_reasons JSONB = 指标级占位说明（两指标可读时为空对象）。
+// RLS 同批补登：src/rls/tables.ts + 全量重放迁移 20261026190100。
+// ---------------------------------------------------------------------------
+
+/// 每日机加工进度统计行（MachiningDailyStatsStore 端口的 PG 持久化；纯跑批写入）。
+model MachiningDailyStatRecord {
+  id                          String   @id @default(uuid(7))
+  tenantId                    String   @map("tenant_id")
+  /// 统计日 yyyy-MM-dd（OQ-6 缺省 = 跑批前一日）。
+  statisticsDate              String   @map("statistics_date")
+  /// 表处中图号数（读面缺失时 null）。
+  surfaceTreatmentDrawingCount Int?    @map("surface_treatment_drawing_count")
+  /// 待机加数量（残差公式，允许为负；读面缺失时 null）。
+  pendingMachiningCount       Int?     @map("pending_machining_count")
+  /// 指标级占位说明（metric → 原因；JSONB）。
+  pendingReasons              Json     @map("pending_reasons")
+  /// 本次跑批时刻（审计排查）。
+  computedAt                  DateTime @db.Timestamptz(6) @map("computed_at")
+  /// 跑批主体（系统任务标识）。
+  computedBy                  String   @map("computed_by")
+  createdAt                   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([tenantId, statisticsDate])
+  @@map("machining_daily_stats")
+}

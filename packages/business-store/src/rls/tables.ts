@@ -149,4 +149,7 @@ export const RLS_TABLES: readonly RlsTableSpec[] = [
   // fix-wave-4 W4-2 线（2026-10-26 落库：D-3 附件对象字节表，ObjectStoragePort
   // PG 适配器持久化通道；守恒测试触发补登 + 全量重放迁移 20261026180100——102 表快照）
   tenantTable('attachment_objects'),
+  // A8/A10 首波（2026-10-26 落库：RREQ-RP-027 每日机加工进度统计日表，报表域
+  // 自持统计快照；守恒测试触发补登 + 全量重放迁移 20261026190100——103 表快照）
+  tenantTable('machining_daily_stats'),
 ];

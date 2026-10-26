@@ -137,6 +137,19 @@ async function setTenantOn(tx: RlsSessionTx, tenant: string): Promise<void> {
   await tx.$queryRaw`SELECT set_config(${TENANT_SESSION_VAR}, ${tenant}, true)`;
 }
 
+/**
+ * 在交互式事务句柄上做事务级租户 SET——裸 raw 写路径的复用入口（D-14 收口）：
+ * raw 不经 $allOperations 钩子（头注"已知边界"），raw 写用法的固定形态 =
+ * `$transaction(async (tx) => { await setRlsTenantOn(tx); return tx.$executeRaw\`…\`; })`
+ * ——SET 与 raw 落同一事务连接，RLS WITH CHECK 放行。事务级 true 随
+ * COMMIT/ROLLBACK 还原，池化连接零残留；经接管的 $transaction 进入时与接管层
+ * SET 幂等重设（同租户同值，无语义差），未接管（缺省/superuser 形态）时 SET
+ * 亦无害。
+ */
+export async function setRlsTenantOn(tx: RlsSessionTx): Promise<void> {
+  await setTenantOn(tx, String(currentRlsTenant()));
+}
+
 /** 在指定 tx 句柄上重派模型操作（不经扩展链——不递归、不再嵌套）。 */
 function redispatchOn(
   tx: RlsSessionTx & Record<string, unknown>,
@@ -169,11 +182,16 @@ export async function rlsSessionOperation(
  * （$extends 结果为超集，向下转型安全：store 只消费标准模型委托面）。
  *
  * 已知边界（写明）：
- *   - **raw 入口不经钩子**：client 级 `$queryRaw` / `$executeRaw` 不被模型操作
- *     钩子拦截——无 SET。app_user 形态下读 0 行（fail-visible）、写被 RLS 拒
- *     （42501）。inventory 三处 $executeRaw 即此边界。例外：在被接管的交互式
- *     事务**句柄上**调用的 raw（tx.$queryRaw / tx.$executeRaw）落在该事务连接
- *     上，事务级 SET 已生效——携带租户。
+ *   - **raw 入口不经钩子（写路径已收口）**：client 级 `$queryRaw` /
+ *     `$executeRaw` 不被模型操作钩子拦截——直接调用无 SET，app_user 形态下读
+ *     0 行（fail-visible，只读用法不阻塞）、写被 RLS 拒（42501；D-14 即此）。
+ *     D-14 修复（2026-10-26）：inventory 三处 $executeRaw（库存账守卫 upsert /
+ *     库位余额守卫 upsert / 预占条件推进）已全部收口为交互式事务包裹 +
+ *     setRlsTenantOn 显式 SET 后同句柄执行 raw——包内已无裸 raw 写路径
+ *     （全包 grep 复核：除本模块自身外 raw 命中仅此三处）；新增 raw 写用法
+ *     必须照此形态自行包裹 SET。例外：在被接管的交互式事务**句柄上**调用的
+ *     raw（tx.$queryRaw / tx.$executeRaw）落在该事务连接上，事务级 SET 已
+ *     生效——携带租户。
  *   - **数组形态 `$transaction([...])` 不接管（原子性边界保留）**：数组内每个
  *     模型操作仍走钩子的"独立事务+SET"路径——操作各自提交，失败不整批回滚
  *     （=on 时；且外层原生 $transaction([...]) 因元素为钩子返回的普通 Promise 而非
@@ -185,7 +203,8 @@ export async function rlsSessionOperation(
  *     Prisma 语义是独立连接独立提交）。本包无此用法；该语义保证 RLS 正确与
  *     原子性优先。
  *   - org / masterdata / workbench / approval 四域 store 全部为普通模型操作
- *     （已核对，无上述边界）。
+ *     （已核对，无上述边界）；D-14 全包 grep 复核扩展至全部 pg-*-stores——
+ *     除 inventory 三处（已收口）外无任何 client 级 raw 用法。
  */
 export function withRlsTenantSession(prisma: PrismaClient): PrismaClient {
   const client = prisma as unknown as RlsSessionBaseTransaction;

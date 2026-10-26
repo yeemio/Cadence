@@ -9,6 +9,11 @@
  * 数据层与组件完全复用（workbenchApi / ApiErrorHint / Card / Button）；快捷
  * 入口可见性复用 filterMenuByPermissions（与底部导航同一 RBAC 投影语义）；
  * 子页入口直引 MOBILE_SUBPAGES（注册表单一事实源）。
+ *
+ * fix-wave-2 D-12/D-6 移动收尾（对齐桌面 WorkbenchPage 已验收模式）：待办
+ * 查询按 session 权限投影（workbench:read，与后端 GET /workbench/* 门禁同码）
+ * ——无权限/权限未就绪不发起请求，"我的待办"直接呈现显式无权限终态；
+ * 万一请求已发出而 403，isError 分支仍显式报错，不停在"正在加载…"。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePermissions } from '@refinedev/core';
@@ -33,10 +38,11 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { filterMenuByPermissions, permissionCode, toPermissionCodes } from '@smes/product-ui';
+import { filterMenuByPermissions, permissionCode, toPermissionCodes, WORKBENCH_READ } from '@smes/product-ui';
 import type { MenuNode } from '@smes/product-ui';
 import { MOBILE_SUBPAGES } from '@/mobile';
 import { useMergedMenu } from '@/shell/useMenuConfig';
+import { canAccessMobileData, MobileNoAccessHint } from './pageAccess';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { completeTodo, listMyTodos } from '@/data/workbenchApi';
 import { Button } from '@/components/ui/button';
@@ -87,9 +93,16 @@ export function MobileWorkbenchPage() {
     [...QUICK_CORE, ...mergedSubpages],
     toPermissionCodes(permissionData),
   );
+  // D-12：待办查询按 session 权限投影（workbench:read，与后端 GET /workbench/*
+  // 门禁同码；与快捷入口投影同一 permissionData 数据源）。
+  const accessible = canAccessMobileData(permissionData, WORKBENCH_READ);
 
   const queryClient = useQueryClient();
-  const todosQuery = useQuery({ queryKey: ['workbench', 'todos'], queryFn: listMyTodos });
+  const todosQuery = useQuery({
+    queryKey: ['workbench', 'todos'],
+    queryFn: listMyTodos,
+    enabled: accessible,
+  });
   const doneMutation = useMutation({
     mutationFn: completeTodo,
     onSuccess: () => {
@@ -134,12 +147,19 @@ export function MobileWorkbenchPage() {
           <CardDescription>分派给当前登录用户的未完成待办（服务端按身份过滤）。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {todosQuery.isPending && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> 正在加载…
-            </p>
+          {!accessible ? (
+            <MobileNoAccessHint code={WORKBENCH_READ} />
+          ) : (
+            <>
+              {todosQuery.isPending && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> 正在加载…
+                </p>
+              )}
+              {/* D-6 兜底：请求已发出而失败（含 403）时显式报错，不停在加载态 */}
+              {todosQuery.isError && <ApiErrorHint error={todosQuery.error} />}
+            </>
           )}
-          {todosQuery.isError && <ApiErrorHint error={todosQuery.error} />}
           {doneMutation.isError && <ApiErrorHint error={doneMutation.error} />}
           {todosQuery.data !== undefined && openTodos.length === 0 && (
             <p className="text-sm text-muted-foreground">暂无待办。</p>

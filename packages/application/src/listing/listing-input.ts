@@ -373,6 +373,8 @@ export function parsePurchaseOrderIssuePayload(input: unknown): PurchaseOrderIss
 
 export interface PurchaseOrderReceivePayload {
   readonly lines: readonly { readonly lineNo: number; readonly receivedQty: number }[];
+  /** 收货仓（可选；缺省回落 inventory 服务选项 defaultWarehouseId——D-15）。 */
+  readonly warehouseId: string | null;
   readonly receiptRef: string | null;
   readonly remark: string | null;
 }
@@ -400,6 +402,7 @@ export function parsePurchaseOrderReceivePayload(input: unknown): PurchaseOrderR
   }
   return {
     lines,
+    warehouseId: optionalBoundedString(record['warehouseId'], '收货仓 warehouseId', 1, 128) ?? null,
     receiptRef: optionalBoundedString(record['receiptRef'], '收货单号 receiptRef', 1, 128) ?? null,
     remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null,
   };

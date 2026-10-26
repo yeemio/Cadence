@@ -15,13 +15,22 @@
 import { TenantId, UserId } from '@smes/business-core';
 import type { RoleName } from '../core/auth/policy-store.js';
 
-/** 用户账户（组织元数据视图；不承载凭据——哈希只在 UserCredentials 出现）。 */
+/**
+ * 用户账户（组织元数据视图）。不承载凭据本体——口令哈希只在 UserCredentials
+ * （findByUsername 认证专用）出现；本视图只带 hasPassword 存在性投影（D-2 P3）。
+ */
 export interface UserAccount {
   readonly id: UserId;
   readonly tenant: TenantId;
   readonly username: string;
   readonly displayName: string;
   readonly active: boolean;
+  /**
+   * 只读投影（D-2 验收登记 P3）：passwordHash 非空的派生布尔——管理员经
+   * /org/users 视图区分"未设口令"用户（不能登录、待首设）。只投影存在性：
+   * 实现方（内存/PG）在行映射处从 passwordHash 派生，哈希本体绝不出本视图。
+   */
+  readonly hasPassword: boolean;
 }
 
 /**

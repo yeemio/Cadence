@@ -37,3 +37,6 @@ export { createInMemoryMetricSource } from './source.js';
 export type { MetricSource, MetricSourceRow, MetricSourceRequest } from './source.js';
 export { evaluateMetric, buildSourceRequest } from './evaluate.js';
 export type { MetricQuery, MetricResult, MetricResultRow } from './evaluate.js';
+// 报表中心预置口径包（r2/r7/r8/r9/r12/r13；v2 起随消费接线波转出口——单一
+// 事实源，消费侧组合引用不重述；见 packs/report-center-pack.ts 头注）。
+export { REPORT_CENTER_PACK, REPORT_CENTER_PACK_ID } from './packs/report-center-pack.js';

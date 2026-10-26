@@ -83,6 +83,8 @@ export interface InventoryReceiptCommand {
   readonly purchaseOrderId: string;
   readonly itemId: string;
   readonly quantity: number;
+  /** 收货仓（可选；缺省回落 inventory 服务选项 defaultWarehouseId——D-15）。 */
+  readonly warehouseId?: string;
 }
 
 /** 入库回执：received=false 携拒绝原因——命令以 rejected 收场，不落账。 */
@@ -99,6 +101,67 @@ export interface InventoryReceiptPort {
 /** 缺省入库端口：恒放行（无 inventory 接线时收货不阻塞；合流时替换）。 */
 export const LISTING_NOOP_RECEIPT_PORT: InventoryReceiptPort = {
   receivePurchase: async () => ({ received: true }),
+};
+
+// ---- inventory 端口：利库预占（gap.check 确认 → 预占创建联动） ----
+
+/**
+ * 利库预占单行回执（多仓拆分 = 多键；键约定归适配器——消费面按锚点归并，
+ * 与 IssueMaterialPort 预占核销同锚）。
+ */
+export interface InventoryUseReserveLineReceipt {
+  readonly itemId: string;
+  /** 本次实际新建预占数量（锚点既有活跃预占已覆盖 / 幂等命中 = 0）。 */
+  readonly quantity: number;
+  /** 本次新建预占的键集（追溯锚：键内嵌 gapCheckId）。 */
+  readonly reservationKeys: readonly string[];
+}
+
+/** 利库预占回执：reserved=false 携拒绝原因——gap.check 整单 rejected 不落账。 */
+export interface InventoryUseReserveReceipt {
+  readonly reserved: boolean;
+  readonly refusedReason?: string;
+  readonly created?: readonly InventoryUseReserveLineReceipt[];
+}
+
+/** 利库预占指令（quantity = 目标预占总量；适配方按锚点既有活跃预占折差新建）。 */
+export interface InventoryUseReserveCommand {
+  readonly workOrderId: string;
+  readonly itemId: string;
+  /** 目标预占总量（= min(Σ 需求, 利库供给基数)；≤ 需求且 ≤ 供给——不超占）。 */
+  readonly quantity: number;
+  /** 本次核查快照 id（预占键追溯锚——同批键唯一，重核查折差不复用键）。 */
+  readonly gapCheckId: string;
+}
+
+/**
+ * inventory 利库预占端口（缺口核查确认联动，PRD 14 RREQ-LP-021 库存联动的
+ * Cadence 统一快照面形态）：
+ *  - reservedForWorkOrder：本工作令在 issue 订单级锚的活跃预占（利库供给基数
+ *    的自有部分——重复核查不自我挤占；口径镜像 IssueMaterialPort.reservedQtyOf
+ *    的 equipmentRef 空锚）；
+ *  - reserveForWorkOrder：利库预占创建（幂等收敛：目标量 ≤ 既有活跃预占时
+ *    新建 0；拒绝则核查整单 rejected）。
+ * 预占的消费面 = 发料核销（IssueMaterialPort issueStock——同锚 FIFO）；
+ * 齐套判定的 reserved 数据源同账（可用量恒等式 可用量=总量−预占）。
+ */
+export interface InventoryUseReservationPort {
+  reservedForWorkOrder(
+    tenant: TenantId,
+    workOrderId: string,
+    itemIds: readonly string[],
+  ): Promise<ReadonlyMap<string, number>>;
+  reserveForWorkOrder(
+    tenant: TenantId,
+    command: InventoryUseReserveCommand,
+  ): Promise<InventoryUseReserveReceipt>;
+}
+
+/** 缺省利库预占端口（零接线 boot）：自有预占恒 0、创建恒空——核查行为同旧。 */
+export const LISTING_NOOP_USE_RESERVATION_PORT: InventoryUseReservationPort = {
+  reservedForWorkOrder: async (_tenant, _workOrderId, itemIds) =>
+    new Map(itemIds.map((itemId) => [itemId, 0])),
+  reserveForWorkOrder: async () => ({ reserved: true, created: [] }),
 };
 
 // ---- inspection 端口：收货→三类采购质检来源投递（17 册 RQ-019） ----

@@ -406,6 +406,39 @@ describe('用户口令（D-2：建用户可选初始口令 + 管理员设置/重
     expect(await users.updatePassword(t2, created.id, 'scrypt$3$3$3$ij$kl')).toBeNull();
     expect(await users.updatePassword(t1, UserId.create('user-missing'), 'x')).toBeNull();
   });
+
+  it('hasPassword 只读投影（D-2 P3）：未设口令 false / 带口令与首设后 true；哈希本体不出任何账户视图', async () => {
+    const { org, users } = newOrgWithAuth();
+    const bare = await org.createUser(t1, { username: 'wang', displayName: '王工' }); // 未设口令
+    const withPass = await org.createUser(t1, {
+      username: 'li-ming',
+      displayName: '李明',
+      password: 'init-pass-3',
+    });
+
+    // 建号即投影（单用户详情视图 = create 返回）：带初始口令 true / 不带 false
+    expect(bare.hasPassword).toBe(false);
+    expect(withPass.hasPassword).toBe(true);
+
+    // 列表视图：管理员按行区分"未设口令"用户
+    const listed = await org.listUsers(t1);
+    const byName = new Map(listed.map((row) => [row.username, row]));
+    expect(byName.get('wang')?.hasPassword).toBe(false);
+    expect(byName.get('li-ming')?.hasPassword).toBe(true);
+
+    // 首设口令后投影翻转（setUserPassword 单用户视图 + 列表读回一致）
+    const firstSet = await org.setUserPassword(t1, bare.id, { password: 'first-pass' });
+    expect(firstSet.hasPassword).toBe(true);
+    expect((await org.listUsers(t1)).find((row) => row.username === 'wang')?.hasPassword).toBe(true);
+
+    // 哈希本体不出任何账户视图：投影依据真实存在（存储侧确有 scrypt 哈希），
+    // 但 list/详情视图的序列化面既无 passwordHash 字段名、也无哈希串本体。
+    const storedHash = (await users.findByUsername(t1, 'li-ming'))?.passwordHash;
+    expect(storedHash).toMatch(/^scrypt\$/);
+    const serialized = JSON.stringify({ listed: await org.listUsers(t1), created: bare, firstSet });
+    expect(serialized).not.toContain('passwordHash');
+    expect(serialized).not.toContain(storedHash!);
+  });
 });
 
 describe('PermissionService 扩展（revoke / permissionsOfRole，M1 增量 3-D）', () => {

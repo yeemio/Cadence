@@ -13,7 +13,9 @@
  *    MaterialValidationExecutor，子信封 operationId 确定性派生——重试不重复
  *    落 baseline 账）→ 行落库（校验状态字段）；
  * 2. 缺口核查：清单需求（itemId 已解析行）× inventory 可用量端口 → 不可变
- *    快照 + 缺口行（一键采购锚点）；
+ *    快照 + 缺口行（一键采购锚点）；确认即利库预占（useReservation 端口先行
+ *    ——供给基数 = 跨仓可用 + 本令锚点活跃预占，目标量 = min(Σ需求, 供给)，
+ *    拒绝则整单 rejected 不落账，体例同收货入库端口先行）；
  * 3. 采购申请：create 落 draft；随订单推进（approve→approved、issue→converted，
  *    初版口径见 listing-config 头注）；
  * 4. 采购订单：五态机经 engine-flow runtime 驱动（配置整体可替换，ADR-0010）；
@@ -53,6 +55,7 @@ import {
   DEFAULT_PURCHASE_ORDER_FLOW_CONFIG,
   DEFAULT_PURCHASE_REQUEST_FLOW_CONFIG,
   DEFAULT_PURCHASE_RETURN_FLOW_CONFIG,
+  GAP_RESERVE_SCOPE_KINDS,
   LISTING_KINDS,
   listingKindLabel,
   purchaseOrderStateLabel,
@@ -109,12 +112,15 @@ import {
   LISTING_EMPTY_INVENTORY_PORT,
   LISTING_NOOP_INSPECTION_INTAKE,
   LISTING_NOOP_RECEIPT_PORT,
+  LISTING_NOOP_USE_RESERVATION_PORT,
   LISTING_TODO_SOURCE,
   LISTING_UNWIRED_MATERIAL_VALIDATION,
   materialValidationOperationId,
   REQUEST_KIND_TO_INSPECTION_KIND,
   type InventoryAvailabilityPort,
   type InventoryReceiptPort,
+  type InventoryUseReserveLineReceipt,
+  type InventoryUseReservationPort,
   type MaterialValidationExecutor,
   type WorkOrderCreatedFeedPort,
 } from './listing-ports.js';
@@ -171,6 +177,8 @@ export interface ListingCommitted extends CommittedOutcome {
   /** Excel 导入被跳过行的错误行提示（复刻行为锚点）。 */
   readonly rowIssues?: readonly ListingRowIssue[];
   readonly gapCheck?: GapCheck;
+  /** 本次核查新建的利库预占行（接线后非空时携带；事实账在 inventory 预占账）。 */
+  readonly reservations?: readonly InventoryUseReserveLineReceipt[];
   readonly purchaseRequest?: PurchaseRequest;
   readonly purchaseOrder?: PurchaseOrder;
   readonly purchaseReturn?: PurchaseReturn;
@@ -199,6 +207,8 @@ export interface ListingCrossModulePorts {
   readonly workOrderFeed: WorkOrderCreatedFeedPort;
   readonly inventory: InventoryAvailabilityPort;
   readonly receipt: InventoryReceiptPort;
+  /** inventory 利库预占端口（gap.check 确认→预占创建）；缺省 = NOOP（不预占）。 */
+  readonly useReservation: InventoryUseReservationPort;
   readonly inspectionIntake: InspectionIntakePort;
   readonly excel: ExcelPort;
   readonly materialValidation: MaterialValidationExecutor;
@@ -244,6 +254,7 @@ export class ListingService {
       workOrderFeed: ports.workOrderFeed ?? EMPTY_WORK_ORDER_CREATED_FEED,
       inventory: ports.inventory ?? LISTING_EMPTY_INVENTORY_PORT,
       receipt: ports.receipt ?? LISTING_NOOP_RECEIPT_PORT,
+      useReservation: ports.useReservation ?? LISTING_NOOP_USE_RESERVATION_PORT,
       inspectionIntake: ports.inspectionIntake ?? LISTING_NOOP_INSPECTION_INTAKE,
       excel: ports.excel ?? new JsonTablesExcelPort(),
       materialValidation: ports.materialValidation ?? LISTING_UNWIRED_MATERIAL_VALIDATION,
@@ -661,7 +672,16 @@ export class ListingService {
     );
     const resolved = allLines.filter((line) => line.itemId !== null);
     const itemIds = [...new Set(resolved.map((line) => line.itemId as string))];
-    const available = await this.ports.inventory.availableQty(tenant, itemIds);
+    // 利库供给基数 = 跨仓可用 + 本令 issue 订单级锚活跃预占（本令已预占部分仍属
+    // 本令可供给——重复核查不自我挤占，口径镜像 issue 四数量"预占+料品可用"；
+    // 未接线 own=0，行为同旧"纯可用量"口径）。
+    const [available, ownReserved] = await Promise.all([
+      this.ports.inventory.availableQty(tenant, itemIds),
+      this.ports.useReservation.reservedForWorkOrder(tenant, workOrderId, itemIds),
+    ]);
+    const supply = new Map(
+      itemIds.map((itemId) => [itemId, (available.get(itemId) ?? 0) + (ownReserved.get(itemId) ?? 0)]),
+    );
 
     const gapLines: GapLine[] = [];
     const kinds: GapKindSummary[] = scope.map((kind) => {
@@ -669,7 +689,7 @@ export class ListingService {
       const kindResolved = kindLines.filter((line) => line.itemId !== null);
       let gapLineCount = 0;
       for (const line of kindResolved) {
-        const availableQty = available.get(line.itemId as string) ?? 0;
+        const availableQty = supply.get(line.itemId as string) ?? 0;
         const gapQty = Math.max(0, line.requiredQty - availableQty);
         if (gapQty > 0) {
           gapLineCount += 1;
@@ -697,6 +717,36 @@ export class ListingService {
     const complete = gapLines.length === 0;
 
     const gapCheckId = newGapCheckId();
+
+    // 利库预占创建（端口先行：拒绝则整单 rejected 不落任何账——体例同
+    // purchase.order.receive 入库指令先行）。目标量 = min(Σ需求, 供给基数)：
+    // 适配方按锚点既有活跃预占折差新建（幂等收敛，重复核查不重复预占）；
+    // 作用类目 = 发料可核销三类（equipment 不走预占账，见 GAP_RESERVE_SCOPE_KINDS）。
+    const demandTotals = new Map<string, number>();
+    const reserveScope = GAP_RESERVE_SCOPE_KINDS;
+    for (const line of resolved) {
+      if (!(reserveScope as readonly string[]).includes(line.kind)) continue;
+      const itemId = line.itemId as string;
+      demandTotals.set(itemId, (demandTotals.get(itemId) ?? 0) + line.requiredQty);
+    }
+    const reserveLines: InventoryUseReserveLineReceipt[] = [];
+    for (const itemId of [...demandTotals.keys()].sort()) {
+      const useTotal = Math.min(demandTotals.get(itemId) as number, supply.get(itemId) ?? 0);
+      if (useTotal <= 0) continue;
+      const receipt = await this.ports.useReservation.reserveForWorkOrder(tenant, {
+        workOrderId,
+        itemId,
+        quantity: useTotal,
+        gapCheckId,
+      });
+      if (!receipt.reserved) {
+        return rejected(
+          `利库预占被拒绝（物料 '${itemId}'）：${receipt.refusedReason ?? 'inventory 端口未说明原因'}`,
+        );
+      }
+      reserveLines.push(...(receipt.created ?? []));
+    }
+
     const recorded = await this.operations.record({
       tenant,
       operationId: envelope.operationId,
@@ -731,6 +781,7 @@ export class ListingService {
       todosCreated: [],
       todosCompleted: [],
       gapCheck: snapshot,
+      ...(reserveLines.length > 0 ? { reservations: reserveLines } : {}),
     };
   }
 
@@ -1196,6 +1247,9 @@ export class ListingService {
           purchaseOrderId: orderId,
           itemId: orderLine.itemId,
           quantity: receivedQty,
+          // D-15：载荷显式收货仓透传（null = 省略字段 → inventory 服务选项回落；
+          // exactOptionalPropertyTypes 下不显式传 undefined）。
+          ...(payload.warehouseId !== null ? { warehouseId: payload.warehouseId } : {}),
         });
         if (!receipt.received) {
           return rejected(`入库指令被拒绝（行 ${lineNo}）：${receipt.refusedReason ?? 'inventory 端口未说明原因'}`);

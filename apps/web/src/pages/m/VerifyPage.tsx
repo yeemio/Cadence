@@ -4,10 +4,16 @@
  * 四类 kind 同队列经徽标区分）→ POST /reports/:id/verify（report.verify.v1，
  * expectedRevision 取行 objectVersion 乐观锁）。权限码与后端
  * reporting.controllers.ts:139-150 同码。
+ *
+ * fix-wave-2 D-12/D-6 移动收尾：队列查询按 session 权限投影门禁——门禁码取
+ * 端点实码 report:read（GET /reports/pending-verification 的
+ * @RequirePermission），非导航注册码 report:verify（动作码不折算读码）。
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BadgeCheck, LoaderCircle } from 'lucide-react';
+import { REPORT_READ } from '@smes/product-ui';
+import { useMobileDataAccess, MobileNoAccessHint } from './pageAccess';
 import { ApiErrorHint } from '@/components/ApiErrorHint';
 import { fetchPendingVerification } from '@/data/mobile-ops';
 import { verifyReport } from '@/data/reportingApi';
@@ -25,9 +31,12 @@ import type { WorkReportRowView } from '@smes/product-ui';
 
 export function MobileVerifyPage() {
   const queryClient = useQueryClient();
+  // D-12：队列查询按 session 权限投影（report:read，端点实码；见文件头注释）。
+  const accessible = useMobileDataAccess(REPORT_READ);
   const pendingQuery = useQuery({
     queryKey: ['reports', 'pending-verification'],
     queryFn: fetchPendingVerification,
+    enabled: accessible,
   });
 
   const [remarkInputs, setRemarkInputs] = useState<Record<string, string>>({});
@@ -54,12 +63,18 @@ export function MobileVerifyPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {pendingQuery.isPending && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> 正在加载…
-            </p>
+          {!accessible ? (
+            <MobileNoAccessHint code={REPORT_READ} />
+          ) : (
+            <>
+              {pendingQuery.isPending && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> 正在加载…
+                </p>
+              )}
+              {pendingQuery.isError && <ApiErrorHint error={pendingQuery.error} />}
+            </>
           )}
-          {pendingQuery.isError && <ApiErrorHint error={pendingQuery.error} />}
           {verifyMutation.isError && <ApiErrorHint error={verifyMutation.error} />}
           {pendingQuery.data !== undefined && rows.length === 0 && (
             <p className="text-sm text-muted-foreground">队列为空——暂无待核查报工。</p>

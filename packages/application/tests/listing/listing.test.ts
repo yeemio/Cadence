@@ -49,10 +49,27 @@ import type {
   InventoryAvailabilityPort,
   InventoryReceiptCommand,
   InventoryReceiptPort,
+  InventoryUseReserveCommand,
+  InventoryUseReservationPort,
   WorkOrderCreatedEventMessage,
   WorkOrderCreatedFeedPort,
 } from '../../src/listing/listing-ports.js';
 import { JsonTablesExcelPort } from '../../src/listing/excel-port.js';
+// D-15 三态：真实 inventory 收货面（内存实现——与 inventory 模块缺省同一实现）。
+import { createInventoryReceiptAdapter } from '../../src/inventory/inventory-ports.js';
+import {
+  InMemoryInventoryDomainEventStore,
+  InMemoryInventoryOperationStore,
+  InMemoryReleaseFactStore,
+  InMemoryShippingOrderStore,
+  InMemoryStockAccountStore,
+  InMemoryStockLocationBalanceStore,
+  InMemoryStockMovementStore,
+  InMemoryStockReservationStore,
+  InMemoryStocktakeStore,
+  InMemoryWarehouseStore,
+} from '../../src/inventory/in-memory-inventory-stores.js';
+import { InventoryService } from '../../src/inventory/inventory.service.js';
 import {
   InMemoryGapCheckStore,
   InMemoryListingDomainEventStore,
@@ -137,6 +154,30 @@ class FakeReceipt implements InventoryReceiptPort {
   }
 }
 
+/** 利库预占假端口：自有预占种子（`workOrderId#itemId` → 量）+ 调用记录。 */
+class FakeUseReservation implements InventoryUseReservationPort {
+  readonly own = new Map<string, number>();
+  readonly calls: InventoryUseReserveCommand[] = [];
+  refuseReason: string | null = null;
+  async reservedForWorkOrder(
+    _tenant: unknown,
+    workOrderId: string,
+    itemIds: readonly string[],
+  ): Promise<ReadonlyMap<string, number>> {
+    return new Map(itemIds.map((itemId) => [itemId, this.own.get(`${workOrderId}#${itemId}`) ?? 0]));
+  }
+  async reserveForWorkOrder(_tenant: unknown, command: InventoryUseReserveCommand) {
+    this.calls.push(command);
+    if (this.refuseReason !== null) return { reserved: false, refusedReason: this.refuseReason };
+    return {
+      reserved: true,
+      created: [
+        { itemId: command.itemId, quantity: command.quantity, reservationKeys: [`k-${this.calls.length}`] },
+      ],
+    };
+  }
+}
+
 /** 物料校验假端口：编码命中种子库 → matched（candidate 回填）；否则 unmatched。 */
 class FakeMaterialValidation {
   readonly calls: BaselineCommandEnvelope[] = [];
@@ -178,7 +219,11 @@ class FakeMaterialValidation {
   }
 }
 
-function newHarness() {
+function newHarness(extraPorts: Partial<{
+  readonly useReservation: InventoryUseReservationPort;
+  /** D-15：真实 inventory 收货面注入（createInventoryReceiptAdapter 包装）。 */
+  readonly receipt: InventoryReceiptPort;
+}> = {}) {
   const sheets = new InMemoryListingSheetStore();
   const lines = new InMemoryListingLineStore();
   const gapChecks = new InMemoryGapCheckStore();
@@ -196,7 +241,14 @@ function newHarness() {
   const service = new ListingService(
     sheets, lines, gapChecks, requests, orders, returns, operations, domainEvents,
     machineEvents, todos,
-    { workOrderFeed: feed, inventory, receipt, excel: new JsonTablesExcelPort(), materialValidation },
+    {
+      workOrderFeed: feed,
+      inventory,
+      receipt,
+      excel: new JsonTablesExcelPort(),
+      materialValidation,
+      ...extraPorts,
+    },
     { orderApprover: approver, now: () => FIXED_NOW },
   );
   return {
@@ -602,6 +654,98 @@ describe('gap.check（清单 × 库存可用量 → 缺口行）', () => {
   });
 });
 
+describe('gap.check 利库预占联动（useReservation 端口，缺省 NOOP 同旧行为）', () => {
+  it('供给基数=可用+本令预占；目标量=min(Σ需求,供给)；equipment 行不预占；回执携带预占行', async () => {
+    const useReservation = new FakeUseReservation();
+    const h = newHarness({ useReservation });
+    h.materialValidation.library.set('M-001', 'item-1');
+    mustCommit(
+      await importExcel(h.service, 'wo-600', 'part', [
+        ['DWG-1', 'M-001', 'a', 's', '6', ''],
+        ['DWG-2', 'M-001', 'b', 's', '4', ''],
+      ]),
+    );
+    // equipment 行（itemId 已解析、供给充足——仍不入利库预占面）
+    await h.lines.appendLines([
+      {
+        tenant: t1, id: 'll-eq-1', sheetId: 'ls-ghost', workOrderId: 'wo-600', kind: 'equipment',
+        lineNo: 1, drawingNo: null, code: 'M-EQ', name: 'eq', spec: null, itemId: 'item-2',
+        requiredQty: 2, neededBy: null, validationStatus: 'matched',
+        candidateItemId: 'item-2', candidateItemCode: 'M-EQ', similarity: 1, basis: 'code-exact', source: 'manual',
+      },
+    ]);
+    h.inventory.stock.set('item-1', 7);
+    h.inventory.stock.set('item-2', 5);
+    useReservation.own.set('wo-600#item-1', 3); // 本令既有订单级锚预占 3
+
+    const result = mustCommit(await h.service.execute(envelope('gap.check.v1', {}), 'wo-600'));
+    const snapshot = result.gapCheck as NonNullable<typeof result.gapCheck>;
+    // item-1 供给 = 可用 7 + 本令预占 3 = 10 ≥ 两行需求（6/4）→ 无缺口；
+    // equipment item-2 供给 5 ≥ 2 → 无缺口。
+    expect(snapshot.complete).toBe(true);
+    expect(snapshot.gapLines).toEqual([]);
+    // 预占指令：仅 item-1（equipment 不入预占面）；目标量 = min(6+4, 10) = 10
+    // （聚合口径——同物料多行合计对供给收口）。
+    expect(useReservation.calls).toEqual([
+      { workOrderId: 'wo-600', itemId: 'item-1', quantity: 10, gapCheckId: snapshot.id },
+    ]);
+    expect(result.reservations).toEqual([
+      { itemId: 'item-1', quantity: 10, reservationKeys: ['k-1'] },
+    ]);
+  });
+
+  it('供给不足：缺口行如实入快照，目标量 = min(Σ需求, 供给) 不超占', async () => {
+    const useReservation = new FakeUseReservation();
+    const h = newHarness({ useReservation });
+    h.materialValidation.library.set('M-001', 'item-1');
+    mustCommit(await importExcel(h.service, 'wo-601', 'part', [['DWG-1', 'M-001', 'a', 's', '12', '']]));
+    h.inventory.stock.set('item-1', 7);
+    const result = mustCommit(await h.service.execute(envelope('gap.check.v1', {}), 'wo-601'));
+    expect((result.gapCheck as NonNullable<typeof result.gapCheck>).gapLines).toEqual([
+      {
+        kind: 'part', listingLineId: expect.any(String), itemId: 'item-1', drawingNo: 'DWG-1',
+        requiredQty: 12, availableQty: 7, gapQty: 5, neededBy: null,
+      },
+    ]);
+    // 目标量 = min(12, 7) = 7——缺口行与利库预占并存（缺口走一键采购，利库走预占）。
+    expect(useReservation.calls).toEqual([
+      {
+        workOrderId: 'wo-601', itemId: 'item-1', quantity: 7,
+        gapCheckId: (result.gapCheck as NonNullable<typeof result.gapCheck>).id,
+      },
+    ]);
+  });
+
+  it('端口拒绝 → gap.check 整单 rejected 不落任何账（端口先行，体例同收货入库指令）', async () => {
+    const useReservation = new FakeUseReservation();
+    const h = newHarness({ useReservation });
+    h.materialValidation.library.set('M-001', 'item-1');
+    mustCommit(await importExcel(h.service, 'wo-602', 'part', [['DWG-1', 'M-001', 'a', 's', '10', '']]));
+    h.inventory.stock.set('item-1', 7);
+    useReservation.refuseReason = '可用量不足：item-1@wh-x 可用 0 < 预占 7';
+    const refused = await h.service.execute(envelope('gap.check.v1', {}), 'wo-602');
+    expect(refused.status).toBe('rejected');
+    expect((refused as { readonly reason: string }).reason).toContain('利库预占被拒绝');
+    expect((refused as { readonly reason: string }).reason).toContain('可用量不足');
+    expect(await h.gapChecks.latestByWorkOrder(t1, 'wo-602')).toBeNull();
+  });
+
+  it('未接线（缺省 NOOP）：不预占、不扩供给——核查行为同旧', async () => {
+    const h = newHarness(); // 不注入 useReservation → 模块 NOOP 缺省
+    h.materialValidation.library.set('M-001', 'item-1');
+    mustCommit(await importExcel(h.service, 'wo-603', 'part', [['DWG-1', 'M-001', 'a', 's', '10', '']]));
+    h.inventory.stock.set('item-1', 7);
+    const result = mustCommit(await h.service.execute(envelope('gap.check.v1', {}), 'wo-603'));
+    expect((result.gapCheck as NonNullable<typeof result.gapCheck>).gapLines).toEqual([
+      {
+        kind: 'part', listingLineId: expect.any(String), itemId: 'item-1', drawingNo: 'DWG-1',
+        requiredQty: 10, availableQty: 7, gapQty: 3, neededBy: null,
+      },
+    ]);
+    expect(result.reservations).toBeUndefined();
+  });
+});
+
 describe('purchase.request.create（含缺口一键发起）', () => {
   it('缺口一键：source 锚点校验 + draft@v1 + PurchaseRequested', async () => {
     const h = newHarness();
@@ -848,6 +992,109 @@ describe('采购订单五态全链（提交-审核-下发-收货）', () => {
     await expect(
       h.service.execute(envelope('purchase.order.receive.v1', { lines: [{ lineNo: 1, receivedQty: 1 }] }, { expectedRevision: 4 }), order.id),
     ).rejects.toBeInstanceOf(ListingStateError);
+  });
+});
+
+describe('D-15 收货仓三态（payload.warehouseId 透传 + inventory 默认仓回落）', () => {
+  /** 真实 inventory 收货面（内存实现）；defaultWarehouseId = 服务选项回落位；warehouses 可共享（先建仓再带默认选项重建服务）。 */
+  function newInventoryFace(defaultWarehouseId: string | null, warehouses = new InMemoryWarehouseStore()) {
+    const inventory = new InventoryService(
+      warehouses,
+      new InMemoryStockAccountStore(),
+      new InMemoryStockLocationBalanceStore(),
+      new InMemoryStockMovementStore(),
+      new InMemoryStockReservationStore(),
+      new InMemoryStocktakeStore(),
+      new InMemoryShippingOrderStore(),
+      new InMemoryReleaseFactStore(),
+      new InMemoryInventoryOperationStore(),
+      new InMemoryInventoryDomainEventStore(),
+      createInMemoryApprovalEventStore(),
+      defaultWarehouseId === null ? {} : { defaultWarehouseId },
+    );
+    return { inventory, warehouses, port: createInventoryReceiptAdapter(inventory) };
+  }
+
+  async function defineWarehouse(face: ReturnType<typeof newInventoryFace>, code: string, name: string): Promise<string> {
+    const defined = await face.inventory.execute(
+      envelope('warehouse.define.v1', { code, name, locations: [{ code: 'L1', name: '一号位' }] }) as Parameters<
+        InventoryService['execute']
+      >[0],
+    );
+    if (defined.status !== 'committed') throw new Error(`期望仓库 ${code} 定义成功，得到 ${defined.status}`);
+    return (defined as { readonly warehouse: { readonly id: string } }).warehouse.id;
+  }
+
+  /** 订单推到 issued（单行 item-d15 × 10），挂真实收货面；返回 harness + 订单句柄。 */
+  async function issuedOrderWith(receipt: InventoryReceiptPort) {
+    const h = newHarness({ receipt });
+    const order = await submitOrder(h.service, { lines: [{ itemId: 'item-d15', quantity: 10, unitPriceMinor: 1500 }] });
+    mustCommit(await h.service.execute(envelope('purchase.order.approve.v1', { remark: 'r' }, { expectedRevision: 2, actor: approver }), order.id));
+    mustCommit(await h.service.execute(envelope('purchase.order.issue.v1', {}, { expectedRevision: 3 }), order.id));
+    return { h, order };
+  }
+
+  it('载荷解析：warehouseId 可选（缺省 null，不进收货指令）——显式值 1~128 字符透传', () => {
+    expect(parsePurchaseOrderReceivePayload({ lines: [{ lineNo: 1, receivedQty: 1 }] }).warehouseId).toBeNull();
+    expect(
+      parsePurchaseOrderReceivePayload({ lines: [{ lineNo: 1, receivedQty: 1 }], warehouseId: 'wh-d15' }).warehouseId,
+    ).toBe('wh-d15');
+    expect(() => parsePurchaseOrderReceivePayload({ lines: [{ lineNo: 1, receivedQty: 1 }], warehouseId: '' })).toThrow(
+      ListingInputError,
+    );
+  });
+
+  it('显式仓：payload 指定 warehouseId → 落指定仓（inventory 未配默认仓亦可收）', async () => {
+    const face = newInventoryFace(null); // 未配默认仓
+    const explicitId = await defineWarehouse(face, 'WH-D15-A', '显式收货仓');
+    const { h, order } = await issuedOrderWith(face.port);
+
+    const received = mustCommit(
+      await h.service.execute(
+        envelope(
+          'purchase.order.receive.v1',
+          { lines: [{ lineNo: 1, receivedQty: 10 }], warehouseId: explicitId, receiptRef: 'RCPT-D15-A' },
+          { expectedRevision: 4 },
+        ),
+        order.id,
+      ),
+    );
+    expect(received.purchaseOrder?.state).toBe('received');
+    expect((await face.inventory.stockLevels(t1, explicitId, 'item-d15'))[0]?.qtyOnHand).toBe(10);
+  });
+
+  it('默认仓回落：payload 省略 warehouseId → inventory 服务选项 defaultWarehouseId 落位', async () => {
+    // 先建两仓（共享仓库账），再以带默认仓选项的服务收货——回落落位可区分。
+    const scratch = newInventoryFace(null);
+    const otherId = await defineWarehouse(scratch, 'WH-D15-OTHER', '非默认仓');
+    const defaultId = await defineWarehouse(scratch, 'WH-D15-DEF', '默认收货仓');
+    const face = newInventoryFace(defaultId, scratch.warehouses);
+    const { h, order } = await issuedOrderWith(face.port);
+
+    const received = mustCommit(
+      await h.service.execute(
+        envelope('purchase.order.receive.v1', { lines: [{ lineNo: 1, receivedQty: 10 }], receiptRef: 'RCPT-D15-B' }, { expectedRevision: 4 }),
+        order.id,
+      ),
+    );
+    expect(received.purchaseOrder?.state).toBe('received');
+    expect((await face.inventory.stockLevels(t1, defaultId, 'item-d15'))[0]?.qtyOnHand).toBe(10);
+    expect((await face.inventory.stockLevels(t1, otherId, 'item-d15')).length).toBe(0); // 未落他仓
+  });
+
+  it('都缺拒绝：payload 省略且未配默认仓 → rejected（D-15 症状），订单留在 issued 不落账', async () => {
+    const face = newInventoryFace(null);
+    await defineWarehouse(face, 'WH-D15-C', '存在仓但无默认'); // 仓存在也不回落（无"唯一仓"自动回落）
+    const { h, order } = await issuedOrderWith(face.port);
+
+    const refused = await h.service.execute(
+      envelope('purchase.order.receive.v1', { lines: [{ lineNo: 1, receivedQty: 10 }] }, { expectedRevision: 4 }),
+      order.id,
+    );
+    expect(refused.status).toBe('rejected');
+    if (refused.status === 'rejected') expect(refused.reason).toContain('未指定收货仓且未配置默认仓');
+    expect((await h.orders.find(t1, order.id))?.state).toBe('issued'); // 未落账
+    expect(await face.inventory.stockLevels(t1, undefined, 'item-d15')).toEqual([]); // 未入任何仓
   });
 });
 

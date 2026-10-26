@@ -10,9 +10,9 @@ const OCTOBER = { from: '2026-10-01T00:00:00Z', to: '2026-10-31T23:59:59Z' };
 const SEPTEMBER = { from: '2026-09-01T00:00:00Z', to: '2026-09-30T23:59:59Z' };
 
 describe('报表中心口径包 · 包形状', () => {
-  it('七条口径（五报表：日/月、主表/子表、明细行快照粒度分立）冻结且 metricId 唯一', () => {
+  it('九条口径（六报表：日/月、主表/子表、明细行快照、汇总/下钻粒度分立）冻结且 metricId 唯一', () => {
     expect(REPORT_CENTER_PACK.packId).toBe(REPORT_CENTER_PACK_ID);
-    expect(REPORT_CENTER_PACK.version).toBe(2); // v2 纯追加 r8，v1 六条不变
+    expect(REPORT_CENTER_PACK.version).toBe(3); // v2 纯追加 r8；v3 纯追加 r9+r7 下钻，既有不变
     expect(REPORT_CENTER_PACK.metrics.map((metric) => `${metric.metricId}@v${metric.version}`)).toEqual([
       'work-order-delivery@v1',
       'outsource-delivery-monthly@v1',
@@ -21,6 +21,8 @@ describe('报表中心口径包 · 包形状', () => {
       'hours-summary-daily@v1',
       'hours-summary-process@v1',
       'purchase-overdue-daily@v1',
+      'purchase-parts-summary@v1',
+      'outsource-delivery-late-detail@v1',
     ]);
     expect(Object.isFrozen(REPORT_CENTER_PACK)).toBe(true);
     expect(Object.isFrozen(REPORT_CENTER_PACK.metrics)).toBe(true);

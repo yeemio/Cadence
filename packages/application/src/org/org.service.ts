@@ -87,6 +87,11 @@ export class OrgService {
     });
   }
 
+  /**
+   * 用户列表（GET /org/users）：存储行原样透出——含 hasPassword 只读投影
+   * （D-2 P3，存储行映射处从 passwordHash 派生），管理员据此区分"未设口令"
+   * 用户；哈希本体不在 UserAccount 视图（认证专用，只走 findByUsername）。
+   */
   async listUsers(tenant: TenantId): Promise<readonly UserAccount[]> {
     return this.users.list(tenant);
   }

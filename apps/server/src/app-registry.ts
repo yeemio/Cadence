@@ -56,7 +56,10 @@ import {
   InMemoryInventoryDomainEventStore,
   OrgModule,
   ReportingModule,
+  // A8/A10 首波：数字运营大屏（SSE 推送 + A10 日跑批；组合根 HTTP 面）
+  // ScreenHttpModule,  // A8 大屏装配收口中（限额中断半成品）：域层已就绪，module 层归 19:53 后续做波
   StandardReportsModule,
+  InMemoryMachiningDailyStatsStore,
   WorkbenchModule,
   WorkOrderModule,
   type ApprovalCaseStore,
@@ -91,6 +94,7 @@ import {
   type ListingLineStore,
   type ListingOperationStore,
   type ListingSheetStore,
+  type MachiningDailyStatsStore,
   type StockLocationBalanceStore,
   type MaterialValidationRunStore,
   type StockMovementStore,
@@ -158,6 +162,7 @@ import type {
   ApprovalRecordStore,
 } from '@smes/engine-flow';
 import type { TenantId } from '@smes/business-core';
+import { UserId } from '@smes/business-core';
 import { AuthGuard } from './auth.guard.js';
 import {
   createCrossModuleWiring,
@@ -246,6 +251,8 @@ export interface StorePorts {
   readonly listingSheetStore?: ListingSheetStore | undefined;
   /** 清单行存储（ListingModule 注入点）。 */
   readonly listingLineStore?: ListingLineStore | undefined;
+  /** A10 机加日统计存储（ScreenHttpModule 注入点，A8/A10 首波：PG 句柄或内存缺省）。 */
+  readonly machiningDailyStatsStore?: MachiningDailyStatsStore | undefined;
   /** 缺口核查快照存储（ListingModule 注入点）。 */
   readonly listingGapStore?: GapCheckStore | undefined;
   /** 工序×原材料关联存储（ListingModule 注入点，U4；U7 验收发现 2 补齐——缺省回落内存实现）。 */
@@ -496,11 +503,13 @@ export const MODULE_DEFINITIONS: Record<
       // U4 接线漏项补齐（U7 验收发现 2）：不传则 PG 形态下 HTTP 录入落内存
       // store，与 costing 读面（main.ts 注入的 PG processMaterialStore）读写分家。
       processMaterialStore: stores.listingProcessMaterialStore,
-      // 跨模块接线（#11~#14 + #20）：workorder 创建事件订阅 + inventory 可用量/收货
-      // + baseline 物料校验 + ExcelJS 导入导出
+      // 跨模块接线（#11~#14 + #20 + #38）：workorder 创建事件订阅 + inventory
+      // 可用量/收货/利库预占 + baseline 物料校验 + ExcelJS 导入导出
       workOrderFeed: wiring.listing?.workOrderFeed,
       inventoryPort: wiring.listing?.inventoryPort,
       receiptPort: wiring.listing?.receiptPort,
+      // #38：gap.check 确认→inventory 预占创建（利库预占）
+      useReservationPort: wiring.listing?.useReservationPort,
       materialValidation: wiring.listing?.materialValidation,
       excelPort: wiring.listing?.excelPort,
       // fix-wave-3 W3-1（#37）：inspection 收货触发三类采购质检
@@ -533,6 +542,15 @@ export const MODULE_DEFINITIONS: Record<
       operationStore: stores.inventoryOperationStore,
       domainEventStore: stores.inventoryDomainEventStore,
       machineEventStore: stores.inventoryMachineEventStore,
+      // D-15：默认收货仓 env 注入（收货载荷未显式指定 warehouseId 时的落位仓）。
+      // 取舍（写明）：① 空串/未配 = 不设默认仓（compose 插值缺省空串，收货必须
+      // 显式传仓）；② 不做"唯一启用仓"自动回落——warehouse 模型无启用位、回落
+      // 判定逻辑属 InventoryService（禁碰面），且装配期查库违反零 DB boot 合同
+      // （启动不碰数据库，见 seed.mjs 头注）；env 配错 id 得到"仓库不存在"明确
+      // 拒绝，fail-visible 可诊断。
+      serviceOptions: {
+        defaultWarehouseId: process.env['SMES_DEFAULT_WAREHOUSE_ID'] || null,
+      },
     }),
   dispatch: (stores, wiring) =>
     DispatchModule.register({
@@ -675,6 +693,49 @@ export const MODULE_DEFINITIONS: Record<
       reportPort: wiring['aftercare-claim']?.reportPort,
     }),
   demo: () => DemoModule.register(),
+  // A8/A10 首波（激活价语义：仅显式 MODULES_ENABLED 开启）：数字运营大屏组合根
+  // HTTP/推送面——SSE 数据帧通道 + 5s 聚合节拍 + A10 日跑批定时器。事实源从
+  // StorePorts 逐项解析（各源模块未启用 → 对应读面 undefined → 块级降级占位，
+  // screen-ports.ts 头注契约）；日统计存储 = PG 句柄或组合根内存缺省。
+  //   screen: (stores) =>
+  //     ScreenHttpModule.register({
+  //       sources: {
+  //         workOrders: stores.workOrderStore,
+  //         dispatchOrders: stores.dispatchOrderStore,
+  //         outsourcingLines: stores.dispatchOutsourcingLineStore,
+  //         workReports: stores.reportingReportStore,
+  //         inspections: stores.inspectionOrderStore,
+  //         listingLines: stores.listingLineStore,
+  //         machiningDailyStats: stores.machiningDailyStatsStore,
+  //         // 报工排名显示名：org UserStore 读面（userStore 恒装配——sharedUserStore）
+  //         userNameOf:
+  //           stores.userStore === undefined
+  //             ? undefined
+  //             : async (tenant, reporter) => {
+  //                 try {
+  //                   const account = await stores.userStore!.find(tenant, UserId.create(reporter));
+  //                   return account?.displayName ?? null;
+  //                 } catch {
+  //                   return null; // 非法 reporter id 形状 → 回退原样显示（service 头注）
+  //                 }
+  //               },
+  //       },
+  //       dailyStore: stores.machiningDailyStatsStore!,
+  //       // 屏显静态配置 env 注入（部署期覆盖缺省值；非法值回落 DEFAULT——呈现面容错）
+  //       config: {
+  //         companyNameLines: [
+  //           process.env['SMES_SCREEN_COMPANY_LINE_1'] ?? '',
+  //           process.env['SMES_SCREEN_COMPANY_LINE_2'] ?? '',
+  //         ].filter((line) => line.length > 0),
+  //         ...(process.env['SMES_SCREEN_SAFE_BASELINE_DATE'] !== undefined
+  //           ? { safeProductionBaselineDate: process.env['SMES_SCREEN_SAFE_BASELINE_DATE'] }
+  //           : {}),
+  //       },
+  //       frameIntervalMs: Number(process.env['SMES_SCREEN_FRAME_INTERVAL_MS'] ?? '') || undefined,
+  //       // A10 跑批租户集：saas 形态 SMES_TENANTS 逗号清单；缺省单租户 'default'
+  //       dailyTenants: parseDailyTenants(process.env['SMES_TENANTS']),
+  //       publicStream: process.env['SMES_SCREEN_PUBLIC_STREAM'] === 'on',
+  //     }),
 };
 
 /** 组合根装配选项。 */

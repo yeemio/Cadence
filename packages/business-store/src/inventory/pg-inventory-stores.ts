@@ -41,7 +41,7 @@
  * outbox_records——跨模块共享的投递记账由单例投递器统一扫。
  */
 import { Prisma, PrismaClient } from '@prisma/client';
-import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
+import { rlsSessionEnabled, setRlsTenantOn, withRlsTenantSession } from '../rls-session.js';
 import {
   EventId,
   TenantId,
@@ -545,8 +545,13 @@ export class PgStockAccountStore implements StockAccountStore {
   ): Promise<StockAccount> {
     // 原子守卫 upsert：不存在 → INSERT（delta 即初值，守卫下可为负仅当放开）；
     // 已存在 → ON CONFLICT DO UPDATE 增量推进 WHERE 负库存守卫；零行 = 守卫拒。
+    // D-14：raw 不经 RLS 钩子（rls-session 头注"已知边界"）——交互式事务内
+    // setRlsTenantOn 后在**同一 tx 句柄**上执行 raw，SET 与写同连接（app_user
+    // 形态 RLS WITH CHECK 放行）；SQL 与守卫口径零改动（单语句原子性不变）。
     const allowNegative = guard?.allowNegativeHand === true;
-    const changed = await this.prisma.$executeRaw`
+    const changed = await this.prisma.$transaction(async (tx) => {
+      await setRlsTenantOn(tx);
+      return tx.$executeRaw`
       INSERT INTO "stock_accounts" ("id", "tenant_id", "item_id", "warehouse_id", "qty_on_hand", "qty_reserved", "created_at", "updated_at")
       VALUES (gen_random_uuid()::text, ${tenant}::text, ${itemId}::text, ${warehouseId}::text, ${onHandDelta}::double precision, ${reservedDelta}::double precision, now(), now())
       ON CONFLICT ("tenant_id", "item_id", "warehouse_id")
@@ -555,6 +560,7 @@ export class PgStockAccountStore implements StockAccountStore {
         "qty_reserved" = "stock_accounts"."qty_reserved" + ${reservedDelta}::double precision,
         "updated_at" = now()
       WHERE ${allowNegative}::boolean OR "stock_accounts"."qty_on_hand" + ${onHandDelta}::double precision >= 0`;
+    });
     if (changed === 0) {
       throw new InventoryConflictError(
         `库存账守卫拒绝：物料 '${itemId}' @仓库 '${warehouseId}' 推进后将现存量 < 0（负库存策略硬拒绝）`,
@@ -607,7 +613,10 @@ export class PgStockLocationBalanceStore implements StockLocationBalanceStore {
     guard?: StockAdjustGuard,
   ): Promise<StockLocationBalance> {
     const allowNegative = guard?.allowNegativeHand === true;
-    const changed = await this.prisma.$executeRaw`
+    // D-14：同上——raw 写经交互式事务 SET + 同句柄执行（SQL/守卫口径零改动）。
+    const changed = await this.prisma.$transaction(async (tx) => {
+      await setRlsTenantOn(tx);
+      return tx.$executeRaw`
       INSERT INTO "stock_location_balances" ("id", "tenant_id", "warehouse_id", "location_id", "item_id", "qty", "created_at", "updated_at")
       VALUES (gen_random_uuid()::text, ${tenant}::text, ${warehouseId}::text, ${locationId}::text, ${itemId}::text, ${delta}::double precision, now(), now())
       ON CONFLICT ("tenant_id", "warehouse_id", "location_id", "item_id")
@@ -615,6 +624,7 @@ export class PgStockLocationBalanceStore implements StockLocationBalanceStore {
         "qty" = "stock_location_balances"."qty" + ${delta}::double precision,
         "updated_at" = now()
       WHERE ${allowNegative}::boolean OR "stock_location_balances"."qty" + ${delta}::double precision >= 0`;
+    });
     if (changed === 0) {
       throw new InventoryConflictError(
         `库位余额守卫拒绝：物料 '${itemId}' @库位 '${locationId}' 推进后将为负（负库存策略硬拒绝）`,
@@ -769,7 +779,10 @@ export class PgStockReservationStore implements StockReservationStore {
 
   async consume(tenant: TenantId, reservationKey: string, quantity: number): Promise<StockReservation | null> {
     // 条件推进：active 且余量足额才写；remaining 减到 0 推 consumed。
-    const updated = await this.prisma.$executeRaw`
+    // D-14：raw 不经 RLS 钩子——交互式事务内 SET + 同句柄执行（SQL 口径零改动）。
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await setRlsTenantOn(tx);
+      return tx.$executeRaw`
       UPDATE "stock_reservations"
       SET "remaining" = "remaining" - ${quantity}::double precision,
           "status" = CASE WHEN "remaining" - ${quantity}::double precision = 0 THEN 'consumed' ELSE "status" END,
@@ -778,6 +791,7 @@ export class PgStockReservationStore implements StockReservationStore {
         AND "reservation_key" = ${reservationKey}::text
         AND "status" = 'active'
         AND "remaining" >= ${quantity}::double precision`;
+    });
     if (updated === 0) return null;
     return this.findByKey(tenant, reservationKey);
   }

@@ -20,6 +20,7 @@ import { createInMemoryApprovalEventStore } from '@smes/engine-flow';
 import {
   EMPTY_ISSUE_DEMAND_PORT,
   InMemoryDispatchOrderStore,
+  InMemoryGapCheckStore,
   InMemoryInventoryDomainEventStore,
   InMemoryInventoryOperationStore,
   InMemoryIssueDomainEventStore,
@@ -28,6 +29,13 @@ import {
   InMemoryIssueRecordStore,
   InMemoryIssueTaskLineStore,
   InMemoryIssueTaskStore,
+  InMemoryListingDomainEventStore,
+  InMemoryListingLineStore,
+  InMemoryListingOperationStore,
+  InMemoryListingSheetStore,
+  InMemoryPurchaseOrderStore,
+  InMemoryPurchaseRequestStore,
+  InMemoryPurchaseReturnStore,
   InMemoryReleaseFactStore,
   InMemoryShippingOrderStore,
   InMemoryStockAccountStore,
@@ -35,10 +43,13 @@ import {
   InMemoryStockMovementStore,
   InMemoryStockReservationStore,
   InMemoryStocktakeStore,
+  InMemoryTodoStore,
   InMemoryWarehouseStore,
   InventoryService,
   IssueService,
+  ListingService,
   NOOP_ISSUE_MATERIAL_PORT,
+  createInventoryAvailabilityAdapter,
   type InventoryCommand,
   type IssueSyncTrigger,
 } from '@smes/application';
@@ -55,6 +66,7 @@ import {
   bindCrossModuleWiring,
   buildIssueReservationKey,
   createInventoryIssueMaterialPort,
+  createInventoryUseReservationPort,
   createIssueSyncDispatchStore,
   parseIssueReservationKey,
 } from '../src/cross-module-wiring.js';
@@ -246,6 +258,251 @@ describe('U6 #28：IssueMaterialPort ← inventory 适配器', () => {
   });
 });
 
+describe('#38：listing.useReservationPort ← inventory（gap.check 确认→利库预占创建）', () => {
+  /** gap.check 信封（expectedRevision='initial'——创建命令口径）。 */
+  function gapEnvelope(operationId: string): CommandEnvelope<{ kind: 'gap.check.v1'; payload: Record<string, never> }> {
+    return makeCommandEnvelope({
+      tenantId: tenant,
+      issuedBy: UserId.create('u-op-u6'),
+      operationId: OperationId.create(operationId),
+      expectedRevision: 'initial',
+      issuedAt: new Date().toISOString(),
+      command: { kind: 'gap.check.v1', payload: {} },
+    });
+  }
+
+  /** 直构 ListingService（内存全量；清单行经行存储直写——itemId 已解析）。 */
+  function listingService(
+    availability: { availableQty(t: typeof tenant, itemIds: readonly string[]): Promise<ReadonlyMap<string, number>> },
+    useReservation: ReturnType<typeof createInventoryUseReservationPort>,
+    lines: InstanceType<typeof InMemoryListingLineStore>,
+    gapChecks: InstanceType<typeof InMemoryGapCheckStore>,
+  ) {
+    return new ListingService(
+      new InMemoryListingSheetStore(),
+      lines,
+      gapChecks,
+      new InMemoryPurchaseRequestStore(),
+      new InMemoryPurchaseOrderStore(),
+      new InMemoryPurchaseReturnStore(),
+      new InMemoryListingOperationStore(),
+      new InMemoryListingDomainEventStore(),
+      createInMemoryApprovalEventStore(),
+      new InMemoryTodoStore(),
+      { inventory: availability, useReservation },
+      {},
+    );
+  }
+
+  /** 直构全内存 InventoryService（12 参——与 #28 测试同一构造口径）。 */
+  function inventoryService(reservations: InstanceType<typeof InMemoryStockReservationStore>) {
+    return new InventoryService(
+      new InMemoryWarehouseStore(),
+      new InMemoryStockAccountStore(),
+      new InMemoryStockLocationBalanceStore(),
+      new InMemoryStockMovementStore(),
+      reservations,
+      new InMemoryStocktakeStore(),
+      new InMemoryShippingOrderStore(),
+      new InMemoryReleaseFactStore(),
+      new InMemoryInventoryOperationStore(),
+      new InMemoryInventoryDomainEventStore(),
+      createInMemoryApprovalEventStore(),
+      {},
+    );
+  }
+
+  async function defineWarehouse(
+    inventory: InventoryService,
+    operationId: string,
+    code: string,
+  ): Promise<{ readonly warehouseId: string; readonly locationId: string }> {
+    const defined = await inventory.execute(
+      envelope('warehouse.define.v1', operationId, {
+        code,
+        name: `利库测试仓 ${code}`,
+        locations: [{ code: 'L1', name: '一号位' }],
+      }),
+    );
+    expect(defined.status).toBe('committed');
+    const warehouse = (defined as { readonly warehouse?: { readonly id: string; readonly locations: readonly { readonly id: string }[] } }).warehouse!;
+    return { warehouseId: warehouse.id, locationId: warehouse.locations[0]!.id };
+  }
+
+  it('跨仓拆分立锚（g/wh 键段归并订单级锚）、重复核查折差不重复预占、#28 发料核销可消费', async () => {
+    const reservations = new InMemoryStockReservationStore();
+    const movements = new InMemoryStockMovementStore();
+    const domainEvents = new InMemoryInventoryDomainEventStore();
+    const inventory = inventoryService(reservations);
+    const useReservation = createInventoryUseReservationPort({
+      inventory: () => inventory,
+      reservations,
+    });
+    const lines = new InMemoryListingLineStore();
+    const gapChecks = new InMemoryGapCheckStore();
+    const service = listingService(createInventoryAvailabilityAdapter(inventory), useReservation, lines, gapChecks);
+
+    // 两仓入库：A 仓 30 / B 仓 80（合计 110——与需求等量，拆分行序无关）。
+    const whA = await defineWarehouse(inventory, 'g38-wh-a', 'WH-G38-A');
+    const whB = await defineWarehouse(inventory, 'g38-wh-b', 'WH-G38-B');
+    for (const [target, quantity, receiptKey] of [
+      [whA, 30, 'g38-rcv-a'],
+      [whB, 80, 'g38-rcv-b'],
+    ] as const) {
+      const received = await inventory.execute(
+        envelope('stock.receive.v1', receiptKey, {
+          kind: 'production',
+          itemId: 'itm-g38',
+          warehouseId: target.warehouseId,
+          locationId: target.locationId,
+          quantity,
+          receiptKey,
+          workOrderId: 'wo-g38',
+        }),
+      );
+      expect(received.status).toBe('committed');
+    }
+
+    // 零件清单行：item 需求 110（跨仓供给恰好覆盖）。
+    await lines.appendLines([
+      {
+        tenant, id: 'll-g38-1', sheetId: 'ls-g38', workOrderId: 'wo-g38', kind: 'part',
+        lineNo: 1, drawingNo: 'DWG-G38', code: null, name: 'g', spec: null, itemId: 'itm-g38',
+        requiredQty: 110, neededBy: null, validationStatus: 'matched',
+        candidateItemId: 'itm-g38', candidateItemCode: null, similarity: 1, basis: 'code-exact', source: 'manual',
+      },
+    ]);
+
+    // 第一次核查：利库预占 = min(110, 110) = 110，跨仓拆两行（A 30 + B 80）。
+    const first = await service.execute(gapEnvelope('g38-check-1'), 'wo-g38');
+    expect(first.status).toBe('committed');
+    const firstResult = first as { readonly reservations?: readonly { readonly itemId: string; readonly quantity: number; readonly reservationKeys: readonly string[] }[] };
+    expect(firstResult.reservations).toEqual([
+      { itemId: 'itm-g38', quantity: 110, reservationKeys: expect.anything() },
+    ]);
+    expect(firstResult.reservations?.[0]?.reservationKeys.length).toBe(2);
+    const rows = await reservations.list(tenant, { status: 'active' });
+    expect(rows.length).toBe(2);
+    const byWarehouse = new Map(rows.map((row) => [row.warehouseId, row]));
+    expect(byWarehouse.get(whA.warehouseId)?.quantity).toBe(30);
+    expect(byWarehouse.get(whB.warehouseId)?.quantity).toBe(80);
+    // 键形：issue-rsv 约定 + g/wh 段——解析归并订单级锚（设备段空串）。
+    for (const row of rows) {
+      expect(parseIssueReservationKey(row.reservationKey)).toEqual({
+        workOrderId: 'wo-g38',
+        equipmentRef: '',
+        itemId: 'itm-g38',
+      });
+      expect(row.reservationKey).toContain(':g:');
+      expect(row.reservationKey).toContain(':wh:');
+      expect(row.refType).toBe('issue');
+      expect(row.refId).toBe('wo-g38');
+    }
+    // 可用量恒等式：110 全额预占 → 跨仓可用 0。
+    expect((await inventory.availableQtyOf(tenant, ['itm-g38'])).get('itm-g38')).toBe(0);
+
+    // 重复核查：供给基数 = 可用 0 + 本令预占 110 → 无缺口（complete）且折差 0
+    // ——不新增预占行（幂等收敛，不重复预占）。
+    const second = await service.execute(gapEnvelope('g38-check-2'), 'wo-g38');
+    expect(second.status).toBe('committed');
+    const secondSnapshot = (second as { readonly gapCheck?: { readonly complete: boolean; readonly gapLines: readonly unknown[] } }).gapCheck;
+    expect(secondSnapshot?.complete).toBe(true);
+    expect(secondSnapshot?.gapLines).toEqual([]);
+    expect((await reservations.list(tenant)).length).toBe(2);
+    const secondResult = second as { readonly reservations?: readonly { readonly quantity: number }[] };
+    expect(secondResult.reservations?.[0]?.quantity).toBe(0);
+
+    // 发料核销（#28 适配器）：预占可核销——A 仓库位发 20 全走预占核销份额。
+    const material = createInventoryIssueMaterialPort({
+      inventory: () => inventory,
+      reservations,
+      movements,
+      domainEvents,
+    });
+    expect(
+      (await material.reservedQtyOf(tenant, { workOrderId: 'wo-g38', equipmentRef: null, itemIds: ['itm-g38'] })).get('itm-g38'),
+    ).toBe(110);
+    const issued = await material.issueStock(tenant, {
+      issueKey: 'issue-g38-l0',
+      workOrderId: 'wo-g38',
+      itemId: 'itm-g38',
+      allocations: [{ locationId: whA.locationId, quantity: 20 }],
+    });
+    expect(issued.issued).toBe(true);
+    expect(issued.allocations?.[0]).toEqual({
+      locationId: whA.locationId, quantity: 20, reservedConsumedQty: 20, availableConsumedQty: 0,
+    });
+    expect(
+      (await material.reservedQtyOf(tenant, { workOrderId: 'wo-g38', equipmentRef: null, itemIds: ['itm-g38'] })).get('itm-g38'),
+    ).toBe(90);
+  });
+
+  it('供给读取后可用被并发占用 → 分配不足拒绝，gap.check 整单 rejected 不落快照', async () => {
+    const reservations = new InMemoryStockReservationStore();
+    const inventory = inventoryService(reservations);
+    const useReservation = createInventoryUseReservationPort({
+      inventory: () => inventory,
+      reservations,
+    });
+    const wh = await defineWarehouse(inventory, 'g38b-wh', 'WH-G38-B1');
+    const received = await inventory.execute(
+      envelope('stock.receive.v1', 'g38b-rcv', {
+        kind: 'production',
+        itemId: 'itm-g38b',
+        warehouseId: wh.warehouseId,
+        locationId: wh.locationId,
+        quantity: 10,
+        receiptKey: 'g38b-rcv',
+        workOrderId: 'wo-g38b',
+      }),
+    );
+    expect(received.status).toBe('committed');
+
+    // 虚报可用量的供给端口（模拟供给读取与预占写入间的竞态/读数虚高）：
+    // 目标量 50 > 实际可分配 10 → 适配方折差后分配不足 → 拒绝。
+    const inflatedAvailability = {
+      availableQty: async (_tenant: typeof tenant, itemIds: readonly string[]) =>
+        new Map(itemIds.map((itemId) => [itemId, itemId === 'itm-g38b' ? 100 : 0])),
+    };
+    const lines = new InMemoryListingLineStore();
+    const gapChecks = new InMemoryGapCheckStore();
+    const service = listingService(inflatedAvailability, useReservation, lines, gapChecks);
+    await lines.appendLines([
+      {
+        tenant, id: 'll-g38b-1', sheetId: 'ls-g38b', workOrderId: 'wo-g38b', kind: 'standard',
+        lineNo: 1, drawingNo: null, code: null, name: 's', spec: null, itemId: 'itm-g38b',
+        requiredQty: 50, neededBy: null, validationStatus: 'matched',
+        candidateItemId: 'itm-g38b', candidateItemCode: null, similarity: 1, basis: 'code-exact', source: 'manual',
+      },
+    ]);
+
+    const refused = await service.execute(gapEnvelope('g38b-check-1'), 'wo-g38b');
+    expect(refused.status).toBe('rejected');
+    const reason = (refused as { readonly reason: string }).reason;
+    expect(reason).toContain('利库预占被拒绝');
+    expect(reason).toContain('可用量不足');
+    expect(await gapChecks.latestByWorkOrder(tenant, 'wo-g38b')).toBeNull();
+    // 被拒后竞态窗口内已立的部分预占仍在锚点上（不丢账——下次核查折差收敛）。
+    const rows = await reservations.list(tenant, { status: 'active' });
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.quantity).toBe(10);
+  });
+
+  it('预占键追加段约定：g/wh 段（含 rb 叠加）归并原锚，未知段/奇数段拒绝', () => {
+    const key = buildIssueReservationKey('wo:1', null, 'itm/1');
+    const anchor = { workOrderId: 'wo:1', equipmentRef: '', itemId: 'itm/1' };
+    expect(parseIssueReservationKey(`${key}:g:gap-1`)).toEqual(anchor);
+    expect(parseIssueReservationKey(`${key}:wh:wh-a`)).toEqual(anchor);
+    expect(parseIssueReservationKey(`${key}:g:gap-1:wh:wh-a`)).toEqual(anchor);
+    // 撤销恢复叠加在 g/wh 键上（9 段）——仍归并原锚。
+    expect(parseIssueReservationKey(`${key}:g:gap-1:wh:wh-a:rb:issue-x@0r0`)).toEqual(anchor);
+    expect(parseIssueReservationKey(`${key}:rb:issue-x@0r0`)).toEqual(anchor); // 旧形状不破
+    expect(parseIssueReservationKey(`${key}:xx:yy`)).toBeNull(); // 未知段标签
+    expect(parseIssueReservationKey(`${key}:g`)).toBeNull(); // 奇数追加段
+    expect(parseIssueReservationKey('issue-rsv:v1:wo:itm')).toBeNull(); // 段数不符（既有行为）
+  });
+});
+
 describe('U6 #29：dispatch→issue 派工生成钩子（store 装饰）', () => {
   /** 记录触发的 IssueService 间谍（真实服务承底，同步命令照常执行）。 */
   class SpyIssueService extends IssueService {
@@ -389,5 +646,112 @@ describe('U6 wiring 装配面（全装形态三句柄）', () => {
     const lines = await reportPort!.listApproved(tenant, 'dsp-none');
     expect(lines).toEqual([]);
     await context.close();
+  });
+
+  it('#38 组合根装配面：listing+inventory 同装 → register.listing.useReservationPort 非空（app-registry 透传）', async () => {
+    const context = await NestFactory.create(
+      buildAppModule(['core', 'inventory', 'listing'], {}),
+      { logger: ['error', 'warn'] },
+    );
+    contexts.push(context);
+    bindCrossModuleWiring(context);
+    const wiring = context.get(CROSS_MODULE_WIRING, { strict: false });
+    expect(wiring.register.listing?.useReservationPort).toBeDefined();
+    // 读面迟到绑定前窗口（bind 前后行为确定性）：未绑定 → 供给基数自有部分 0。
+    const port = wiring.register.listing?.useReservationPort;
+    expect(port).toBeDefined();
+    const own = await port!.reservedForWorkOrder(tenant, 'wo-none', ['itm-none']);
+    expect(own.get('itm-none')).toBe(0);
+    // ListingService 实际经 app-registry 拿到该端口（模块 register 透传链路通）。
+    const { ListingService: RegisteredListingService } = await import('@smes/application');
+    const listing = context.get(RegisteredListingService, { strict: false });
+    expect(listing).toBeDefined();
+    await context.close();
+  });
+});
+
+describe('D-15 装配面：env SMES_DEFAULT_WAREHOUSE_ID → inventory 服务选项 defaultWarehouseId', () => {
+  const ENV_KEY = 'SMES_DEFAULT_WAREHOUSE_ID';
+
+  /** 预置已知 id 的仓（组合根 store 注入——零 DB 形态同源裁决点）。 */
+  async function preseededWarehouseStore() {
+    const warehouses = new InMemoryWarehouseStore();
+    await warehouses.create({
+      tenant,
+      id: 'wh-env-main',
+      code: 'WH-ENV',
+      name: 'env 默认仓',
+      defaultLocationId: 'loc-env-1',
+      locations: [{ id: 'loc-env-1', code: 'ENV-1', name: null }],
+    });
+    await warehouses.create({
+      tenant,
+      id: 'wh-explicit',
+      code: 'WH-EXP',
+      name: '显式收货仓',
+      defaultLocationId: 'loc-exp-1',
+      locations: [{ id: 'loc-exp-1', code: 'EXP-1', name: null }],
+    });
+    return warehouses;
+  }
+
+  it('env 已配：收货省略仓 → 落 env 默认仓；显式仓优先于 env；env 未配 → 拒收（D-15 症状）', async () => {
+    const previous = process.env[ENV_KEY];
+    process.env[ENV_KEY] = 'wh-env-main';
+    try {
+      const context = await NestFactory.create(
+        buildAppModule(['core', 'inventory'], { inventoryWarehouseStore: await preseededWarehouseStore() }),
+        { logger: ['error', 'warn'] },
+      );
+      contexts.push(context);
+      const inventory = context.get(InventoryService, { strict: false });
+
+      // 默认仓回落：载荷省略仓 → env 指定仓落位（env → serviceOptions 链路通）。
+      const received = await inventory.receivePurchaseStock(tenant, {
+        receiptKey: 'd15-po-1#1',
+        purchaseOrderId: 'd15-po-1',
+        itemId: 'itm-d15',
+        quantity: 3,
+      });
+      expect(received.received).toBe(true);
+      expect((await inventory.stockLevels(tenant, 'wh-env-main', 'itm-d15'))[0]?.qtyOnHand).toBe(3);
+
+      // 显式仓优先：显式 wh-explicit 落显式仓，env 默认仓不动。
+      const explicit = await inventory.receivePurchaseStock(tenant, {
+        receiptKey: 'd15-po-2#1',
+        purchaseOrderId: 'd15-po-2',
+        itemId: 'itm-d15',
+        quantity: 2,
+        warehouseId: 'wh-explicit',
+      });
+      expect(explicit.received).toBe(true);
+      expect((await inventory.stockLevels(tenant, 'wh-explicit', 'itm-d15'))[0]?.qtyOnHand).toBe(2);
+      expect((await inventory.stockLevels(tenant, 'wh-env-main', 'itm-d15'))[0]?.qtyOnHand).toBe(3);
+      await context.close();
+    } finally {
+      if (previous === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = previous;
+    }
+
+    // env 未配（compose 缺省空串同义——`''` 经 `|| null` 归 null）：无默认仓拒收。
+    delete process.env[ENV_KEY];
+    try {
+      const bare = await NestFactory.create(buildAppModule(['core', 'inventory'], {}), {
+        logger: ['error', 'warn'],
+      });
+      contexts.push(bare);
+      const inventory = bare.get(InventoryService, { strict: false });
+      const refused = await inventory.receivePurchaseStock(tenant, {
+        receiptKey: 'd15-po-3#1',
+        purchaseOrderId: 'd15-po-3',
+        itemId: 'itm-d15',
+        quantity: 1,
+      });
+      expect(refused.received).toBe(false);
+      expect(refused.refusedReason).toContain('未指定收货仓且未配置默认仓');
+      await bare.close();
+    } finally {
+      delete process.env[ENV_KEY];
+    }
   });
 });

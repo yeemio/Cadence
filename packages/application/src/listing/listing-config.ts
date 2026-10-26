@@ -67,6 +67,17 @@ export function requestKindOfListingKind(kind: string): PurchaseRequestKind {
  */
 export const DEFAULT_GAP_SCOPE_KINDS: readonly ListingKind[] = LISTING_KINDS;
 
+/**
+ * 缺口核查**利库预占**覆盖类目（gap.check 确认 → inventory 预占创建面的作用
+ * 范围）：part/standard/electrical 三类——发料可核销类（issue 四数量的
+ * "已预占"与核销面均以库存预占账为源，无预占则 part 可发恒 0、std/elec 核销
+ * 空集）。equipment 不入：外购设备四数量 = 利用库存+入库完成（PRD 17
+ * RREQ-RQ-042 ④），不走库存预占账；源文档核查库存联动亦仅标准件/电气
+ * （PRD 14 RREQ-LP-021）。equipment 行仍进缺口快照（供给/缺口列），
+ * 只不产生预占。
+ */
+export const GAP_RESERVE_SCOPE_KINDS: readonly ListingKind[] = ['part', 'standard', 'electrical'];
+
 // ---- 采购订单五态机 ----
 
 /** 采购订单配置标识。 */
