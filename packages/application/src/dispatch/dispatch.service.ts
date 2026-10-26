@@ -25,6 +25,17 @@
  *    （零件→machining、装配/电气→assembly；外协/售后/零工不进上卷）——
  *    workorder 订阅消费，dispatch 不直接写他域。
  *
+ * fix-wave-6 6a-1 增量（五件）：
+ *  7. dispatch.transfer.v1 转单：executing 单整批换执行人/工序（非状态机迁移，
+ *     版本不动），DispatchTransferred 审计快照入域事件账本（RREQ-DP-024）；
+ *  8. 同工序占用互斥：同 (令,图号,工序) 活跃（非终态）单至多一张——零件单头与
+ *     外协明细行共用占用账，撤销/完工/行取消即释放（RREQ-DP-021）；
+ *  9. exportDispatchOrders Excel 导出（ExcelPort——零件/外协两表，RREQ-DP-026）；
+ * 10. 批操作（batchAssign/batchCancel，整批拒绝 + 确定性子幂等键）与
+ *     dispatchOrderStats 页眉五态计数（RREQ-DP-032）；
+ * 11. outsourcing.line.cancel.v1 取消外协明细行：状态流转 + 原因记录 +
+ *     OutsourcingLineCancelled 事件（RREQ-DP-031）。
+ *
  * 落账顺序（与 workorder/listing 同取舍）：幂等记账 → 投影乐观推进（建单先落
  * draft 初始投影，无机器事件）→ 机器事件账本 → 域事件发布（BusinessEvent +
  * Outbox）。投影行先在是机器事件 append 的前置（PG 账本按投影行解析租户，
@@ -32,7 +43,9 @@
  */
 import {
   EventId,
+  OperationId,
   UserId,
+  makeCommandEnvelope,
   type CommandEnvelope,
   type CommittedOutcome,
   type IndeterminateOutcome,
@@ -47,13 +60,18 @@ import {
   type ApprovalFlowRuntime,
 } from '@smes/engine-flow';
 import type { TodoItem, TodoStore } from '../workbench/workbench-stores.js';
+import type { ExcelExport, ExcelSheet } from '../listing/excel-port.js';
 import {
   DEFAULT_DISPATCH_FLOW_CONFIG,
   DEFAULT_KIT_GATED_KINDS,
   dispatchKindLabel,
   dispatchStateLabel,
+  isDispatchOrderActive,
+  outsourcingLineStatusLabel,
+  outsourcingLineStatusOf,
   progressStageOfDispatchKind,
   type DispatchKind,
+  type DispatchStateId,
 } from './dispatch-config.js';
 import {
   DISPATCH_ORDER_AGGREGATE_TYPE,
@@ -63,6 +81,8 @@ import {
   makeDispatchCompletedEvent,
   makeDispatchCreatedEvent,
   makeDispatchStartedEvent,
+  makeDispatchTransferredEvent,
+  makeOutsourcingLineCancelledEvent,
   makeOutsourcingPricedEvent,
   provenanceOf,
   type DispatchMachineMilestone,
@@ -80,11 +100,14 @@ import {
   parseDispatchCompletePayload,
   parseDispatchCreatePayload,
   parseDispatchStartPayload,
+  parseDispatchTransferPayload,
+  parseOutsourcingLineCancelPayload,
   parseOutsourcingPriceBackfillPayload,
   type DispatchCommand,
   type DispatchCommandKind,
   type OutsourcingLinePayload,
 } from './dispatch-input.js';
+import { JsonTablesDispatchExcelPort, type DispatchExcelPort } from './dispatch-excel-port.js';
 import {
   DISPATCH_EMPTY_PRICE_SOURCE,
   DISPATCH_NOOP_INSPECTION_INTAKE,
@@ -144,6 +167,8 @@ export interface DispatchCrossModulePorts {
   readonly inspectionIntake: InspectionIntakePort;
   /** 打印端口（外协加工单——integration-print 组合根接线）。 */
   readonly print: DispatchPrintPort;
+  /** Excel 导出端口（派工单导出——组合根 ExcelJS 适配器；缺省 json-tables 回声）。 */
+  readonly excel: DispatchExcelPort;
 }
 
 const DEFAULT_NOW = (): string => new Date().toISOString();
@@ -176,6 +201,7 @@ export class DispatchService {
       priceSource: ports.priceSource ?? DISPATCH_EMPTY_PRICE_SOURCE,
       inspectionIntake: ports.inspectionIntake ?? DISPATCH_NOOP_INSPECTION_INTAKE,
       print: ports.print ?? DISPATCH_NOOP_PRINT_PORT,
+      excel: ports.excel ?? new JsonTablesDispatchExcelPort(),
     };
     this.options = {
       flowConfig: options.flowConfig ?? DEFAULT_DISPATCH_FLOW_CONFIG,
@@ -213,8 +239,12 @@ export class DispatchService {
         return this.completeOrder(envelope, this.requirePathId(pathId, kind));
       case 'dispatch.cancel.v1':
         return this.cancelOrder(envelope, this.requirePathId(pathId, kind));
+      case 'dispatch.transfer.v1':
+        return this.transferOrder(envelope, this.requirePathId(pathId, kind));
       case 'outsourcing.price.backfill.v1':
         return this.backfillPrice(envelope, this.requirePathId(pathId, kind));
+      case 'outsourcing.line.cancel.v1':
+        return this.cancelOutsourcingLine(envelope, this.requirePathId(pathId, kind));
     }
   }
 
@@ -254,6 +284,43 @@ export class DispatchService {
         );
       }
       kitEvidence = { kitCheckId: fact.id, refreshedAt: fact.refreshedAt };
+    }
+
+    // 同工序占用互斥（RREQ-DP-021，fix-wave-6 6a-1 口径 = 活跃（非终态）占用）：
+    // 同 (工作令, 图号, 工序) 在活跃派工单中至多占用一次——零件单头与外协明细行
+    // 共用一张占用账（源 is_dispatch 语义）；撤销/完工即释放可再派。
+    // 范围口径：源文档占用锚 = 工作令清单的工序行（令内唯一），故键含 workOrderId
+    // ——跨工作令同图号×工序不互斥（登记：PRD DP-021 未写令维，按源语义取令内）。
+    if (payload.kind === 'part') {
+      const occupancy = await this.occupancyMap(tenant);
+      const clash = occupancy.get(
+        occupancyKeyOf(payload.workOrderId, payload.drawingNo as string, payload.operationCode as string),
+      );
+      if (clash !== undefined) {
+        return rejected(
+          `图号 '${payload.drawingNo}' × 工序 '${payload.operationCode}' 已被${clash.source} '${clash.dispatchId}'（状态 ${clash.state}）占用——同一零件工序仅可有一张活跃派工单，待其完工/撤销后释放（RREQ-DP-021）`,
+        );
+      }
+    }
+    if (payload.kind === 'outsourcing') {
+      const occupancy = await this.occupancyMap(tenant);
+      const withinOrder = new Set<string>();
+      for (const [index, line] of payload.lines.entries()) {
+        if (line.drawingNo === null) continue; // 无图号行无法锚定工序占用键（口径登记）
+        const key = occupancyKeyOf(payload.workOrderId, line.drawingNo, line.processCode);
+        if (withinOrder.has(key)) {
+          return rejected(
+            `外协明细第 ${index + 1} 行（图号 '${line.drawingNo}' × 工序 '${line.processCode}'）与同单前文行占用同一零件工序——同单内亦不可重复派工（RREQ-DP-021）`,
+          );
+        }
+        withinOrder.add(key);
+        const clash = occupancy.get(key);
+        if (clash !== undefined) {
+          return rejected(
+            `外协明细第 ${index + 1} 行图号 '${line.drawingNo}' × 工序 '${line.processCode}' 已被${clash.source} '${clash.dispatchId}'（状态 ${clash.state}）占用——同一零件工序仅可有一张活跃派工单（RREQ-DP-021）`,
+          );
+        }
+      }
     }
 
     const dispatchId = newDispatchOrderId();
@@ -743,6 +810,124 @@ export class DispatchService {
     }
   }
 
+  // ---- dispatch.transfer（executing 单整批转单：换执行人/工序 + 审计事件快照） ----
+
+  /**
+   * 转单（RREQ-DP-024 我方形态，源《派工功能模块》§2.2.7 / 外协 §2.2.6——
+   * 「仅进行中可转」+ mes_transfer_operation 审计快照语义 → 事件账本形态）：
+   *  - 仅 executing 可转（源 dispatch_status=3 进行中；draft/assigned/done 均拒）；
+   *  - 换执行人/换工序至少其一（载荷判别）；新工序键不得撞他单活跃占用（DP-021）；
+   *  - 非状态机迁移：不写机器事件、不推进 objectVersion（账本重放口径不变，
+   *    完工等后续命令照常可用）；expectedRevision 仍做乐观并发；
+   *  - 审计 = 域事件账本追加 DispatchTransferred（前后全快照，append-only）；
+   *  - 换执行人时向新执行人推派工待办（assign 待办语义延续——执行人被动接收）。
+   */
+  private async transferOrder(
+    envelope: CommandEnvelope<DispatchCommand>,
+    dispatchId: string,
+  ): Promise<DispatchCommandResult> {
+    const payload = parseDispatchTransferPayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    const order = await this.loadOrder(tenant, dispatchId);
+    if (order === null) {
+      return rejected(`租户 '${tenant}' 内不存在派工单 '${dispatchId}'`);
+    }
+    if (envelope.expectedRevision !== order.objectVersion) {
+      return rejected(
+        `乐观锁冲突：expectedRevision=${envelope.expectedRevision}，派工单当前 objectVersion=${order.objectVersion}`,
+      );
+    }
+    if (order.state !== 'executing') {
+      return rejected(
+        `状态 '${order.state}' 不可转单（仅执行中 executing 可转——待开工后、完工前；源 §2.2.7 进行中口径）`,
+      );
+    }
+    const assigneeChanged = payload.assignee !== null && String(payload.assignee) !== String(order.assignee);
+    const operationChanged =
+      payload.operationCode !== null && payload.operationCode !== order.operationCode;
+    if (!assigneeChanged && !operationChanged) {
+      return rejected('转单无变更：新执行人/新工序均与当前一致（至少须实际变更其一）');
+    }
+    if (operationChanged && order.drawingNo !== null && payload.operationCode !== null) {
+      const occupancy = await this.occupancyMap(tenant);
+      const clash = occupancy.get(occupancyKeyOf(order.workOrderId, order.drawingNo, payload.operationCode));
+      if (clash !== undefined && clash.dispatchId !== dispatchId) {
+        return rejected(
+          `转单目标工序 '${payload.operationCode}' 已被${clash.source} '${clash.dispatchId}'（状态 ${clash.state}）占用——同一零件工序仅可有一张活跃派工单（RREQ-DP-021）`,
+        );
+      }
+    }
+    if (this.orders.transfer === undefined) {
+      return rejected(
+        `当前派工单存储实现不支持转单写入（transfer 能力缺失——PG 适配器合流接线前 fail-closed 拒绝）`,
+      );
+    }
+
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: DISPATCH_ORDER_AGGREGATE_TYPE,
+      aggregateId: dispatchId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const updated = await this.orders.transfer(tenant, dispatchId, order.objectVersion, {
+      ...(payload.assignee !== null ? { assignee: payload.assignee } : {}),
+      ...(payload.operationCode !== null ? { operationCode: payload.operationCode } : {}),
+    });
+    if (updated === null) {
+      return rejected(
+        `转单写入冲突：派工单 '${dispatchId}' 版本已变化（并发写入），拒绝继续`,
+      );
+    }
+
+    // 审计快照（事件账本 append-only——mes_transfer_operation 语义的我方形态）。
+    const payloadOut = {
+      kind: updated.kind,
+      workOrderId: updated.workOrderId,
+      drawingNo: updated.drawingNo,
+      fromAssignee: order.assignee === null ? null : String(order.assignee),
+      toAssignee: updated.assignee === null ? null : String(updated.assignee),
+      fromOperationCode: order.operationCode,
+      toOperationCode: updated.operationCode,
+      state: updated.state,
+      quantity: updated.quantity,
+      doneQty: updated.doneQty,
+      remark: payload.remark,
+      objectVersion: updated.objectVersion,
+      actor: envelope.issuedBy,
+    };
+    const event = makeDispatchTransferredEvent(this.domainEventBase(envelope), payloadOut, dispatchId);
+    await this.domainEvents.append(event);
+
+    // 换执行人 → 新执行人待办（开工待办已在 start 销账；转单后由新执行人接手）。
+    const todosCreated: TodoItem[] = [];
+    if (assigneeChanged && updated.assignee !== null) {
+      const todo = await this.todos.create({
+        tenant,
+        assignee: updated.assignee,
+        title: `派工转单待办：${updated.title}（数量 ${updated.quantity}）`,
+        source: DISPATCH_TODO_SOURCE,
+        refType: DISPATCH_TODO_REF_TYPE,
+        refId: dispatchId,
+      });
+      todosCreated.push(todo);
+    }
+
+    return {
+      status: 'committed',
+      newRevision: updated.objectVersion,
+      events: [event],
+      todosCreated,
+      todosCompleted: [],
+      dispatchOrder: updated,
+    };
+  }
+
   // ---- outsourcing.price.backfill（补录单价 → OutsourcingPriced） ----
 
   private async backfillPrice(
@@ -809,6 +994,100 @@ export class DispatchService {
     };
   }
 
+  // ---- outsourcing.line.cancel（取消外协明细行：状态流转 + 原因记录——RREQ-DP-031） ----
+
+  /**
+   * 取消外协（源文档 七：仅主单已派工/进行中且明细为已派工时可取消；原因选填
+   * ≤200 字）。我方口径：父单 assigned/executing（行推导态 dispatched）可取消；
+   * 父单 draft（行待派工未派出）/ done（行已质检）/ cancelled（父撤即行取消）拒绝。
+   * 效果：行落取消事实（cancelledAt + cancelReason）并 +1 版本（版本化数据同补录
+   * 口径）；行状态推导为已取消 → 释放工序占用（DP-021 占用账跳过已取消行）；
+   * 域事件 OutsourcingLineCancelled 记录行快照与原因（append-only 审计）。
+   */
+  private async cancelOutsourcingLine(
+    envelope: CommandEnvelope<DispatchCommand>,
+    lineId: string,
+  ): Promise<DispatchCommandResult> {
+    const payload = parseOutsourcingLineCancelPayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    const line = await this.outsourcingLines.find(tenant, lineId);
+    if (line === null) {
+      return rejected(`租户 '${tenant}' 内不存在外协明细 '${lineId}'`);
+    }
+    if (envelope.expectedRevision !== line.objectVersion) {
+      return rejected(
+        `乐观锁冲突：expectedRevision=${envelope.expectedRevision}，外协明细当前 objectVersion=${line.objectVersion}`,
+      );
+    }
+    const order = await this.orders.find(tenant, line.dispatchId);
+    if (order === null) {
+      return rejected(`外协明细 '${lineId}' 的派工单 '${line.dispatchId}' 不存在（投影数据级异常，拒绝操作）`);
+    }
+    if (line.cancelledAt !== null) {
+      return rejected(`外协明细行 ${line.lineNo} 已取消，不可重复取消`);
+    }
+    if (order.state === 'draft') {
+      return rejected(`派工单待派工（明细行推导态=待派工，尚未派出）——不可取消外协，仅已派工/执行中单的明细可取消`);
+    }
+    if (order.state === 'done') {
+      return rejected(`派工单已完工（明细行推导态=已质检）——已质检明细不可取消外协（源文档 七）`);
+    }
+    if (order.state === 'cancelled') {
+      return rejected(`派工单已撤销（明细行随父单取消）——不可再对明细单独取消`);
+    }
+    if (this.outsourcingLines.cancel === undefined) {
+      return rejected(
+        `当前外协明细存储实现不支持取消写入（cancel 能力缺失——PG 适配器合流接线前 fail-closed 拒绝）`,
+      );
+    }
+
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: OUTSOURCING_LINE_AGGREGATE_TYPE,
+      aggregateId: lineId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const updated = await this.outsourcingLines.cancel(tenant, lineId, line.objectVersion, {
+      cancelReason: payload.reason,
+      cancelledAt: this.now(),
+    });
+    if (updated === null) {
+      return rejected(`取消外协写入冲突：明细 '${lineId}' 版本已变化（并发写入），拒绝继续`);
+    }
+
+    const payloadOut = {
+      dispatchId: updated.dispatchId,
+      dispatchState: order.state,
+      lineNo: updated.lineNo,
+      processCode: updated.processCode,
+      drawingNo: updated.drawingNo,
+      supplierRef: updated.supplierRef,
+      quantity: updated.quantity,
+      previousStatus: outsourcingLineStatusOf(line, order.state),
+      status: 'cancelled',
+      cancelReason: updated.cancelReason,
+      objectVersion: updated.objectVersion,
+      actor: envelope.issuedBy,
+    };
+    const event = makeOutsourcingLineCancelledEvent(this.domainEventBase(envelope), payloadOut, lineId);
+    await this.domainEvents.append(event);
+
+    return {
+      status: 'committed',
+      newRevision: updated.objectVersion,
+      events: [event],
+      todosCreated: [],
+      todosCompleted: [],
+      outsourcingLines: [updated],
+    };
+  }
+
   // ---- 查询 ----
 
   /** 六类派工单列表（可选 kind/状态/工作令/执行人过滤；createdAt 降序）。 */
@@ -819,7 +1098,7 @@ export class DispatchService {
     return this.orders.list(tenant, filter);
   }
 
-  /** 派工单详情：单据头 + 外协明细行（lineNo 升序）+ 机器迁移里程碑。 */
+  /** 派工单详情：单据头 + 外协明细行（行状态随行，lineNo 升序）+ 机器迁移里程碑。 */
   async dispatchDetail(
     tenant: TenantId,
     dispatchId: string,
@@ -832,11 +1111,15 @@ export class DispatchService {
       order.kind === 'outsourcing'
         ? await this.outsourcingLines.listByDispatch(tenant, dispatchId)
         : [];
+    const lineViews = lines.map((line) => {
+      const status = outsourcingLineStatusOf(line, order.state);
+      return { ...line, status, statusLabel: outsourcingLineStatusLabel(status) };
+    });
     const page = await this.machineEvents.readByAggregate({
       id: dispatchId,
       type: DISPATCH_ORDER_AGGREGATE_TYPE,
     });
-    return { order, outsourcingLines: lines, milestones: machineMilestones(page.events) };
+    return { order, outsourcingLines: lineViews, milestones: machineMilestones(page.events) };
   }
 
   /** 按人任务视图（执行人名下已派工/执行中的任务集）。 */
@@ -851,7 +1134,7 @@ export class DispatchService {
     return this.orders.list(tenant, { workOrderId });
   }
 
-  /** 外协单供应商维度（行集 + 派工单投影 join；lineNo 升序）。 */
+  /** 外协单供应商维度（行集 + 派工单投影 join；lineNo 升序；行状态/原因随行）。 */
   async outsourcingBySupplier(
     tenant: TenantId,
     supplierRef: string,
@@ -861,6 +1144,7 @@ export class DispatchService {
     for (const line of lines) {
       const order = await this.orders.find(tenant, line.dispatchId);
       if (order === null) continue; // 行必有投影行（创建原子落）；缺失 = 数据级异常，跳行不炸查询
+      const status = outsourcingLineStatusOf(line, order.state);
       rows.push({
         lineId: line.id,
         dispatchId: line.dispatchId,
@@ -876,6 +1160,10 @@ export class DispatchService {
         priceSource: line.priceSource,
         marginPermyriad: line.marginPermyriad,
         promisedAt: line.promisedAt,
+        cancelledAt: line.cancelledAt,
+        cancelReason: line.cancelReason,
+        status,
+        statusLabel: outsourcingLineStatusLabel(status),
         objectVersion: line.objectVersion,
       });
     }
@@ -910,6 +1198,8 @@ export class DispatchService {
         quantity: line.quantity,
         unitPriceLabel: line.unitPriceMinor === null ? '未定价' : formatMinor(line.unitPriceMinor),
         promisedAt: line.promisedAt,
+        statusLabel: outsourcingLineStatusLabel(outsourcingLineStatusOf(line, detail.order.state)),
+        cancelReason: line.cancelReason,
       })),
     };
   }
@@ -939,7 +1229,242 @@ export class DispatchService {
     return facts;
   }
 
+  // ---- 导出 / 状态统计 / 批操作（fix-wave-6 6a-1：RREQ-DP-026 / DP-032） ----
+
+  /**
+   * 派工单 Excel 导出（RREQ-DP-026：仅导出不写库；列集与打印面一致）。
+   * 两表固定产出：「零件派工单」表头面 + 工艺属性列（材料/尺寸——快照字段；
+   * 上/下道工序与预备/总工时列随 S1 打印版式面（DP-023/025）补）；「外协派工单」
+   * 按明细行展开，列集对齐外协加工单打印面（源 七.4：末列增状态/取消原因）。
+   * 过滤维度与列表一致；其余 kind（装配/电气/售后/零工）不在 DP-026 打印列集
+   * 范围（源文档机加工/外协两模板），不入表（口径登记）。
+   */
+  async exportDispatchOrders(
+    tenant: TenantId,
+    filter?: ListDispatchOrdersFilter,
+  ): Promise<ExcelExport> {
+    const orders = await this.orders.list(tenant, filter);
+    const partRows: string[][] = [];
+    const outsourcingRows: string[][] = [];
+    for (const order of orders) {
+      if (order.kind === 'part') {
+        partRows.push([
+          order.id,
+          order.workOrderId ?? '',
+          order.drawingNo ?? '',
+          order.operationCode ?? '',
+          order.material ?? '',
+          order.sizeSpec ?? '',
+          String(order.quantity),
+          String(order.doneQty),
+          order.assignee === null ? '' : String(order.assignee),
+          dispatchStateLabel(order.state),
+          order.dueAt === null ? '' : order.dueAt.slice(0, 10),
+          order.createdAt.slice(0, 10),
+        ]);
+        continue;
+      }
+      if (order.kind === 'outsourcing') {
+        const lines = await this.outsourcingLines.listByDispatch(tenant, order.id);
+        for (const line of lines) {
+          const status = outsourcingLineStatusOf(line, order.state);
+          outsourcingRows.push([
+            order.id,
+            order.workOrderId ?? '',
+            dispatchStateLabel(order.state),
+            String(line.lineNo),
+            line.processCode,
+            line.drawingNo ?? '',
+            line.supplierName ?? line.supplierRef,
+            String(line.quantity),
+            line.unitPriceMinor === null ? '未定价' : formatMinor(line.unitPriceMinor),
+            line.promisedAt === null ? '' : line.promisedAt.slice(0, 10),
+            outsourcingLineStatusLabel(status),
+            line.cancelReason ?? '',
+          ]);
+        }
+      }
+    }
+    const partSheet: ExcelSheet = {
+      name: '零件派工单',
+      header: [
+        '派工单号', '工作令', '图号', '工序', '材料', '尺寸',
+        '派工数量', '完工数量', '执行人', '状态', '要求完成', '创建日期',
+      ],
+      rows: partRows,
+    };
+    const outsourcingSheet: ExcelSheet = {
+      name: '外协派工单',
+      header: [
+        '派工单号', '工作令', '状态', '行号', '工序', '图号', '供应商',
+        '数量', '单价', '交期', '状态', '取消原因',
+      ],
+      rows: outsourcingRows,
+    };
+    return this.ports.excel.exportWorkbook([partSheet, outsourcingSheet]);
+  }
+
+  /**
+   * 页眉状态统计（RREQ-DP-032：计数随当前搜索口径、非筛选动作）。五态全键
+   * 零基返回（四态主干 + 撤销终态）；state 维不入过滤（统计即跨态计数面）。
+   */
+  async dispatchOrderStats(
+    tenant: TenantId,
+    filter?: ListDispatchOrdersFilter,
+  ): Promise<Readonly<Record<DispatchStateId, number>>> {
+    const orders = await this.orders.list(tenant, { ...filter, state: undefined });
+    const counts: Record<DispatchStateId, number> = { draft: 0, assigned: 0, executing: 0, done: 0, cancelled: 0 };
+    for (const order of orders) {
+      if (order.state in counts) counts[order.state as DispatchStateId] += 1;
+    }
+    return counts;
+  }
+
+  /**
+   * 批量派工下发（RREQ-DP-032 多单维度：勾选均须待下发 draft——非待下发整批拒绝）。
+   * 我方 assigned 态判别须执行人：整批统一派到同一执行人（与源「批量派工不带
+   * 工人」差异登记——状态机使然）。预检全过才逐单执行；逐单子命令信封
+   * （确定性子 operationId = `<批 operationId>#<序>-<单 id>`，重放幂等）。
+   */
+  async batchAssign(
+    tenant: TenantId,
+    actor: UserId,
+    input: {
+      readonly operationId: OperationId;
+      readonly assignee: UserId;
+      readonly remark: string | null;
+      readonly items: readonly { readonly id: string; readonly expectedRevision: number }[];
+    },
+  ): Promise<DispatchBatchResult> {
+    return this.runBatch(tenant, actor, 'assign', input);
+  }
+
+  /**
+   * 批量删除（RREQ-DP-032：仅待下发；逐类豁免——源文档仅零件/外协提供批量删除，
+   * 装配/电气/零工/售后豁免）。我方无逻辑删除，落 cancelled 终态（与单张撤销同语义，
+   * 释放工序占用）。
+   */
+  async batchCancel(
+    tenant: TenantId,
+    actor: UserId,
+    input: {
+      readonly operationId: OperationId;
+      readonly remark: string | null;
+      readonly items: readonly { readonly id: string; readonly expectedRevision: number }[];
+    },
+  ): Promise<DispatchBatchResult> {
+    return this.runBatch(tenant, actor, 'cancel', input);
+  }
+
+  /** 批操作共用骨架：预检（整批拒绝，零副作用）→ 逐单子命令执行。 */
+  private async runBatch(
+    tenant: TenantId,
+    actor: UserId,
+    mode: 'assign' | 'cancel',
+    input: {
+      readonly operationId: OperationId;
+      readonly assignee?: UserId;
+      readonly remark: string | null;
+      readonly items: readonly { readonly id: string; readonly expectedRevision: number }[];
+    },
+  ): Promise<DispatchBatchResult> {
+    const verb = mode === 'assign' ? '批量派工下发' : '批量删除（撤销）';
+    if (mode === 'assign' && input.assignee === undefined) {
+      return rejected('批量派工下发缺执行人（内部装配缺口，拒绝执行）');
+    }
+    const targets: DispatchOrder[] = [];
+    for (const item of input.items) {
+      const order = await this.orders.find(tenant, item.id);
+      if (order === null) {
+        return rejected(`${verb}整批拒绝：派工单 '${item.id}' 不存在`);
+      }
+      if (order.state !== 'draft') {
+        return rejected(
+          `${verb}整批拒绝：派工单 '${item.id}' 状态为 '${order.state}'（仅待下发 draft 可批量操作——非待下发行应置灰）`,
+        );
+      }
+      if (item.expectedRevision !== order.objectVersion) {
+        return rejected(
+          `${verb}整批拒绝：派工单 '${item.id}' 乐观锁冲突（expectedRevision=${item.expectedRevision}，当前 objectVersion=${order.objectVersion}）`,
+        );
+      }
+      if (mode === 'cancel' && order.kind !== 'part' && order.kind !== 'outsourcing') {
+        return rejected(
+          `${verb}整批拒绝：派工单 '${item.id}' 类别 '${order.kind}' 按源文档豁免口径不提供批量删除（仅零件/外协；装配/电气/零工/售后豁免）`,
+        );
+      }
+      targets.push(order);
+    }
+
+    const items: DispatchBatchItemResult[] = [];
+    const todosCreated: TodoItem[] = [];
+    for (const [index, order] of targets.entries()) {
+      const commandKind: DispatchCommandKind = mode === 'assign' ? 'dispatch.assign.v1' : 'dispatch.cancel.v1';
+      const envelope = makeCommandEnvelope<DispatchCommand>({
+        tenantId: tenant,
+        issuedBy: actor,
+        // 确定性子幂等键：同批重放（重试/中断续跑）claim 拒绝 → 该单跳过不重建。
+        operationId: OperationId.create(`${input.operationId}#${index + 1}-${order.id}`),
+        expectedRevision: input.items[index]!.expectedRevision,
+        issuedAt: this.now(),
+        command: {
+          kind: commandKind,
+          payload:
+            mode === 'assign'
+              ? { assignee: String(input.assignee), ...(input.remark === null ? {} : { remark: input.remark }) }
+              : { ...(input.remark === null ? {} : { remark: input.remark }) },
+        },
+      });
+      const outcome =
+        mode === 'assign'
+          ? await this.assignOrder(envelope, order.id)
+          : await this.cancelOrder(envelope, order.id);
+      if (outcome.status === 'committed') {
+        items.push({ id: order.id, status: 'committed', newRevision: outcome.newRevision });
+        todosCreated.push(...outcome.todosCreated);
+      } else {
+        items.push({ id: order.id, status: 'rejected', reason: outcome.reason });
+      }
+    }
+    return { status: 'committed', items, todosCreated };
+  }
+
   // ---- 私有辅助 ----
+
+  // ---- 同工序占用账（RREQ-DP-021） ----
+
+  /**
+   * 活跃占用快照：遍历活跃（非终态）派工单——零件单头占 (令,图号,工序)；外协单
+   * 逐明细行占键（已取消行不占用）。实现取舍：内存扫描（初版单量级足够）；PG
+   * 适配器合流时可换索引化查询（键面同口径）。
+   */
+  private async occupancyMap(tenant: TenantId): Promise<ReadonlyMap<string, DispatchOccupancyEntry>> {
+    const map = new Map<string, DispatchOccupancyEntry>();
+    for (const order of await this.orders.list(tenant)) {
+      if (!isDispatchOrderActive(order.state)) continue; // 撤销/完工即释放
+      if (order.kind === 'part' && order.drawingNo !== null && order.operationCode !== null) {
+        map.set(occupancyKeyOf(order.workOrderId, order.drawingNo, order.operationCode), {
+          dispatchId: order.id,
+          lineId: null,
+          source: '零件派工单',
+          state: order.state,
+        });
+        continue;
+      }
+      if (order.kind === 'outsourcing') {
+        for (const line of await this.outsourcingLines.listByDispatch(tenant, order.id)) {
+          if (line.drawingNo === null || line.cancelledAt !== null) continue; // 无图号/已取消行不占用
+          map.set(occupancyKeyOf(order.workOrderId, line.drawingNo, line.processCode), {
+            dispatchId: order.id,
+            lineId: line.id,
+            source: '外协派工单明细行',
+            state: order.state,
+          });
+        }
+      }
+    }
+    return map;
+  }
 
   /** 域事件公共基（eventId/时刻/溯源——全部命令产出共用）。 */
   private domainEventBase(envelope: CommandEnvelope<DispatchCommand>): {
@@ -1040,13 +1565,52 @@ export class DispatchService {
 
 // ---- 查询视图形状 ----
 
+/** 同工序占用账条目（互斥拒绝理由锚点——RREQ-DP-021）。 */
+interface DispatchOccupancyEntry {
+  readonly dispatchId: string;
+  /** 外协明细行占用时的行 id（零件单头占用为 null）。 */
+  readonly lineId: string | null;
+  /** 占用来源中文（拒绝文案用）。 */
+  readonly source: string;
+  readonly state: string;
+}
+
+/** 占用键：(工作令, 图号, 工序)；null 工作令按空串段（无令单互斥保守）。 */
+function occupancyKeyOf(workOrderId: string | null, drawingNo: string, operationCode: string): string {
+  return `${workOrderId ?? ''}|${drawingNo}|${operationCode}`;
+}
+
+/** 批操作单行结果（RREQ-DP-032；预检整批拒绝时无 items，逐单执行后逐行回报）。 */
+export interface DispatchBatchItemResult {
+  readonly id: string;
+  readonly status: 'committed' | 'rejected';
+  readonly reason?: string;
+  readonly newRevision?: number;
+}
+
+/** 批操作成功结果：逐单结果集 + 聚合待办（批量派工下发创建的执行人待办）。 */
+export interface DispatchBatchCommitted {
+  readonly status: 'committed';
+  readonly items: readonly DispatchBatchItemResult[];
+  readonly todosCreated: readonly TodoItem[];
+}
+
+export type DispatchBatchResult = DispatchBatchCommitted | RejectedOutcome;
+
+/** 外协明细行读面（行状态推导随行——RREQ-DP-031）。 */
+export type OutsourcingLineView = OutsourcingLine & {
+  /** 行推导状态（pending/dispatched/inspected/cancelled）。 */
+  readonly status: string;
+  readonly statusLabel: string;
+};
+
 export interface DispatchDetail {
   readonly order: DispatchOrder;
-  readonly outsourcingLines: readonly OutsourcingLine[];
+  readonly outsourcingLines: readonly OutsourcingLineView[];
   readonly milestones: readonly DispatchMachineMilestone[];
 }
 
-/** 外协单供应商维度行（明细行 × 派工单投影 join）。 */
+/** 外协单供应商维度行（明细行 × 派工单投影 join；行状态/取消原因随行）。 */
 export interface OutsourcingSupplierRow {
   readonly lineId: string;
   readonly dispatchId: string;
@@ -1062,6 +1626,11 @@ export interface OutsourcingSupplierRow {
   readonly priceSource: string | null;
   readonly marginPermyriad: number | null;
   readonly promisedAt: string | null;
+  readonly cancelledAt: string | null;
+  readonly cancelReason: string | null;
+  /** 行推导状态（RREQ-DP-031）。 */
+  readonly status: string;
+  readonly statusLabel: string;
   readonly objectVersion: number;
 }
 

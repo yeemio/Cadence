@@ -6,18 +6,28 @@
  * service.execute。
  *
  * 权限码（04-dispatch.md §5 最小集：dispatch:read|write|assign|cancel、
- * outsourcing:read|price）：
+ * outsourcing:read|price；fix-wave-6 6a-1 增量路由见尾部注记）：
  *   POST /dispatch/orders                        dispatch:write  （六类创建，含齐套拦截）
  *   GET  /dispatch/orders                        dispatch:read   （?kind=&state=&workOrderId=&assignee=）
+ *   GET  /dispatch/orders/export                 dispatch:read   （Excel 导出——仅导出不写库，6a-1）
+ *   GET  /dispatch/orders/stats                  dispatch:read   （页眉五态计数，6a-1）
  *   GET  /dispatch/orders/:id                    dispatch:read   （详情：外协行 + 里程碑）
  *   POST /dispatch/orders/:id/assign             dispatch:assign （派工到人 + 待办）
  *   POST /dispatch/orders/:id/start              dispatch:write  （开工）
  *   POST /dispatch/orders/:id/complete           dispatch:write  （完工；外协单联动回厂触发）
  *   POST /dispatch/orders/:id/cancel             dispatch:cancel （撤销：draft/assigned）
+ *   POST /dispatch/orders/:id/transfer           dispatch:assign （转单：executing 换执行人/
+ *                                                                 工序 + 审计事件，6a-1）
+ *   POST /dispatch/orders/batch-assign           dispatch:assign （批量派工下发：均 draft，
+ *                                                                 整批拒绝，6a-1）
+ *   POST /dispatch/orders/batch-cancel           dispatch:cancel （批量删除：均 draft 且
+ *                                                                 零件/外协——逐类豁免，6a-1）
  *   GET  /dispatch/tasks                         dispatch:read   （按人任务视图；?assignee= 必填）
  *   GET  /dispatch/work-orders/:id/tasks         dispatch:read   （按序任务视图）
  *   GET  /outsourcing/lines                      outsourcing:read（供应商维度；?supplierRef= 必填）
  *   POST /outsourcing/lines/:id/price-backfill   outsourcing:price（补录单价→OutsourcingPriced）
+ *   POST /outsourcing/lines/:id/cancel           dispatch:cancel （取消外协明细行——取消/
+ *                                                                 撤销动作族权限码复用，6a-1）
  *   GET  /outsourcing/orders/:id/print-data      outsourcing:read（外协加工单打印数据）
  *   POST /outsourcing/orders/:id/print           outsourcing:read（打印提交——读权限动作：
  *                                                 打印不改变业务状态，只消费打印数据）
@@ -30,6 +40,8 @@ import { TenantContext } from '../core/tenant-context.js';
 import { DispatchInputError } from './dispatch-errors.js';
 import {
   parseAssigneeFilter,
+  parseBatchAssignBody,
+  parseBatchCancelBody,
   parseCommandBodyForKind,
   parseIdParam,
   parseKindFilter,
@@ -84,6 +96,40 @@ export class DispatchOrdersController {
       orders: await this.dispatch.listDispatchOrders(this.tenantContext.current(), {
         ...(parseKindFilter(kind) === undefined ? {} : { kind: parseKindFilter(kind) }),
         ...(parseStateFilter(state) === undefined ? {} : { state: parseStateFilter(state) }),
+        ...(parseWorkOrderFilter(workOrderId) === undefined ? {} : { workOrderId: parseWorkOrderFilter(workOrderId) }),
+        ...(parseAssigneeFilter(assignee) === undefined ? {} : { assignee: parseAssigneeFilter(assignee) }),
+      }),
+    };
+  }
+
+  @Get('orders/export')
+  @RequirePermission('dispatch:read')
+  async exportOrders(
+    @Query('kind') kind?: string,
+    @Query('state') state?: string,
+    @Query('workOrderId') workOrderId?: string,
+    @Query('assignee') assignee?: string,
+  ): Promise<{ export: Awaited<ReturnType<DispatchService['exportDispatchOrders']>> }> {
+    return {
+      export: await this.dispatch.exportDispatchOrders(this.tenantContext.current(), {
+        ...(parseKindFilter(kind) === undefined ? {} : { kind: parseKindFilter(kind) }),
+        ...(parseStateFilter(state) === undefined ? {} : { state: parseStateFilter(state) }),
+        ...(parseWorkOrderFilter(workOrderId) === undefined ? {} : { workOrderId: parseWorkOrderFilter(workOrderId) }),
+        ...(parseAssigneeFilter(assignee) === undefined ? {} : { assignee: parseAssigneeFilter(assignee) }),
+      }),
+    };
+  }
+
+  @Get('orders/stats')
+  @RequirePermission('dispatch:read')
+  async stats(
+    @Query('kind') kind?: string,
+    @Query('workOrderId') workOrderId?: string,
+    @Query('assignee') assignee?: string,
+  ): Promise<{ counts: Awaited<ReturnType<DispatchService['dispatchOrderStats']>> }> {
+    return {
+      counts: await this.dispatch.dispatchOrderStats(this.tenantContext.current(), {
+        ...(parseKindFilter(kind) === undefined ? {} : { kind: parseKindFilter(kind) }),
         ...(parseWorkOrderFilter(workOrderId) === undefined ? {} : { workOrderId: parseWorkOrderFilter(workOrderId) }),
         ...(parseAssigneeFilter(assignee) === undefined ? {} : { assignee: parseAssigneeFilter(assignee) }),
       }),
@@ -146,6 +192,47 @@ export class DispatchOrdersController {
       envelopeOf(this.tenantContext, request, body, 'dispatch.cancel.v1'),
       parseIdParam(id, '派工单 id'),
     );
+  }
+
+  @Post('orders/:id/transfer')
+  @RequirePermission('dispatch:assign')
+  async transfer(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<DispatchCommandResult> {
+    return this.dispatch.execute(
+      envelopeOf(this.tenantContext, request, body, 'dispatch.transfer.v1'),
+      parseIdParam(id, '派工单 id'),
+    );
+  }
+
+  @Post('orders/batch-assign')
+  @RequirePermission('dispatch:assign')
+  async batchAssign(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<Awaited<ReturnType<DispatchService['batchAssign']>>> {
+    const parsed = parseBatchAssignBody(body);
+    return this.dispatch.batchAssign(
+      this.tenantContext.current(),
+      request[REQUEST_USER_KEY],
+      { operationId: parsed.operationId, assignee: parsed.assignee, remark: parsed.remark, items: parsed.items },
+    );
+  }
+
+  @Post('orders/batch-cancel')
+  @RequirePermission('dispatch:cancel')
+  async batchCancel(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<Awaited<ReturnType<DispatchService['batchCancel']>>> {
+    const parsed = parseBatchCancelBody(body);
+    return this.dispatch.batchCancel(this.tenantContext.current(), request[REQUEST_USER_KEY], {
+      operationId: parsed.operationId,
+      remark: parsed.remark,
+      items: parsed.items,
+    });
   }
 }
 
@@ -220,6 +307,20 @@ export class OutsourcingController {
   ): Promise<DispatchCommandResult> {
     return this.dispatch.execute(
       envelopeOf(this.tenantContext, request, body, 'outsourcing.price.backfill.v1'),
+      parseIdParam(id, '外协明细 id'),
+    );
+  }
+
+  /** 取消外协明细行（6a-1，RREQ-DP-031）：取消/撤销动作族——复用 dispatch:cancel。 */
+  @Post('lines/:id/cancel')
+  @RequirePermission('dispatch:cancel')
+  async cancelLine(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<DispatchCommandResult> {
+    return this.dispatch.execute(
+      envelopeOf(this.tenantContext, request, body, 'outsourcing.line.cancel.v1'),
       parseIdParam(id, '外协明细 id'),
     );
   }

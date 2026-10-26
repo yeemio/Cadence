@@ -8,15 +8,19 @@
  * 取舍（SSE vs WS）与节拍设计见 screen-broadcast.ts 文件头。
  *
  * 端点面：
- *  - GET /screen/digital-operation —— 快照查询（screen:read 自定义权限码——
- *    大屏无角色模型，通道权限 OQ-3 开放，本端点按已登录会话 + 精确码放行）；
+ *  - GET /screen/digital-operation —— 快照查询（report:read 门禁，6a-3 裁决
+ *    2 修复：此前两端点未声明权限码 = AuthGuard 语义公开路由，零凭据 200。
+ *    权限码取舍（写明）：复用既有 'report:read'（standardreports 控制器同码
+ *    先例——大屏快照/A10 日表是只读报表面，与标准报表同一资源词族），不新造
+ *    'screen:read'——新码需同时落角色策略种子，否则全租户无人有权=端点死锁；
+ *    report:read 已随报表角色面存在，最小权限集变更）；
  *  - GET /screen/digital-operation/stream —— SSE 推送通道（EventSource 不能
  *    带 Authorization 头 → 会话 token 经 ?token= 查询参传入；校验语义与
  *    AuthGuard 同源：resolveSession + 会话租户 = 请求租户。开放访问部署形态
  *    SMES_SCREEN_PUBLIC_STREAM=on 显式解锁——源契约通道无鉴权（OQ-3 待定），
  *    Cadence 缺省收紧为带 token，取舍写明不静默）；
  *  - GET /screen/machining-daily-stats —— A10 日表最近 N 天（?days=30 上限
- *    366；screen:read）。
+ *    366；report:read，同快照端点取舍）。
  *
  * 激活语义：仅经 MODULES_ENABLED 显式开启（同 payroll/maintenance 专业包——
  * 激活价）；关闭时端点/节拍/权限码全部不可见。
@@ -32,6 +36,7 @@ import {
   AuthService,
   DigitalOperationScreenService,
   MachiningDailyStatsService,
+  RequirePermission,
   TenantContext,
   type DigitalOperationScreenConfig,
   type MachiningDailyStatsStore,
@@ -71,13 +76,15 @@ export class ScreenQueriesController {
     private readonly daily: MachiningDailyStatsService,
   ) {}
 
-  /** 全屏数据帧快照（按需聚合一帧；screen:read）。 */
+  /** 全屏数据帧快照（按需聚合一帧；report:read——文件头权限码取舍）。 */
+  @RequirePermission('report:read')
   @Get('digital-operation')
   async snapshot(): Promise<unknown> {
     return this.screen.buildFrame(this.tenantContext.current());
   }
 
-  /** A10 日统计最近 N 天（降序；?days 缺省 30、上限 366；screen:read）。 */
+  /** A10 日统计最近 N 天（降序；?days 缺省 30、上限 366；report:read）。 */
+  @RequirePermission('report:read')
   @Get('machining-daily-stats')
   async dailyStats(@Query('days') days?: string): Promise<unknown> {
     const parsed = days === undefined ? 30 : Number(days);

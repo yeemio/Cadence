@@ -1,10 +1,17 @@
 /**
  * 外协管理页（S2 批次）：供应商维度外协明细（supplierRef 必填）+ 单价补录 +
  * 打印数据读回。外协取价实时联动 baseline 外协计价规则（后端能力）。
+ * fix-wave-6 6a-1 增量：明细行状态/取消原因列（RREQ-DP-031）+ 取消外协操作
+ * （仅已派工行可选；原因选填 ≤200 字；行取消释放工序占用）。
  */
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { backfillOutsourcingPrice, getOutsourcingPrintData, listOutsourcingLines } from '../../data/dispatchApi';
+import {
+  backfillOutsourcingPrice,
+  cancelOutsourcingLine,
+  getOutsourcingPrintData,
+  listOutsourcingLines,
+} from '../../data/dispatchApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, RowDetail } from '../../components/ModuleTable';
 import { Button } from '@/components/ui/button';
@@ -19,7 +26,9 @@ const LINE_COLUMNS = [
   { key: 'drawingNo', label: '图号', mono: true },
   { key: 'quantity', label: '数量' },
   { key: 'unitPriceMinor', label: '单价（分）' },
-  { key: 'state', label: '状态', mono: true },
+  { key: 'dispatchState', label: '单状态', mono: true },
+  { key: 'statusLabel', label: '行状态' },
+  { key: 'cancelReason', label: '取消原因' },
   { key: 'objectVersion', label: '版本', mono: true },
 ];
 
@@ -29,6 +38,7 @@ export function OutsourcingLinesPage() {
   const [loadedSupplier, setLoadedSupplier] = useState<string | null>(null);
   const [selectedLine, setSelectedLine] = useState<Record<string, unknown> | null>(null);
   const [unitPriceMinor, setUnitPriceMinor] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   const [printOrderId, setPrintOrderId] = useState('');
   const [loadedPrintOrderId, setLoadedPrintOrderId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<CommandOutcomeView | null>(null);
@@ -54,6 +64,28 @@ export function OutsourcingLinesPage() {
       if (result.committed) {
         queryClient.invalidateQueries({ queryKey: ['outsourcing'] });
         setUnitPriceMinor('');
+      }
+    },
+    onError: (error) =>
+      setOutcome({
+        committed: false,
+        status: 'error',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+  });
+
+  // 取消外协（6a-1 RREQ-DP-031）：仅已派工（status=dispatched）行可取消；原因选填 ≤200。
+  const selectedLineCancellable = selectedLine !== null && String(selectedLine['status']) === 'dispatched';
+  const cancelMutation = useMutation({
+    mutationFn: () =>
+      cancelOutsourcingLine(String(selectedLine?.['id']), selectedLine as Record<string, unknown>, {
+        ...(cancelReason.trim().length > 0 ? { reason: cancelReason.trim() } : {}),
+      }),
+    onSuccess: (result) => {
+      setOutcome(result);
+      if (result.committed) {
+        queryClient.invalidateQueries({ queryKey: ['outsourcing'] });
+        setCancelReason('');
       }
     },
     onError: (error) =>
@@ -119,6 +151,24 @@ export function OutsourcingLinesPage() {
               onClick={() => backfillMutation.mutate()}
             >
               补录单价
+            </Button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="os-cancel-reason">取消外协原因（选填，≤200 字）——作用于选中行（仅已派工行）</Label>
+              <Input
+                id="os-cancel-reason"
+                maxLength={200}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+              />
+            </div>
+            <Button
+              variant="outline"
+              disabled={cancelMutation.isPending || !selectedLineCancellable}
+              onClick={() => cancelMutation.mutate()}
+            >
+              取消外协
             </Button>
           </div>
           {outcome !== null && <CommandOutcomeHint outcome={outcome} />}

@@ -37,6 +37,7 @@ import {
 import { DispatchInputError } from '../../src/dispatch/dispatch-errors.js';
 import {
   parseDispatchCreatePayload,
+  parseDispatchTransferPayload,
   parseOutsourcingPriceBackfillPayload,
   type DispatchCommand,
 } from '../../src/dispatch/dispatch-input.js';
@@ -184,6 +185,15 @@ function mustBeRejected(result: DispatchCommandResult, reasonMatch: string): voi
   expect((result as { readonly reason: string }).reason).toContain(reasonMatch);
 }
 
+/** 批操作结果（DispatchBatchResult 形状）的拒绝断言。 */
+function mustBatchBeRejected(
+  result: { readonly status: string; readonly reason?: string },
+  reasonMatch: string,
+): void {
+  expect(result.status).toBe('rejected');
+  expect(result.reason ?? '').toContain(reasonMatch);
+}
+
 /** 零件派工创建（图号×工序×工艺属性随单）。 */
 const PART_CREATE = {
   kind: 'part',
@@ -219,6 +229,21 @@ function outsourcingCreatePayload(): Record<string, unknown> {
       },
     ],
   };
+}
+
+/** fix-wave-6 6a-1 测试板（与查询视图 seedBoard 同构：part(draft)+outsourcing(assigned)+assembly(draft)）。 */
+async function seedBoardFor(h: ReturnType<typeof newHarness>): Promise<void> {
+  h.kitCheck.seed('wo-1', true);
+  await committed(await h.service.execute(envelopeOf('dispatch.create.v1', PART_CREATE))); // wo-1 part
+  const created = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', outsourcingCreatePayload())));
+  await committed(
+    await h.service.execute(envelopeOf('dispatch.assign.v1', { assignee: 'u-worker-01' }, 1), created.dispatchOrder!.id),
+  );
+  await committed(
+    await h.service.execute(
+      envelopeOf('dispatch.create.v1', { kind: 'assembly', workOrderId: 'wo-1', operationCode: 'proc-assemble', quantity: 1 }),
+    ),
+  );
 }
 
 // ---- 状态机配置与词汇 ----
@@ -285,11 +310,18 @@ describe('dispatch.create：六类派工单创建', () => {
     expect(await h.domainEvents.pendingOutbox()).toHaveLength(1);
   });
 
-  it('幂等：同 operationId 重放被拒', async () => {
+  it('幂等：同 operationId 重放被拒（fix-wave-6 6a-1 起：占用互斥检先行——重放即重复占键）', async () => {
     const h = newHarness();
     const envelope = envelopeOf('dispatch.create.v1', PART_CREATE);
     await committed(await h.service.execute(envelope));
-    mustBeRejected(await h.service.execute(envelope), '已落账');
+    // 重放被拒（不双写）：零件单成功后自身占用图号×工序键 → 占用互斥先于幂等账拒绝
+    mustBeRejected(await h.service.execute(envelope), '已被零件派工单');
+    expect((await h.orders.list(t1)).length).toBe(1);
+    // 不占键类别（oddjob 无图号×工序键）：重放命中 operationId 幂等账
+    const odd = envelopeOf('dispatch.create.v1', { kind: 'oddjob', title: '清理车间', quantity: 1 });
+    await committed(await h.service.execute(odd));
+    mustBeRejected(await h.service.execute(odd), '已落账');
+    expect((await h.orders.list(t1, { kind: 'oddjob' })).length).toBe(1);
   });
 
   it('载荷判别：零件缺图号拒绝；外协缺行集拒绝；非外协带行集拒绝；售后/零工须有标题或工序', () => {
@@ -671,6 +703,393 @@ describe('查询视图：列表筛选 / 按人 / 按序 / 供应商维度 / 打�
   });
 });
 
+// ---- fix-wave-6 6a-1：同工序占用互斥（RREQ-DP-021） ----
+
+describe('同工序占用互斥（RREQ-DP-021：活跃（非终态）占用）', () => {
+  it('同 (工作令,图号,工序) 活跃单存在时零件建单被拒；撤销释放可再派；跨工作令同键不互斥', async () => {
+    const h = newHarness();
+    const a = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', PART_CREATE)));
+    const idA = a.dispatchOrder!.id;
+    // 同键再建被拒（draft 即占用）
+    mustBeRejected(await h.service.execute(envelopeOf('dispatch.create.v1', PART_CREATE)), '已被零件派工单');
+    // 跨工作令同键不互斥（占用锚=令内工序行，源 is_dispatch 语义）
+    const otherWo = await committed(
+      await h.service.execute(envelopeOf('dispatch.create.v1', { ...PART_CREATE, workOrderId: 'wo-2' })),
+    );
+    expect(otherWo.dispatchOrder?.state).toBe('draft');
+    // 同令不同工序不互斥
+    const otherProc = await committed(
+      await h.service.execute(envelopeOf('dispatch.create.v1', { ...PART_CREATE, operationCode: 'proc-mill' })),
+    );
+    expect(otherProc.dispatchOrder?.state).toBe('draft');
+    // 撤销释放 → 可再派
+    await committed(await h.service.execute(envelopeOf('dispatch.cancel.v1', { remark: '计划变更' }, 1), idA));
+    const again = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', PART_CREATE)));
+    expect(again.dispatchOrder?.state).toBe('draft');
+  });
+
+  it('外协明细行与零件单共用占用账；行取消/父单完工释放占用', async () => {
+    const h = newHarness();
+    const created = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', outsourcingCreatePayload())));
+    const line = created.outsourcingLines![0]!; // DWG-002 × proc-plate
+    mustBeRejected(
+      await h.service.execute(
+        envelopeOf('dispatch.create.v1', {
+          kind: 'part', workOrderId: 'wo-1', drawingNo: 'DWG-002', operationCode: 'proc-plate', quantity: 1,
+        }),
+      ),
+      '已被外协派工单明细行',
+    );
+    // 行取消释放 → 零件建单放行
+    await committed(await h.service.execute(envelopeOf('dispatch.assign.v1', { assignee: 'u-worker-01' }, 1), created.dispatchOrder!.id));
+    await committed(
+      await h.service.execute(envelopeOf('outsourcing.line.cancel.v1', { reason: '供应商取消' }, line.objectVersion), line.id),
+    );
+    const part = await committed(
+      await h.service.execute(
+        envelopeOf('dispatch.create.v1', {
+          kind: 'part', workOrderId: 'wo-1', drawingNo: 'DWG-002', operationCode: 'proc-plate', quantity: 1,
+        }),
+      ),
+    );
+    expect(part.dispatchOrder?.state).toBe('draft');
+  });
+
+  it('外协建单：撞既有占用拒绝；同单内重复键拒绝', async () => {
+    const h = newHarness();
+    await committed(await h.service.execute(envelopeOf('dispatch.create.v1', PART_CREATE))); // 占 wo-1|DWG-001|proc-turn
+    const payload = outsourcingCreatePayload();
+    const lines = payload.lines as Record<string, unknown>[];
+    lines[0]!.drawingNo = 'DWG-001';
+    lines[0]!.processCode = 'proc-turn';
+    mustBeRejected(await h.service.execute(envelopeOf('dispatch.create.v1', payload)), '已被零件派工单');
+
+    const duplicateWithin = {
+      kind: 'outsourcing', workOrderId: 'wo-9', quantity: 1,
+      lines: [
+        { processCode: 'proc-x', drawingNo: 'DWG-DUP', supplierRef: 'sup-01', quantity: 1 },
+        { processCode: 'proc-x', drawingNo: 'DWG-DUP', supplierRef: 'sup-02', quantity: 1 },
+      ],
+    };
+    mustBeRejected(await h.service.execute(envelopeOf('dispatch.create.v1', duplicateWithin)), '同单内亦不可重复派工');
+  });
+});
+
+// ---- fix-wave-6 6a-1：转单+审计（dispatch.transfer.v1——RREQ-DP-024 我方形态） ----
+
+describe('转单+审计（dispatch.transfer.v1：executing 整单换执行人/工序）', () => {
+  async function partAtExecuting(h: ReturnType<typeof newHarness>): Promise<string> {
+    const created = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', PART_CREATE)));
+    const id = created.dispatchOrder!.id;
+    await committed(await h.service.execute(envelopeOf('dispatch.assign.v1', { assignee: 'u-worker-01' }, 1), id));
+    await committed(await h.service.execute(envelopeOf('dispatch.start.v1', {}, 2), id));
+    return id;
+  }
+
+  it('executing 转单：换执行人/工序落投影 + 审计事件快照 + 版本不动（机器账本零追加）+ 转单后完工照常', async () => {
+    const h = newHarness();
+    const id = await partAtExecuting(h);
+    const transferred = await committed(
+      await h.service.execute(
+        envelopeOf('dispatch.transfer.v1', { assignee: 'u-worker-02', operationCode: 'proc-mill', remark: '产能调整' }, 3),
+        id,
+      ),
+    );
+    expect(transferred.dispatchOrder?.state).toBe('executing');
+    expect(transferred.dispatchOrder?.objectVersion).toBe(3); // 非状态机迁移：版本不推进
+    expect(String(transferred.dispatchOrder?.assignee)).toBe('u-worker-02');
+    expect(transferred.dispatchOrder?.operationCode).toBe('proc-mill');
+    // 机器事件零追加（账本重放口径不变——重放↔投影一致性保持）
+    const page = await h.machineEvents.readByAggregate({ id, type: DISPATCH_ORDER_AGGREGATE_TYPE });
+    expect(page.events).toHaveLength(2);
+    // 审计事件：前后全快照（mes_transfer_operation 语义 → 事件账本形态）
+    expect(transferred.events[0]?.eventType).toBe(DISPATCH_EVENT_TYPES.dispatchTransferred);
+    expect(transferred.events[0]?.payload).toMatchObject({
+      kind: 'part',
+      workOrderId: 'wo-1',
+      drawingNo: 'DWG-001',
+      fromAssignee: 'u-worker-01',
+      toAssignee: 'u-worker-02',
+      fromOperationCode: 'proc-turn',
+      toOperationCode: 'proc-mill',
+      state: 'executing',
+      quantity: 10,
+      doneQty: 0,
+      remark: '产能调整',
+    });
+    // 换执行人 → 新执行人待办
+    expect(transferred.todosCreated).toHaveLength(1);
+    expect(String(transferred.todosCreated[0]?.assignee)).toBe('u-worker-02');
+    // 转单后完工照常（账本↔投影一致性锚点）
+    const done = await committed(await h.service.execute(envelopeOf('dispatch.complete.v1', {}, 3), id));
+    expect(done.dispatchOrder?.state).toBe('done');
+  });
+
+  it('仅 executing 可转；无变更拒绝；目标工序撞他单活跃占用拒绝；幂等与乐观锁', async () => {
+    const h = newHarness();
+    const created = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', PART_CREATE)));
+    const id = created.dispatchOrder!.id;
+    mustBeRejected(await h.service.execute(envelopeOf('dispatch.transfer.v1', { assignee: 'u-worker-02' }, 1), id), '不可转单');
+    await committed(await h.service.execute(envelopeOf('dispatch.assign.v1', { assignee: 'u-worker-01' }, 1), id));
+    await committed(await h.service.execute(envelopeOf('dispatch.start.v1', {}, 2), id));
+    // 无变更（载荷至少携其一，但值与当前一致）
+    mustBeRejected(await h.service.execute(envelopeOf('dispatch.transfer.v1', { assignee: 'u-worker-01' }, 3), id), '无变更');
+    // 目标工序被另一活跃单占用（同令 DWG-001 × proc-mill）
+    await committed(
+      await h.service.execute(envelopeOf('dispatch.create.v1', { ...PART_CREATE, operationCode: 'proc-mill' })),
+    );
+    mustBeRejected(await h.service.execute(envelopeOf('dispatch.transfer.v1', { operationCode: 'proc-mill' }, 3), id), '转单目标工序');
+    // 幂等与版本稳定：转单不推进版本 → opA 重放在 opB（换回）后仍过无变更检，
+    // 命中 operationId 幂等账（claim 拒绝，不二次写投影/事件）
+    const opA = envelopeOf('dispatch.transfer.v1', { assignee: 'u-worker-02' }, 3);
+    await committed(await h.service.execute(opA, id));
+    await committed(await h.service.execute(envelopeOf('dispatch.transfer.v1', { assignee: 'u-worker-01' }, 3), id));
+    mustBeRejected(await h.service.execute(opA, id), '已落账');
+    expect(String((await h.orders.find(t1, id))?.assignee)).toBe('u-worker-01');
+    // 乐观锁
+    mustBeRejected(
+      await h.service.execute(envelopeOf('dispatch.transfer.v1', { assignee: 'u-worker-02' }, 99), id),
+      '乐观锁冲突',
+    );
+    // 载荷判别：两维均缺拒绝
+    expect(() => parseDispatchTransferPayload({ remark: 'r' })).toThrow(DispatchInputError);
+  });
+});
+
+// ---- fix-wave-6 6a-1：派工单 Excel 导出（RREQ-DP-026） ----
+
+describe('派工单 Excel 导出（RREQ-DP-026：ExcelPort 先例，仅导出不写库）', () => {
+  it('两表产出：零件表含材料/尺寸列；外协表按行展开、末列状态/取消原因；过滤维度与列表一致', async () => {
+    const h = newHarness();
+    await seedBoardFor(h); // part(draft) + outsourcing(assigned, 2 行) + assembly(draft)
+    const result = await h.service.exportDispatchOrders(t1);
+    expect(result.kind).toBe('json-tables');
+    if (result.kind !== 'json-tables') return;
+    expect(result.sheets.map((sheet) => sheet.name)).toEqual(['零件派工单', '外协派工单']);
+    const partSheet = result.sheets[0]!;
+    expect(partSheet.header).toContain('材料');
+    expect(partSheet.header).toContain('尺寸');
+    expect(partSheet.rows).toHaveLength(1);
+    expect(partSheet.rows[0]?.[partSheet.header.indexOf('材料')]).toBe('45# 钢');
+    expect(partSheet.rows[0]?.[partSheet.header.indexOf('尺寸')]).toBe('Φ120×200');
+    const osSheet = result.sheets[1]!;
+    expect(osSheet.rows).toHaveLength(2);
+    expect(osSheet.header.slice(-2)).toEqual(['状态', '取消原因']); // 源 七.4：明细末尾增列
+    expect(osSheet.rows[0]?.[osSheet.header.indexOf('状态')]).toBe('已派工'); // 父单 assigned → 行已派工
+    // kind 过滤：只导外协 → 零件表零行
+    const onlyOutsourcing = await h.service.exportDispatchOrders(t1, { kind: 'outsourcing' });
+    if (onlyOutsourcing.kind !== 'json-tables') throw new Error('shape');
+    expect(onlyOutsourcing.sheets[0]?.rows).toHaveLength(0);
+    expect(onlyOutsourcing.sheets[1]?.rows).toHaveLength(2);
+    // 仅导出不写库：投影行数与状态不变、零机器事件追加
+    expect((await h.orders.list(t1)).length).toBe(3);
+    const part = (await h.service.listDispatchOrders(t1, { kind: 'part' }))[0]!;
+    const partPage = await h.machineEvents.readByAggregate({ id: part.id, type: DISPATCH_ORDER_AGGREGATE_TYPE });
+    expect(partPage.events).toHaveLength(0);
+  });
+});
+
+// ---- fix-wave-6 6a-1：列表批操作 + 页眉状态统计（RREQ-DP-032） ----
+
+describe('列表批操作与页眉状态统计（RREQ-DP-032）', () => {
+  it('页眉五态计数随搜索口径（kind 维过滤生效；零基全键）', async () => {
+    const h = newHarness();
+    await seedBoardFor(h);
+    expect(await h.service.dispatchOrderStats(t1)).toEqual({
+      draft: 2, assigned: 1, executing: 0, done: 0, cancelled: 0,
+    });
+    expect(await h.service.dispatchOrderStats(t1, { kind: 'outsourcing' })).toEqual({
+      draft: 0, assigned: 1, executing: 0, done: 0, cancelled: 0,
+    });
+  });
+
+  it('批量派工下发：勾选均 draft → 全部 assigned + 各自待办；版本不符整批拒绝零副作用', async () => {
+    const h = newHarness();
+    await seedBoardFor(h);
+    const part = (await h.service.listDispatchOrders(t1, { kind: 'part' }))[0]!;
+    const assembly = (await h.service.listDispatchOrders(t1, { kind: 'assembly' }))[0]!;
+    // 乐观锁整批拒绝：第一张 revision 不符 → 两张均不动
+    const refused = await h.service.batchAssign(t1, planner, {
+      operationId: OperationId.create('op-batch-refuse'),
+      assignee: UserId.create('u-worker-01'),
+      remark: null,
+      items: [
+        { id: part.id, expectedRevision: 9 },
+        { id: assembly.id, expectedRevision: 1 },
+      ],
+    });
+    mustBatchBeRejected(refused, '乐观锁冲突');
+    expect((await h.orders.find(t1, assembly.id))?.state).toBe('draft');
+    // 正常批：两张 draft → assigned + 两待办
+    const result = await h.service.batchAssign(t1, planner, {
+      operationId: OperationId.create('op-batch-ok'),
+      assignee: UserId.create('u-worker-01'),
+      remark: null,
+      items: [
+        { id: part.id, expectedRevision: 1 },
+        { id: assembly.id, expectedRevision: 1 },
+      ],
+    });
+    expect(result.status).toBe('committed');
+    if (result.status !== 'committed') return;
+    expect(result.items.every((item) => item.status === 'committed')).toBe(true);
+    expect(result.items.map((item) => item.newRevision)).toEqual([2, 2]);
+    expect(result.todosCreated).toHaveLength(2);
+    expect((await h.service.listDispatchOrders(t1, { state: 'assigned' })).length).toBe(3);
+  });
+
+  it('批量删除：装配豁免整批拒绝零副作用；零件/外协 draft 落撤销终态；非 draft 整批拒绝', async () => {
+    const h = newHarness();
+    await seedBoardFor(h);
+    const part = (await h.service.listDispatchOrders(t1, { kind: 'part' }))[0]!;
+    const assembly = (await h.service.listDispatchOrders(t1, { kind: 'assembly' }))[0]!;
+    mustBatchBeRejected(
+      await h.service.batchCancel(t1, planner, {
+        operationId: OperationId.create('op-bc-exempt'),
+        remark: null,
+        items: [
+          { id: part.id, expectedRevision: 1 },
+          { id: assembly.id, expectedRevision: 1 },
+        ],
+      }),
+      '豁免',
+    );
+    expect((await h.orders.find(t1, part.id))?.state).toBe('draft'); // 整批拒绝零副作用
+    const ok = await h.service.batchCancel(t1, planner, {
+      operationId: OperationId.create('op-bc-ok'),
+      remark: null,
+      items: [{ id: part.id, expectedRevision: 1 }],
+    });
+    expect(ok.status).toBe('committed');
+    expect((await h.orders.find(t1, part.id))?.state).toBe('cancelled');
+    // 非 draft（outsourcing 已 assigned）整批拒绝
+    const outsourcing = (await h.service.listDispatchOrders(t1, { kind: 'outsourcing' }))[0]!;
+    mustBatchBeRejected(
+      await h.service.batchCancel(t1, planner, {
+        operationId: OperationId.create('op-bc-state'),
+        remark: null,
+        items: [{ id: outsourcing.id, expectedRevision: 1 }],
+      }),
+      '仅待下发',
+    );
+    // 批量删除释放占用：DWG-001×proc-turn 可再建
+    const reDispatched = await committed(
+      await h.service.execute(
+        envelopeOf('dispatch.create.v1', {
+          kind: 'part', workOrderId: 'wo-1', drawingNo: 'DWG-001', operationCode: 'proc-turn', quantity: 1,
+        }),
+      ),
+    );
+    expect(reDispatched.dispatchOrder?.state).toBe('draft');
+  });
+});
+
+// ---- fix-wave-6 6a-1：取消外协明细行（RREQ-DP-031） ----
+
+describe('取消外协明细行（outsourcing.line.cancel.v1：状态流转 + 原因记录）', () => {
+  async function outsourcingAt(h: ReturnType<typeof newHarness>, state: 'draft' | 'assigned' | 'executing') {
+    const created = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', outsourcingCreatePayload())));
+    const id = created.dispatchOrder!.id;
+    if (state === 'draft') return { id, lines: created.outsourcingLines! };
+    await committed(await h.service.execute(envelopeOf('dispatch.assign.v1', { assignee: 'u-worker-01' }, 1), id));
+    if (state === 'assigned') return { id, lines: created.outsourcingLines! };
+    await committed(await h.service.execute(envelopeOf('dispatch.start.v1', {}, 2), id));
+    return { id, lines: created.outsourcingLines! };
+  }
+
+  it('已派工行取消：dispatched→cancelled + 原因记录 + 版本 +1 + 事件快照；父单状态不动；查询/打印/详情面带出', async () => {
+    const h = newHarness();
+    const { id, lines } = await outsourcingAt(h, 'assigned');
+    const line = lines[0]!; // DWG-002 × proc-plate（v1）
+    const rowsBefore = await h.service.outsourcingBySupplier(t1, 'sup-01');
+    expect(rowsBefore[0]).toMatchObject({ status: 'dispatched', statusLabel: '已派工' });
+
+    const cancelled = await committed(
+      await h.service.execute(envelopeOf('outsourcing.line.cancel.v1', { reason: '供应商产能不足' }, line.objectVersion), line.id),
+    );
+    expect(cancelled.outsourcingLines?.[0]).toMatchObject({
+      cancelReason: '供应商产能不足',
+      cancelledAt: FIXED_NOW,
+      objectVersion: 2,
+    });
+    expect(cancelled.events[0]?.eventType).toBe(DISPATCH_EVENT_TYPES.outsourcingLineCancelled);
+    expect(cancelled.events[0]?.payload).toMatchObject({
+      dispatchId: id,
+      dispatchState: 'assigned',
+      lineNo: 1,
+      processCode: 'proc-plate',
+      supplierRef: 'sup-01',
+      quantity: 3,
+      previousStatus: 'dispatched',
+      status: 'cancelled',
+      cancelReason: '供应商产能不足',
+    });
+    // 行状态流转可判定：行 1 已取消、行 2 仍已派工；父单状态不动
+    const rowsAfter = await h.service.outsourcingBySupplier(t1, 'sup-01');
+    expect(rowsAfter[0]).toMatchObject({ status: 'cancelled', statusLabel: '已取消' });
+    expect(rowsAfter[1]).toMatchObject({ status: 'dispatched', statusLabel: '已派工' });
+    expect((await h.orders.find(t1, id))?.state).toBe('assigned');
+    // 打印列带出（源 七.4：状态/取消原因列）
+    const print = await h.service.outsourcingPrintData(t1, id);
+    expect(print.lines[0]).toMatchObject({ statusLabel: '已取消', cancelReason: '供应商产能不足' });
+    expect(print.lines[1]).toMatchObject({ statusLabel: '已派工' });
+    // 详情行视图带状态
+    const detail = await h.service.dispatchDetail(t1, id);
+    expect(detail.outsourcingLines[0]).toMatchObject({ status: 'cancelled', statusLabel: '已取消' });
+  });
+
+  it('draft（待派工行）不可取消；重复取消/幂等/乐观锁拒绝；父单完工后（已质检行）不可取消', async () => {
+    const h = newHarness();
+    const { id, lines } = await outsourcingAt(h, 'executing');
+    const line = lines[0]!;
+    const other = lines[1]!;
+    const envelope = envelopeOf('outsourcing.line.cancel.v1', { reason: '改自制' }, line.objectVersion);
+    await committed(await h.service.execute(envelope, line.id));
+    mustBeRejected(await h.service.execute(envelopeOf('outsourcing.line.cancel.v1', {}, 2), line.id), '已取消');
+    // 幂等：同 operationId 携当前版本重放 → 已取消行校验先行拒绝（不二次写行/事件）
+    mustBeRejected(
+      await h.service.execute(
+        makeCommandEnvelope({
+          tenantId: t1,
+          issuedBy: planner,
+          operationId: envelope.operationId,
+          expectedRevision: 2,
+          issuedAt: FIXED_NOW,
+          command: { kind: 'outsourcing.line.cancel.v1', payload: { reason: '改自制' } },
+        }),
+        line.id,
+      ),
+      '已取消，不可重复取消',
+    );
+    // 旧版本（乐观锁）拒绝
+    mustBeRejected(
+      await h.service.execute(envelopeOf('outsourcing.line.cancel.v1', {}, 1), line.id),
+      '乐观锁冲突',
+    );
+    // 父单完工 → 已质检行不可取消
+    await committed(await h.service.execute(envelopeOf('dispatch.complete.v1', {}, 3), id));
+    mustBeRejected(await h.service.execute(envelopeOf('outsourcing.line.cancel.v1', {}, 1), other.id), '已质检');
+
+    // draft 父单：行推导态=待派工 → 不可取消
+    const h2 = newHarness();
+    const draft = await committed(await h2.service.execute(envelopeOf('dispatch.create.v1', outsourcingCreatePayload())));
+    mustBeRejected(
+      await h2.service.execute(envelopeOf('outsourcing.line.cancel.v1', { reason: 'x' }, 1), draft.outsourcingLines![0]!.id),
+      '待派工',
+    );
+  });
+
+  it('父单撤销 → 明细行状态推导为已取消（父撤即行取消，无行级写入）', async () => {
+    const h = newHarness();
+    const created = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', outsourcingCreatePayload())));
+    await committed(
+      await h.service.execute(envelopeOf('dispatch.cancel.v1', { remark: '计划变更' }, 1), created.dispatchOrder!.id),
+    );
+    const rows = await h.service.outsourcingBySupplier(t1, 'sup-01');
+    expect(rows[0]).toMatchObject({ status: 'cancelled', statusLabel: '已取消' });
+  });
+});
+
 // ---- 模块装配与权限码 ----
 
 describe('模块装配与权限码', () => {
@@ -681,20 +1100,26 @@ describe('模块装配与权限码', () => {
     expect(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, DispatchModule)).toBeUndefined();
   });
 
-  it('权限码：13 路由逐点声明（04-dispatch.md §5 最小集）', () => {
+  it('权限码：20 路由逐点声明（04-dispatch.md §5 最小集 + fix-wave-6 6a-1 增量）', () => {
     const expected: readonly [object, string, string][] = [
       [DispatchOrdersController.prototype, 'create', 'dispatch:write'],
       [DispatchOrdersController.prototype, 'list', 'dispatch:read'],
+      [DispatchOrdersController.prototype, 'exportOrders', 'dispatch:read'],
+      [DispatchOrdersController.prototype, 'stats', 'dispatch:read'],
       [DispatchOrdersController.prototype, 'get', 'dispatch:read'],
       [DispatchOrdersController.prototype, 'assign', 'dispatch:assign'],
       [DispatchOrdersController.prototype, 'start', 'dispatch:write'],
       [DispatchOrdersController.prototype, 'complete', 'dispatch:write'],
       [DispatchOrdersController.prototype, 'cancel', 'dispatch:cancel'],
+      [DispatchOrdersController.prototype, 'transfer', 'dispatch:assign'],
+      [DispatchOrdersController.prototype, 'batchAssign', 'dispatch:assign'],
+      [DispatchOrdersController.prototype, 'batchCancel', 'dispatch:cancel'],
       [DispatchTasksController.prototype, 'tasksByAssignee', 'dispatch:read'],
       [DispatchTasksController.prototype, 'tasksByWorkOrder', 'dispatch:read'],
       [DispatchTasksController.prototype, 'progressFacts', 'dispatch:read'],
       [OutsourcingController.prototype, 'bySupplier', 'outsourcing:read'],
       [OutsourcingController.prototype, 'backfillPrice', 'outsourcing:price'],
+      [OutsourcingController.prototype, 'cancelLine', 'dispatch:cancel'],
       [OutsourcingController.prototype, 'printData', 'outsourcing:read'],
       [OutsourcingController.prototype, 'print', 'outsourcing:read'],
     ];

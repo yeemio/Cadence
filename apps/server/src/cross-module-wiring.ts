@@ -296,6 +296,7 @@ import {
   type BaselineEventStore,
   type CostingExcelPort,
   type DispatchDomainEventStore,
+  type DispatchExcelPort,
   type DispatchOperationStore,
   type DispatchOrderStore,
   type DispatchPrintPort,
@@ -427,6 +428,8 @@ export interface CrossModuleRegisterPorts {
     readonly priceSource?: OutsourcingPriceSource | undefined;
     readonly inspectionIntake?: InspectionIntakePort | undefined;
     readonly print?: DispatchPrintPort | undefined;
+    /** 派工单 Excel 导出（6a-1 RREQ-DP-026）：ExcelJS 单实例结构同形（#20 先例）。 */
+    readonly excelPort?: DispatchExcelPort | undefined;
   };
   readonly reporting?: {
     readonly validDispatch?: ValidDispatchSource | undefined;
@@ -2184,11 +2187,11 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
       ? createImNotifyChannel(input.imSink ?? CONSOLE_IM_SINK)
       : undefined;
 
-  // Excel 端口（listing 导入导出 + costing/metric-pack/payroll 导出，ExcelJS
-  // xlsx-bytes 适配——单实例注入各模块，语义层委托 application 纯函数，见
-  // exceljs-excel-port.ts）
+  // Excel 端口（listing 导入导出 + costing/metric-pack/payroll/dispatch 导出，
+  // ExcelJS xlsx-bytes 适配——单实例注入各模块，语义层委托 application 纯函数，见
+  // exceljs-excel-port.ts；dispatch 侧为 exportWorkbook 结构子集，fix-wave-6 6a-1）
   const excel =
-    has('listing') || has('costing') || has('payroll') || has('metric-pack')
+    has('listing') || has('costing') || has('payroll') || has('metric-pack') || has('dispatch')
       ? new ExcelJsExcelPort()
       : undefined;
 
@@ -2391,13 +2394,18 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
             },
           }
         : {}),
-      ...(kitCheck !== undefined || priceSource !== undefined || inspectionIntake !== undefined || print !== undefined
+      ...(kitCheck !== undefined ||
+      priceSource !== undefined ||
+      inspectionIntake !== undefined ||
+      print !== undefined ||
+      (has('dispatch') && excel !== undefined)
         ? {
             dispatch: {
               ...(kitCheck !== undefined ? { kitCheck } : {}),
               ...(priceSource !== undefined ? { priceSource } : {}),
               ...(inspectionIntake !== undefined ? { inspectionIntake } : {}),
               ...(print !== undefined ? { print } : {}),
+              ...(has('dispatch') && excel !== undefined ? { excelPort: excel } : {}),
             },
           }
         : {}),

@@ -4,7 +4,8 @@
  * 与 workorder-input / listing-input 同一纪律：违规抛 DispatchInputError（组合根
  * 映射 400），绝不静默丢弃。命令命名 {module}.{verb}.v1（通用合同纪律 1）：
  * dispatch.create / dispatch.assign / dispatch.start / dispatch.complete /
- * dispatch.cancel / outsourcing.price.backfill（均 .v1）。
+ * dispatch.cancel / dispatch.transfer / outsourcing.price.backfill /
+ * outsourcing.line.cancel（均 .v1；fix-wave-6 6a-1 增 transfer 与 line.cancel）。
  * 信封体形状：{ operationId, expectedRevision, command: { kind, payload } }——
  * 租户与操作者不从请求体进（TenantContext / AuthGuard，ADR-0005）。
  */
@@ -20,7 +21,9 @@ export const DISPATCH_COMMAND_KINDS = [
   'dispatch.start.v1',
   'dispatch.complete.v1',
   'dispatch.cancel.v1',
+  'dispatch.transfer.v1',
   'outsourcing.price.backfill.v1',
+  'outsourcing.line.cancel.v1',
 ] as const;
 
 export type DispatchCommandKind = (typeof DISPATCH_COMMAND_KINDS)[number];
@@ -313,6 +316,130 @@ export interface DispatchCancelPayload {
 export function parseDispatchCancelPayload(input: unknown): DispatchCancelPayload {
   const record = requireObject(input, 'dispatch.cancel 载荷');
   return { remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null };
+}
+
+// ---- dispatch.transfer 载荷（executing 单整批转单：换执行人/工序——RREQ-DP-024 我方形态） ----
+
+/**
+ * 转单载荷：新执行人 / 新工序至少携带其一（均携带 = 同时换）；null = 该维不变。
+ * 非状态机迁移（state 保持 executing），审计走域事件账本（快照进事件载荷）。
+ */
+export interface DispatchTransferPayload {
+  /** 新执行人（null = 不换执行人）。 */
+  readonly assignee: UserId | null;
+  /** 新工序（null = 不换工序）。 */
+  readonly operationCode: string | null;
+  readonly remark: string | null;
+}
+
+export function parseDispatchTransferPayload(input: unknown): DispatchTransferPayload {
+  const record = requireObject(input, 'dispatch.transfer 载荷');
+  const hasAssignee = record['assignee'] !== undefined && record['assignee'] !== null;
+  const hasOperation = record['operationCode'] !== undefined && record['operationCode'] !== null;
+  if (!hasAssignee && !hasOperation) {
+    throw new DispatchInputError('转单载荷须至少携带新执行人（assignee）或新工序（operationCode）之一');
+  }
+  return {
+    assignee: hasAssignee
+      ? UserId.create(requireBoundedString(record['assignee'], '新执行人 assignee', 1, 128))
+      : null,
+    operationCode: hasOperation
+      ? requireBoundedString(record['operationCode'], '新工序 operationCode', 1, 128)
+      : null,
+    remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null,
+  };
+}
+
+// ---- outsourcing.line.cancel 载荷（取消外协明细行——RREQ-DP-031） ----
+
+/** 取消原因选填（源文档 7.2「原因选填」，≤200 字——记入行与审计事件）。 */
+export interface OutsourcingLineCancelPayload {
+  readonly reason: string | null;
+  readonly remark: string | null;
+}
+
+export function parseOutsourcingLineCancelPayload(input: unknown): OutsourcingLineCancelPayload {
+  const record = requireObject(input, 'outsourcing.line.cancel 载荷');
+  return {
+    reason: optionalBoundedString(record['reason'], '取消原因 reason', 1, 200) ?? null,
+    remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null,
+  };
+}
+
+// ---- 批操作载荷（多单批量派工下发 / 批量删除——RREQ-DP-032；非 smes.command.v1
+// 单聚合信封，控制器解析后由服务逐单组子命令信封，operationId 幂等按子键承载） ----
+
+/** 批操作单行：目标派工单 + 行级乐观锁（每单各自的 objectVersion）。 */
+export interface DispatchBatchItem {
+  readonly id: string;
+  readonly expectedRevision: number;
+}
+
+export interface DispatchBatchAssignInput {
+  readonly operationId: OperationId;
+  /** 统一派到的执行人（我方 assigned 态判别：assignee 必填——与源「批量派工不带工人」差异登记）。 */
+  readonly assignee: UserId;
+  readonly remark: string | null;
+  readonly items: readonly DispatchBatchItem[];
+}
+
+export interface DispatchBatchCancelInput {
+  readonly operationId: OperationId;
+  readonly remark: string | null;
+  readonly items: readonly DispatchBatchItem[];
+}
+
+const MAX_BATCH_ITEMS = 100;
+
+function parseBatchItems(raw: unknown, what: string): DispatchBatchItem[] {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_BATCH_ITEMS) {
+    throw new DispatchInputError(`${what} 非法：须为 1~${MAX_BATCH_ITEMS} 行的数组`);
+  }
+  const items: DispatchBatchItem[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of raw.entries()) {
+    const record = requireObject(entry, `${what}[${index}]`);
+    const id = requireBoundedString(record['id'], `${what}[${index}].id`, 1, 128);
+    if (seen.has(id)) {
+      throw new DispatchInputError(`${what} 含重复派工单 id '${id}'`);
+    }
+    seen.add(id);
+    const expectedRevision = record['expectedRevision'];
+    if (
+      typeof expectedRevision !== 'number' ||
+      !Number.isInteger(expectedRevision) ||
+      expectedRevision < 1
+    ) {
+      throw new DispatchInputError(
+        `${what}[${index}].expectedRevision 须为 >= 1 的整数：${JSON.stringify(expectedRevision)}`,
+      );
+    }
+    items.push({ id, expectedRevision });
+  }
+  return items;
+}
+
+function requireBatchOperationId(record: Record<string, unknown>): OperationId {
+  return OperationId.create(requireBoundedString(record['operationId'], 'operationId', 1, 128));
+}
+
+export function parseBatchAssignBody(input: unknown): DispatchBatchAssignInput {
+  const record = requireObject(input, '批量派工下发请求体');
+  return {
+    operationId: requireBatchOperationId(record),
+    assignee: UserId.create(requireBoundedString(record['assignee'], '执行人 assignee', 1, 128)),
+    remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null,
+    items: parseBatchItems(record['items'], '批量派工下发 items'),
+  };
+}
+
+export function parseBatchCancelBody(input: unknown): DispatchBatchCancelInput {
+  const record = requireObject(input, '批量删除请求体');
+  return {
+    operationId: requireBatchOperationId(record),
+    remark: optionalBoundedString(record['remark'], 'remark', 1, 2000) ?? null,
+    items: parseBatchItems(record['items'], '批量删除 items'),
+  };
 }
 
 // ---- outsourcing.price.backfill 载荷（补录单价） ----

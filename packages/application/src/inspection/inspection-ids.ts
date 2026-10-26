@@ -39,6 +39,11 @@ export function newInspectionId(): string {
   return `insp-${uuidv7()}`;
 }
 
+/** 批量质检批次锚 id（RQ-036）：inspb-<uuidv7>。 */
+export function newInspectionBatchId(): string {
+  return `inspb-${uuidv7()}`;
+}
+
 /** 不合格处置 id：nc-<uuidv7>。 */
 export function newNonconformId(): string {
   return `nc-${uuidv7()}`;

@@ -107,6 +107,52 @@ export const DEFAULT_DISPATCH_FLOW_CONFIG: ApprovalFlowConfig = defineApprovalFl
   ],
 });
 
+// ---- 占用互斥（RREQ-DP-021，fix-wave-6 6a-1） ----
+
+/** 终态集（done/cancelled）——活跃（非终态）派工单占用同工序键。 */
+export const DISPATCH_TERMINAL_STATES: ReadonlySet<string> = new Set(['done', 'cancelled']);
+
+/** 活跃（非终态）判定：同工序占用互斥的占用口径（撤销/完工即释放）。 */
+export function isDispatchOrderActive(state: string): boolean {
+  return !DISPATCH_TERMINAL_STATES.has(state);
+}
+
+// ---- 外协明细行状态（RREQ-DP-031：待派工/已派工/已质检/已取消） ----
+
+/** 外协明细行状态 id 集（源文档 7.1 字典 outsource_dispatch_item_status 的我方形态）。 */
+export const OUTSOURCING_LINE_STATUS_IDS = ['pending', 'dispatched', 'inspected', 'cancelled'] as const;
+
+export type OutsourcingLineStatus = (typeof OUTSOURCING_LINE_STATUS_IDS)[number];
+
+const OUTSOURCING_LINE_STATUS_LABELS: Readonly<Record<OutsourcingLineStatus, string>> = {
+  pending: '待派工',
+  dispatched: '已派工',
+  inspected: '已质检',
+  cancelled: '已取消',
+};
+
+export function outsourcingLineStatusLabel(status: string): string {
+  return (OUTSOURCING_LINE_STATUS_LABELS as Readonly<Record<string, string>>)[status] ?? status;
+}
+
+/**
+ * 明细行状态推导（快照纪律：行级只落取消事实，其余按父派工单状态推导——与源
+ * 文档 7.1「历史数据回填规则」同构的统一推导口径）：
+ *  - 行已取消（cancelledAt 非空）→ cancelled；
+ *  - 父单 done → inspected（回厂质检已触发）；父单 draft → pending；
+ *  - 父单 cancelled → cancelled（父撤即行取消）；assigned/executing → dispatched。
+ */
+export function outsourcingLineStatusOf(
+  line: { readonly cancelledAt: string | null },
+  orderState: string,
+): OutsourcingLineStatus {
+  if (line.cancelledAt !== null) return 'cancelled';
+  if (orderState === 'done') return 'inspected';
+  if (orderState === 'draft') return 'pending';
+  if (orderState === 'cancelled') return 'cancelled';
+  return 'dispatched';
+}
+
 // ---- 进度上卷阶段映射（workorder ProgressFact 的 stage 词汇镜像） ----
 
 /**

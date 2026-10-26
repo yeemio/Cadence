@@ -1,12 +1,16 @@
 /**
  * 物品管理页（M1 增量 4-I）：列表 + 创建，数据走真实 masterdata API。
  * 本增量最小集：不做编辑/停用 UI（服务端 PUT 已备）、不做分页/搜索（非目标）。
+ * fix-wave-6 6b-3（A14）：列显隐记忆接入——列定义收口为 ITEMS_COLUMNS，
+ * 隐藏集跨会话/跨设备恢复（useColumnVisibility）。
  */
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircle } from 'lucide-react';
 import { createItem, listItems } from '../../data/masterdataApi';
+import type { ItemView } from '@smes/product-ui';
 import { ApiErrorHint } from '../../components/ApiErrorHint';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -17,6 +21,41 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useColumnVisibility } from '@/hooks/useColumnVisibility';
+import { cn } from '@/lib/utils';
+
+interface ItemColumn {
+  readonly key: 'code' | 'name' | 'spec' | 'unit' | 'category' | 'active';
+  readonly label: string;
+  /** 单元格渲染 class（mono 小字列与长文本列的呈现差异）。 */
+  readonly cellClass: 'mono' | 'plain';
+}
+
+const ITEMS_COLUMNS = [
+  { key: 'code', label: 'code', cellClass: 'mono' },
+  { key: 'name', label: '名称', cellClass: 'plain' },
+  { key: 'spec', label: '规格', cellClass: 'plain' },
+  { key: 'unit', label: '单位', cellClass: 'plain' },
+  { key: 'category', label: '分类', cellClass: 'mono' },
+  { key: 'active', label: '启用', cellClass: 'plain' },
+] as const satisfies readonly ItemColumn[];
+
+/** 列显隐记忆键（A14 / RREQ-INT-032：pageKey=路由 path，tableKey=本页主表）。 */
+const COLUMN_PREFS_PAGE = '/masterdata/items';
+const COLUMN_PREFS_TABLE = 'main';
+
+function itemCellText(item: ItemView, key: ItemColumn['key']): string {
+  switch (key) {
+    case 'active':
+      return item.active ? '是' : '否';
+    case 'code':
+      return item.code;
+    case 'name':
+      return item.name;
+    default:
+      return item[key] ?? '—';
+  }
+}
 
 export function ItemsPage() {
   const queryClient = useQueryClient();
@@ -24,6 +63,11 @@ export function ItemsPage() {
   const createMutation = useMutation({
     mutationFn: createItem,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['masterdata', 'items'] }),
+  });
+  const { visibleColumns, isColumnHidden, toggleColumn } = useColumnVisibility({
+    pageKey: COLUMN_PREFS_PAGE,
+    tableKey: COLUMN_PREFS_TABLE,
+    columns: ITEMS_COLUMNS,
   });
 
   const [code, setCode] = useState('');
@@ -66,31 +110,40 @@ export function ItemsPage() {
             /* 窄屏横滚（M5 响应式取舍：列完整性优先，卡片化留后续重设计） */
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="py-2 pr-4 font-medium">code</th>
-                  <th className="py-2 pr-4 font-medium">名称</th>
-                  <th className="py-2 pr-4 font-medium">规格</th>
-                  <th className="py-2 pr-4 font-medium">单位</th>
-                  <th className="py-2 pr-4 font-medium">分类</th>
-                  <th className="py-2 font-medium">启用</th>
-                </tr>
-              </thead>
-              <tbody>
-                {itemsQuery.data.map((item) => (
-                  <tr key={item.id} className="border-b last:border-b-0">
-                    <td className="py-2 pr-4 font-mono text-xs">{item.code}</td>
-                    <td className="py-2 pr-4">{item.name}</td>
-                    <td className="py-2 pr-4 text-xs">{item.spec ?? '—'}</td>
-                    <td className="py-2 pr-4 text-xs">{item.unit ?? '—'}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{item.category ?? '—'}</td>
-                    <td className="py-2">{item.active ? '是' : '否'}</td>
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    {visibleColumns.map((column) => (
+                      <th key={column.key} className="py-2 pr-4 font-medium">
+                        {column.label}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
+                </thead>
+                <tbody>
+                  {itemsQuery.data.map((item) => (
+                    <tr key={item.id} className="border-b last:border-b-0">
+                      {visibleColumns.map((column) => (
+                        <td
+                          key={column.key}
+                          className={cn(
+                            'py-2 pr-4 whitespace-nowrap',
+                            column.cellClass === 'mono' && 'font-mono text-xs',
+                          )}
+                        >
+                          {itemCellText(item, column.key)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
               </table>
             </div>
           )}
+          <ColumnVisibilityMenu
+            columns={ITEMS_COLUMNS}
+            isColumnHidden={isColumnHidden}
+            toggleColumn={toggleColumn}
+          />
         </CardContent>
       </Card>
 

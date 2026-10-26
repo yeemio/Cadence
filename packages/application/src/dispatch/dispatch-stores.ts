@@ -109,6 +109,21 @@ export interface DispatchOrderStore {
     nextObjectVersion: number,
     extra?: { readonly doneQty?: number; readonly assignee?: UserId | null },
   ): Promise<DispatchOrder>;
+  /**
+   * 转单字段重写（fix-wave-6 6a-1，RREQ-DP-024 我方形态：executing 单换执行人/
+   * 工序）。**不推进 objectVersion、不写机器事件**（非状态机迁移——账本重放口径
+   * 版本 = 机器事件数 + 1，转单零机器事件；expectedObjectVersion 仍做乐观并发）。
+   * 实现方按 (tenant, id, objectVersion = expected) 条件更新，未命中（不存在/
+   * 版本不符）返回 null；fields 只携带显式变更维（undefined = 该维不动）。
+   * 可选方法：PG 适配器合流前服务侧按能力缺失 fail-closed 拒绝（结构兼容既有
+   * 实现——旧 PG store 无此方法仍满足本接口）。
+   */
+  transfer?(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    fields: { readonly assignee?: UserId | null; readonly operationCode?: string | null },
+  ): Promise<DispatchOrder | null>;
 }
 
 // ---- 外协明细（投影，版本化数据——单价可事后补录） ----
@@ -139,7 +154,11 @@ export interface OutsourcingLine {
   readonly promisedAt: string | null;
   /** 来源清单行锚点（listing 零件清单行，opaque；可空）。 */
   readonly sourceListingLineId: string | null;
-  /** 行级数据版本：创建 = 1，单价补录 +1（乐观锁口径）。 */
+  /** 行取消时刻（null = 未取消；非空即行状态推导为已取消——RREQ-DP-031）。 */
+  readonly cancelledAt: string | null;
+  /** 取消外协原因（≤200 字，随取消记录；未取消/未记原因为 null）。 */
+  readonly cancelReason: string | null;
+  /** 行级数据版本：创建 = 1，单价补录/行取消 +1（乐观锁口径）。 */
   readonly objectVersion: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -188,6 +207,18 @@ export interface OutsourcingLineStore {
     id: string,
     expectedObjectVersion: number,
     fields: BackfillOutsourcingPriceFields,
+  ): Promise<OutsourcingLine | null>;
+  /**
+   * 取消外协明细行（fix-wave-6 6a-1，RREQ-DP-031）：落取消事实（原因 + 时刻）
+   * 并 +1 版本（行是版本化数据，同补录口径；非状态机）。乐观条件同 backfillPrice：
+   * 未命中（不存在/版本不符）返回 null。
+   * 可选方法：PG 适配器合流前服务侧按能力缺失 fail-closed 拒绝。
+   */
+  cancel?(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    fields: { readonly cancelReason: string | null; readonly cancelledAt: string },
   ): Promise<OutsourcingLine | null>;
 }
 

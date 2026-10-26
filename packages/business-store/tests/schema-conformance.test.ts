@@ -89,7 +89,7 @@ describe('schema 骨架', () => {
     expect(schemaText).toMatch(/generator\s+client\s*\{/);
   });
 
-  it('一百零三张表齐全（M1 十三表 + baseline P1 五表（M2-W2）+ workorder 六表（M2-W1）+ inspection 四表（M2-W4）+ listing 八表（M2-W3）+ dispatch 四表（M2-W6）+ inventory 十一表（M2-W5）+ reporting 四表（M2-W7）+ baseline P2/P3 四表（M2-W7）+ hours 三表（M2-W6）+ costing 四表（M2-W6）+ payroll 四表（M3）+ metric-pack 两表（M3）+ drawing 四表（M3）+ maintenance 四表（M3）+ backfill 六表（S1）+ S5 能力子集三表（T 波）+ issue 五表（U1）+ attachment 单表（U3）+ process-material 单表（U4）+ aftercare claim 两表（U5）+ project cost 三表（U7）+ attachment objects 单表（fix-wave-4 W4-2）+ machining daily stats 单表（A8/A10 首波））', () => {
+  it('一百零四张表齐全（M1 十三表 + baseline P1 五表（M2-W2）+ workorder 六表（M2-W1）+ inspection 四表（M2-W4）+ listing 八表（M2-W3）+ dispatch 四表（M2-W6）+ inventory 十一表（M2-W5）+ reporting 四表（M2-W7）+ baseline P2/P3 四表（M2-W7）+ hours 三表（M2-W6）+ costing 四表（M2-W6）+ payroll 四表（M3）+ metric-pack 两表（M3）+ drawing 四表（M3）+ maintenance 四表（M3）+ backfill 六表（S1）+ S5 能力子集三表（T 波）+ issue 五表（U1）+ attachment 单表（U3）+ process-material 单表（U4）+ aftercare claim 两表（U5）+ project cost 三表（U7）+ attachment objects 单表（fix-wave-4 W4-2）+ machining daily stats 单表（A8/A10 首波）+ 列显隐偏好单表（fix-wave-6 6b-3））', () => {
     expect(models.has('WorkOrderRecord')).toBe(true);
     expect(models.has('BusinessEventRecord')).toBe(true);
     expect(models.has('OutboxRecord')).toBe(true);
@@ -210,7 +210,9 @@ describe('schema 骨架', () => {
     expect(models.has('AttachmentObjectRecord')).toBe(true);
     // A10 每日机加工进度统计单表（守恒计数 102 → 103，A8/A10 首波：RREQ-RP-027 日统计快照）
     expect(models.has('MachiningDailyStatRecord')).toBe(true);
-    expect(models.size).toBe(103);
+    // fix-wave-6 6b-3 列显隐偏好单表（守恒计数 103 → 104，A14 / RREQ-INT-032 三元组偏好）
+    expect(models.has('ColumnPreferenceRecord')).toBe(true);
+    expect(models.size).toBe(104);
   });
 
   it('ADR-0005：全表 tenant_id（非空、snake_case 映射）', () => {
@@ -909,12 +911,35 @@ describe('dispatch 四表（M2-W6：投影两表 + 事件账本 + 幂等记账�
     expectField('OutsourcingLineRecord', 'priceSource', 'String?', ['@map("price_source")']);
     expectField('OutsourcingLineRecord', 'marginPermyriad', 'Int?', ['@map("margin_permyriad")']);
     expectField('OutsourcingLineRecord', 'promisedAt', 'DateTime?', ['@db.Timestamptz(6)', '@map("promised_at")']);
+    expectField(
+      'OutsourcingLineRecord',
+      'cancelledAt',
+      'DateTime?',
+      ['@db.Timestamptz(6)', '@map("cancelled_at")'],
+    );
+    expectField('OutsourcingLineRecord', 'cancelReason', 'String?', ['@map("cancel_reason")']);
     expectField('OutsourcingLineRecord', 'objectVersion', 'Int', ['@default(1)', '@map("object_version")']);
     const lineAttrs = models.get('OutsourcingLineRecord')!.blockAttrs.join('\n');
     expect(lineAttrs).toContain('@@unique([tenantId, dispatchId, lineNo])');
     expect(lineAttrs).toContain('@@index([tenantId, supplierRef])');
     expect(lineAttrs).toContain('@@map("outsourcing_lines")');
     expect(models.get('OutsourcingLineRecord')!.fields.has('supersedes')).toBe(false);
+  });
+
+  it('outsourcing_lines 行取消两列迁移（fix-wave-6 6a-1，RREQ-DP-031）：纯加列可空，不混入 RLS 语句（无新表 → 表清单/重放快照零变更）', () => {
+    const migration = readFileSync(
+      join(
+        packageRoot,
+        'prisma',
+        'migrations',
+        '20261026210000_outsourcing_line_cancel_columns',
+        'migration.sql',
+      ),
+      'utf8',
+    );
+    expect(migration).toContain('ALTER TABLE "outsourcing_lines" ADD COLUMN "cancelled_at" TIMESTAMPTZ(6);');
+    expect(migration).toContain('ALTER TABLE "outsourcing_lines" ADD COLUMN "cancel_reason" TEXT;');
+    expect(migration).not.toContain('ROW LEVEL SECURITY');
   });
 
   it('dispatch_events：seq 大单调游标 + eventId 幂等主约束 + (aggregate, revision) DB 级乐观锁（同 workorder_events 形态）；dispatch_operations 幂等记账运营表', () => {

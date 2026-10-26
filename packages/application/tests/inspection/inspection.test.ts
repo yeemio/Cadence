@@ -24,11 +24,13 @@ import { InMemoryTodoStore } from '../../src/workbench/in-memory-workbench-store
 import { PERMISSION_METADATA_KEY } from '../../src/core/auth/require-permission.decorator.js';
 import {
   DEFAULT_CLOSE_TIMEOUT_MS,
+  DEFAULT_INSPECTION_BATCH_LIMIT,
   DEFAULT_INSPECTION_FLOW_CONFIG,
   DEFAULT_NONCONFORM_FLOW_CONFIG,
   INSPECTION_KINDS,
   INSPECTION_STATE_IDS,
   NONCONFORM_DISPOSALS,
+  NONCONFORM_STATE_IDS,
   kindForSourceFact,
 } from '../../src/inspection/inspection-config.js';
 import { INSPECTION_EVENT_TYPES } from '../../src/inspection/inspection-events.js';
@@ -42,16 +44,19 @@ import {
   parseCommandBodyForKind,
   parseCommandEnvelopeBody,
   parseDisposeNonconformPayload,
+  parseJudgeBatchPayload,
   parseKindFilter,
   parseStateFilter,
 } from '../../src/inspection/inspection-input.js';
 import type {
+  InspectionRevokeGuardPort,
   InspectionSourceFact,
   NotifyChannel,
   NotifyMessage,
   StockReleaseFact,
   StockReleasePort,
 } from '../../src/inspection/inspection-ports.js';
+import { FAIL_CLOSED_INSPECTION_REVOKE_GUARD, PERMISSIVE_INSPECTION_REVOKE_GUARD } from '../../src/inspection/inspection-ports.js';
 import {
   InMemoryInspectionDomainEventStore,
   InMemoryInspectionOperationStore,
@@ -94,6 +99,9 @@ function newHarness(
     readonly closeTimeoutMs?: number;
     readonly overdueAssignee?: typeof supervisor | null;
     readonly now?: () => string;
+    readonly batchLimit?: number;
+    /** 撤销闸门（缺省不注入 = service fail-closed 缺省；PERMISSIVE_* 见 ports）。 */
+    readonly revokeGuard?: InspectionRevokeGuardPort;
   } = {},
 ) {
   const orders = new InMemoryInspectionOrderStore();
@@ -104,7 +112,12 @@ function newHarness(
   const todos = new InMemoryTodoStore();
   const stockRelease = new FakeStockReleasePort();
   const notify = new FakeNotifyChannel();
-  const ports: InspectionCrossModulePorts = { stockRelease, notify };
+  const ports: InspectionCrossModulePorts = {
+    stockRelease,
+    notify,
+    // 缺省显式注入 fail-closed 闸门（与 service 内建缺省同效：未接线拒绝撤销）
+    revokeGuard: options.revokeGuard ?? FAIL_CLOSED_INSPECTION_REVOKE_GUARD,
+  };
   const service = new InspectionService(
     orders,
     nonconforms,
@@ -117,6 +130,7 @@ function newHarness(
       ...(options.now === undefined ? { now: () => FIXED_NOW } : { now: options.now }),
       ...(options.closeTimeoutMs === undefined ? {} : { closeTimeoutMs: options.closeTimeoutMs }),
       ...(options.overdueAssignee === undefined ? {} : { overdueAssignee: options.overdueAssignee }),
+      ...(options.batchLimit === undefined ? {} : { batchLimit: options.batchLimit }),
     },
   );
   return { orders, nonconforms, operations, domainEvents, machineEvents, todos, stockRelease, notify, service };
@@ -262,12 +276,30 @@ describe('存储端口（内存实现，租户收口 + 乐观推进 + append-onl
 });
 
 describe('状态机配置与来源映射', () => {
-  it('四态齐备、passed/closed 终态、4 条迁移；处置三态 2 条迁移', () => {
+  it('四态齐备、closed 唯一终态、判定 4 条 + 撤销 2 条迁移；处置四态 4 条迁移（含 voided 旁支）', () => {
     expect(DEFAULT_INSPECTION_FLOW_CONFIG.states.map((state) => state.id)).toEqual([...INSPECTION_STATE_IDS]);
-    expect(DEFAULT_INSPECTION_FLOW_CONFIG.states.filter((s) => s.final).map((s) => s.id)).toEqual(['passed', 'closed']);
-    expect(DEFAULT_INSPECTION_FLOW_CONFIG.transitions.length).toBe(4);
-    expect(DEFAULT_NONCONFORM_FLOW_CONFIG.states.map((state) => state.id)).toEqual(['open', 'disposed', 'closed']);
-    expect(DEFAULT_NONCONFORM_FLOW_CONFIG.transitions.length).toBe(2);
+    // fix-wave-6 6a-2：passed 让位于 REVOKE 回退出边，closed 成唯一终态（RQ-037）
+    expect(DEFAULT_INSPECTION_FLOW_CONFIG.states.filter((s) => s.final).map((s) => s.id)).toEqual(['closed']);
+    expect(DEFAULT_INSPECTION_FLOW_CONFIG.transitions.length).toBe(6);
+    expect(
+      DEFAULT_INSPECTION_FLOW_CONFIG.transitions
+        .filter((t) => t.event === 'REVOKE')
+        .map((t) => [t.from, t.to]),
+    ).toEqual([
+      ['passed', 'pending'],
+      ['failed', 'pending'],
+    ]);
+    expect(DEFAULT_NONCONFORM_FLOW_CONFIG.states.map((state) => state.id)).toEqual([...NONCONFORM_STATE_IDS]);
+    expect(NONCONFORM_STATE_IDS).toEqual(['open', 'disposed', 'closed', 'voided']);
+    expect(DEFAULT_NONCONFORM_FLOW_CONFIG.transitions.length).toBe(4);
+    expect(
+      DEFAULT_NONCONFORM_FLOW_CONFIG.transitions
+        .filter((t) => t.event === 'VOID')
+        .map((t) => [t.from, t.to]),
+    ).toEqual([
+      ['open', 'voided'],
+      ['disposed', 'voided'],
+    ]);
   });
 
   it('kindForSourceFact：report/dispatch 恒自制外协；receipt 须三类采购之一', () => {
@@ -280,6 +312,7 @@ describe('状态机配置与来源映射', () => {
     expect(INSPECTION_KINDS.length).toBe(4);
     expect(NONCONFORM_DISPOSALS).toEqual(['rework', 'concession', 'scrap']);
     expect(DEFAULT_CLOSE_TIMEOUT_MS).toBe(72 * 60 * 60 * 1000);
+    expect(DEFAULT_INSPECTION_BATCH_LIMIT).toBe(50);
   });
 });
 
@@ -483,6 +516,454 @@ describe('inspection.recheck（复检）', () => {
       envelope('inspection.recheck.v1', { passedQty: 3, failedQty: 0 }, { expectedRevision: 1 }), id,
     );
     expect(pending.status).toBe('rejected');
+  });
+});
+
+describe('inspection.concession（fix-wave-6 6a-2：RQ-035 特采确认 / S5）', () => {
+  let nsSeq = 0;
+  /** 非标件采购收货 → 判定部分不合格（failed 态）。 */
+  async function failedNsOrder(
+    h: ReturnType<typeof newHarness>,
+    quantity = 10,
+    failedQty = 6,
+  ): Promise<string> {
+    nsSeq += 1;
+    const receipt = await h.service.receiveSourceFact(
+      t1,
+      sourceFact({
+        sourceType: 'receipt',
+        kind: 'nonstandard_purchase',
+        sourceRefId: `rcv-ns-${String(nsSeq).padStart(3, '0')}`,
+        itemId: 'item-ns',
+        quantity,
+      }),
+    );
+    const id = receipt.inspectionId as string;
+    mustCommit(
+      await h.service.execute(
+        envelope('inspection.judge.v1', { passedQty: quantity - failedQty, failedQty }, { expectedRevision: 1 }),
+        id,
+      ),
+    );
+    return id;
+  }
+
+  it('特采确认：累加已特采 + 事件载荷（本次/累计/剩余）+ 数量边界 ≤ 不合格−已特采', async () => {
+    const h = newHarness();
+    const id = await failedNsOrder(h, 10, 6); // 不合格 6
+    const first = mustCommit(await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 4 }, { expectedRevision: 2 }),
+      id,
+    ));
+    expect(first.newRevision).toBe(2); // 无迁移不推进版本（源：已质检→已质检）
+    const payload = first.events[0]?.payload as {
+      quantity: number; concessionQuantity: number; remainingConcessionQty: number; failedQty: number;
+    };
+    expect(first.events[0]?.eventType).toBe(INSPECTION_EVENT_TYPES.concessionConfirmed);
+    expect([payload.quantity, payload.concessionQuantity, payload.remainingConcessionQty, payload.failedQty]).toEqual(
+      [4, 4, 2, 6],
+    );
+    const second = mustCommit(await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 2 }, { expectedRevision: 2 }),
+      id,
+    ));
+    expect(
+      (second.events[0]?.payload as { concessionQuantity: number; remainingConcessionQty: number }).concessionQuantity,
+    ).toBe(6);
+
+    // 边界：剩余 0 再特采拒绝；剩余 2 时超界拒绝（整批锚事件不产生）
+    const exhausted = await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 1 }, { expectedRevision: 2 }), id,
+    );
+    expect(exhausted.status).toBe('rejected');
+    if (exhausted.status === 'rejected') expect(exhausted.reason).toContain('无可特采');
+    const view = await h.service.concessionView(t1, id);
+    expect([view.concessionQuantity, view.remainingConcessionQty]).toEqual([6, 0]);
+  });
+
+  it('超剩余可特采拒绝（数量边界验收口径）+ 越界零落账', async () => {
+    const h = newHarness();
+    const id = await failedNsOrder(h, 10, 5);
+    const over = await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 6 }, { expectedRevision: 2 }), id,
+    );
+    expect(over.status).toBe('rejected');
+    if (over.status === 'rejected') expect(over.reason).toContain('剩余可特采');
+    expect((await h.service.concessionView(t1, id)).concessionQuantity).toBe(0);
+  });
+
+  it('累加幂等：同 operationId 重放 rejected（幂等账命中），已特采不双记', async () => {
+    const h = newHarness();
+    const id = await failedNsOrder(h, 8, 4);
+    const op = 'op-concession-once';
+    mustCommit(await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 2 }, { expectedRevision: 2, operationId: op }),
+      id,
+    ));
+    // 重放同载荷（数量 2 ≤ 剩余 2，通过边界校验）→ 命中幂等账拒绝，不双记
+    const replay = await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 2 }, { expectedRevision: 2, operationId: op }),
+      id,
+    );
+    expect(replay.status).toBe('rejected');
+    if (replay.status === 'rejected') expect(replay.reason).toContain('幂等');
+    expect((await h.service.concessionView(t1, id)).concessionQuantity).toBe(2); // 未双记
+    const published = await h.domainEvents.byAggregate({ id, type: 'inspection-order' });
+    expect(published.filter((event) => event.eventType === INSPECTION_EVENT_TYPES.concessionConfirmed).length).toBe(1);
+  });
+
+  it('前置面：未质检/全合格/非非标件/已闭环/乐观锁过期 → rejected', async () => {
+    const h = newHarness();
+    const pendingReceipt = await h.service.receiveSourceFact(t1, sourceFact({
+      sourceType: 'receipt', kind: 'nonstandard_purchase', sourceRefId: 'rcv-ns-p', quantity: 5,
+    }));
+    const pending = await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 1 }, { expectedRevision: 1 }),
+      pendingReceipt.inspectionId as string,
+    );
+    expect(pending.status).toBe('rejected');
+    if (pending.status === 'rejected') expect(pending.reason).toContain('未质检');
+
+    const passedReceipt = await h.service.receiveSourceFact(t1, sourceFact({
+      sourceType: 'receipt', kind: 'nonstandard_purchase', sourceRefId: 'rcv-ns-ok', quantity: 5,
+    }));
+    const passedId = passedReceipt.inspectionId as string;
+    mustCommit(await h.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 5, failedQty: 0 }, { expectedRevision: 1 }), passedId,
+    ));
+    const noFailed = await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 1 }, { expectedRevision: 2 }), passedId,
+    );
+    expect(noFailed.status).toBe('rejected');
+    if (noFailed.status === 'rejected') expect(noFailed.reason).toContain('无可特采');
+
+    // 非非标件：标准配件不合格单不走特采
+    const stdReceipt = await h.service.receiveSourceFact(t1, sourceFact({
+      sourceType: 'receipt', kind: 'standard_purchase', sourceRefId: 'rcv-std-1', quantity: 5,
+    }));
+    const stdId = stdReceipt.inspectionId as string;
+    mustCommit(await judgeFail(h, stdId, 3, 2));
+    const wrongKind = await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 1 }, { expectedRevision: 2 }), stdId,
+    );
+    expect(wrongKind.status).toBe('rejected');
+    if (wrongKind.status === 'rejected') expect(wrongKind.reason).toContain('非标件采购');
+
+    // 已闭环单（报废处置全闭环推 closed）
+    const closedId = await failedNsOrder(h, 2, 2);
+    const ncId = (await h.service.nonconformList(t1, { inspectionId: closedId }))[0]?.id as string;
+    mustCommit(await h.service.execute(
+      envelope('nonconform.dispose.v1', { disposal: 'scrap', reason: '报废' }, { expectedRevision: 1 }), ncId,
+    ));
+    mustCommit(await h.service.execute(
+      envelope('nonconform.close.v1', { remark: '闭环' }, { expectedRevision: 2 }), ncId,
+    ));
+    const closedOrder = await h.orders.find(t1, InspectionId.create(closedId));
+    expect(closedOrder?.state).toBe('closed');
+    const closedReject = await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 1 }, { expectedRevision: 3 }), closedId,
+    );
+    expect(closedReject.status).toBe('rejected');
+    if (closedReject.status === 'rejected') expect(closedReject.reason).toContain('闭环');
+
+    const stale = await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 1 }, { expectedRevision: 9 }),
+      (await failedNsOrder(h, 4, 2)),
+    );
+    expect(stale.status).toBe('rejected');
+  });
+
+  it('与既有 concession 处置并存：特采不改明细闭环状态（不推翻闭环语义）', async () => {
+    const h = newHarness();
+    const id = await failedNsOrder(h, 6, 3);
+    const ncId = (await h.service.nonconformList(t1, { inspectionId: id }))[0]?.id as string;
+    mustCommit(await h.service.execute(
+      envelope('nonconform.dispose.v1', { disposal: 'concession', reason: '让步接收处置' }, { expectedRevision: 1 }),
+      ncId,
+    ));
+    mustCommit(await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 2 }, { expectedRevision: 2 }), id,
+    ));
+    const nc = await h.nonconforms.find(t1, ncId);
+    expect([nc?.state, nc?.disposal]).toEqual(['disposed', 'concession']); // 处置闭环不受特采影响
+    expect((await h.service.concessionView(t1, id)).concessionQuantity).toBe(2); // 特采独立累加
+  });
+});
+
+describe('inspection.judge-batch（fix-wave-6 6a-2：RQ-036 批量质检）', () => {
+  it('整批全合格：逐单 passed@v2 + 每单 judged/released + 批次锚事件 + 放行端口逐单收到', async () => {
+    const h = newHarness();
+    const ids: string[] = [];
+    for (const [i, quantity] of [10, 5, 1].entries()) {
+      const receipt = await h.service.receiveSourceFact(t1, sourceFact({
+        sourceRefId: `rpt-batch-${i}`, quantity,
+      }));
+      ids.push(receipt.inspectionId as string);
+    }
+    const committed = mustCommit(await h.service.execute(
+      envelope('inspection.judge-batch.v1', {
+        lines: ids.map((inspectionId) => ({ inspectionId, expectedRevision: 1 })),
+      }),
+    ));
+    expect(committed.inspections?.map((order) => [order.state, order.passedQty, order.quantity])).toEqual([
+      ['passed', 10, 10],
+      ['passed', 5, 5],
+      ['passed', 1, 1],
+    ]);
+    // 事件序：每单 judged+released + 1 条批次锚（合格=送检量、不合格=0 同判定值）
+    expect(committed.events.length).toBe(7);
+    expect(committed.events.slice(0, 2).map((event) => event.eventType)).toEqual([
+      INSPECTION_EVENT_TYPES.judged,
+      INSPECTION_EVENT_TYPES.released,
+    ]);
+    const anchor = committed.events[6]?.payload as { count: number; batchId: string };
+    expect(committed.events[6]?.eventType).toBe(INSPECTION_EVENT_TYPES.judgedBatch);
+    expect(anchor.count).toBe(3);
+    expect(h.stockRelease.facts.length).toBe(3);
+    expect(h.stockRelease.facts.map((fact) => fact.quantity)).toEqual([10, 5, 1]);
+    expect((await h.service.summary(t1)).passRate).toBe(1);
+  });
+
+  it('整批原子：任一行非待检/乐观锁过期/不存在/重复勾选 → 整批 rejected 零落账', async () => {
+    const h = newHarness();
+    const a = (await h.service.receiveSourceFact(t1, sourceFact({ sourceRefId: 'ba', quantity: 3 }))).inspectionId as string;
+    const b = (await h.service.receiveSourceFact(t1, sourceFact({ sourceRefId: 'bb', quantity: 3 }))).inspectionId as string;
+    // b 先单条判定 → 批中第 2 行非待检
+    mustCommit(await h.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 3, failedQty: 0 }, { expectedRevision: 1 }), b,
+    ));
+    const mixed = await h.service.execute(
+      envelope('inspection.judge-batch.v1', {
+        lines: [{ inspectionId: a, expectedRevision: 1 }, { inspectionId: b, expectedRevision: 2 }],
+      }),
+    );
+    expect(mixed.status).toBe('rejected');
+    if (mixed.status === 'rejected') expect(mixed.reason).toContain('批量第 2 行');
+    expect((await h.orders.find(t1, InspectionId.create(a)))?.state).toBe('pending'); // a 零落账
+    expect(h.stockRelease.facts.length).toBe(1); // 仅 b 的单条判定放行
+
+    const stale = await h.service.execute(
+      envelope('inspection.judge-batch.v1', {
+        lines: [{ inspectionId: a, expectedRevision: 7 }],
+      }),
+    );
+    expect(stale.status).toBe('rejected');
+    const missing = await h.service.execute(
+      envelope('inspection.judge-batch.v1', { lines: [{ inspectionId: 'insp-missing', expectedRevision: 1 }] }),
+    );
+    expect(missing.status).toBe('rejected');
+    const duplicated = await h.service.execute(
+      envelope('inspection.judge-batch.v1', {
+        lines: [
+          { inspectionId: a, expectedRevision: 1 },
+          { inspectionId: a, expectedRevision: 1 },
+        ],
+      }),
+    );
+    expect(duplicated.status).toBe('rejected');
+    if (duplicated.status === 'rejected') expect(duplicated.reason).toContain('重复勾选');
+    expect((await h.orders.find(t1, InspectionId.create(a)))?.state).toBe('pending');
+  });
+
+  it('超上限整批拒（配置层 batchLimit）+ 信封 expectedRevision 须 initial + 空行 InputError', async () => {
+    const h = newHarness({ batchLimit: 2 });
+    const ids: string[] = [];
+    for (const i of [0, 1, 2]) {
+      ids.push(
+        (await h.service.receiveSourceFact(t1, sourceFact({ sourceRefId: `bl-${i}`, quantity: 1 }))).inspectionId as string,
+      );
+    }
+    const over = await h.service.execute(
+      envelope('inspection.judge-batch.v1', { lines: ids.map((inspectionId) => ({ inspectionId, expectedRevision: 1 })) }),
+    );
+    expect(over.status).toBe('rejected');
+    if (over.status === 'rejected') expect(over.reason).toContain('超上限');
+    const notInitial = await h.service.execute(
+      envelope('inspection.judge-batch.v1', { lines: [] }, { expectedRevision: 3 }),
+    );
+    expect(notInitial.status).toBe('rejected');
+    expect(() => parseJudgeBatchPayload({ lines: [] })).toThrow(InspectionInputError);
+  });
+});
+
+describe('inspection.revoke（fix-wave-6 6a-2：RQ-037 撤销质检）', () => {
+  it('passed 单撤销：回待检 + 清空判定字段 + InspectionRevoked（放行收回量）+ 可重新判定', async () => {
+    const h = newHarness({ revokeGuard: PERMISSIVE_INSPECTION_REVOKE_GUARD });
+    const receipt = await h.service.receiveSourceFact(t1, sourceFact({ quantity: 7 }));
+    const id = receipt.inspectionId as string;
+    mustCommit(await h.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 7, failedQty: 0, remark: '误判合格' }, { expectedRevision: 1 }), id,
+    ));
+    const revoked = mustCommit(await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: '判定录错，撤销重判' }, { expectedRevision: 2 }), id,
+    ));
+    expect(revoked.inspection?.state).toBe('pending');
+    expect(revoked.inspection?.objectVersion).toBe(3);
+    expect([
+      revoked.inspection?.passedQty,
+      revoked.inspection?.failedQty,
+      revoked.inspection?.judgedBy,
+      revoked.inspection?.judgedAt,
+      revoked.inspection?.closeDueAt,
+    ]).toEqual([null, null, null, null, null]); // 清空合格/不合格/质检人/时间
+    const payload = revoked.events[0]?.payload as {
+      fromState: string; releasedQtyRetracted: number; concessionQuantityCleared: number;
+    };
+    expect(revoked.events[0]?.eventType).toBe(INSPECTION_EVENT_TYPES.revoked);
+    expect([payload.fromState, payload.releasedQtyRetracted, payload.concessionQuantityCleared]).toEqual([
+      'passed', 7, 0,
+    ]);
+    const milestones = (await h.service.detail(t1, id)).milestones;
+    expect(milestones.map((milestone) => [milestone.from, milestone.to])).toEqual([
+      ['pending', 'passed'],
+      ['passed', 'pending'],
+    ]);
+    // 重判走原管线（撤销回待检非作废）
+    mustCommit(await h.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 6, failedQty: 1 }, { expectedRevision: 3 }), id,
+    ));
+    expect((await h.orders.find(t1, InspectionId.create(id)))?.state).toBe('failed');
+  });
+
+  it('failed 单撤销：不合格明细随判定作废（voided）+ 特采累计清零 + 汇总未闭环归零', async () => {
+    const h = newHarness({ revokeGuard: PERMISSIVE_INSPECTION_REVOKE_GUARD });
+    const receipt = await h.service.receiveSourceFact(t1, sourceFact({
+      sourceType: 'receipt', kind: 'nonstandard_purchase', sourceRefId: 'rcv-rvk-1', quantity: 10,
+    }));
+    const id = receipt.inspectionId as string;
+    mustCommit(await h.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 4, failedQty: 6 }, { expectedRevision: 1 }), id,
+    ));
+    mustCommit(await h.service.execute(
+      envelope('inspection.concession.v1', { quantity: 2 }, { expectedRevision: 2 }), id,
+    ));
+    mustCommit(await h.service.execute(
+      envelope('nonconform.dispose.v1', { disposal: 'rework', reason: '先处置再撤' }, { expectedRevision: 1 }),
+      (await h.service.nonconformList(t1, { inspectionId: id }))[0]?.id as string,
+    ));
+    expect((await h.service.summary(t1)).nonconformOpenCount).toBe(1);
+
+    const revoked = mustCommit(await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: '误判，整体回退' }, { expectedRevision: 2 }), id,
+    ));
+    const payload = revoked.events[0]?.payload as {
+      fromState: string; concessionQuantityCleared: number; nonconformIdsVoided: readonly string[];
+    };
+    expect([payload.fromState, payload.concessionQuantityCleared]).toEqual(['failed', 2]); // 特采清零事实
+    expect(payload.nonconformIdsVoided.length).toBe(1);
+    expect(revoked.inspection?.state).toBe('pending');
+    const nc = await h.nonconforms.find(t1, payload.nonconformIdsVoided[0] as string);
+    expect(nc?.state).toBe('voided'); // 已处置明细随判定作废（非结案闭环）
+    const viewAfterRevoke = await h.service.concessionView(t1, id);
+    expect([viewAfterRevoke.concessionQuantity, viewAfterRevoke.remainingConcessionQty]).toEqual([0, 0]);
+    expect(viewAfterRevoke.state).toBe('pending'); // 判定清空 → 基数随判定清零（未质检无可特采）
+    // 重判后基数恢复：再判不合格 6 → 已特采 0（撤销清零）→ 剩余可特采全额恢复
+    mustCommit(await h.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 4, failedQty: 6 }, { expectedRevision: 3 }), id,
+    ));
+    const viewRejudged = await h.service.concessionView(t1, id);
+    expect([viewRejudged.concessionQuantity, viewRejudged.remainingConcessionQty]).toEqual([0, 6]);
+    expect((await h.service.summary(t1)).nonconformOpenCount).toBe(1); // 重判新建明细（旧明细 voided 不计）
+  });
+
+  it('闸门拦截：缺省 fail-closed 未接线拒绝；guard 返回原因拒绝（已入库/下一道/工时已审语义）', async () => {
+    const h = newHarness(); // 未注入 revokeGuard → fail-closed 缺省
+    const receipt = await h.service.receiveSourceFact(t1, sourceFact({ quantity: 3 }));
+    const id = receipt.inspectionId as string;
+    mustCommit(await h.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 3, failedQty: 0 }, { expectedRevision: 1 }), id,
+    ));
+    const unwired = await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: 'x' }, { expectedRevision: 2 }), id,
+    );
+    expect(unwired.status).toBe('rejected');
+    if (unwired.status === 'rejected') expect(unwired.reason).toContain('fail-closed');
+
+    const blocked = newHarness({
+      revokeGuard: { assertRevokable: async () => '关联入库已入库完成，不可撤销质检' },
+    });
+    const receipt2 = await blocked.service.receiveSourceFact(t1, sourceFact({ quantity: 3, sourceRefId: 'r2' }));
+    const id2 = receipt2.inspectionId as string;
+    mustCommit(await blocked.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 3, failedQty: 0 }, { expectedRevision: 1 }), id2,
+    ));
+    const gateReject = await blocked.service.execute(
+      envelope('inspection.revoke.v1', { remark: 'x' }, { expectedRevision: 2 }), id2,
+    );
+    expect(gateReject.status).toBe('rejected');
+    if (gateReject.status === 'rejected') expect(gateReject.reason).toContain('已入库完成');
+    expect((await blocked.orders.find(t1, InspectionId.create(id2)))?.state).toBe('passed'); // 零落账
+  });
+
+  it('拒绝面：pending 无可撤 / closed 终态拒 / 乐观锁过期拒 / 存储未实现 revertJudgment 拒', async () => {
+    const h = newHarness({ revokeGuard: PERMISSIVE_INSPECTION_REVOKE_GUARD });
+    const pendingId = (await h.service.receiveSourceFact(t1, sourceFact({ sourceRefId: 'rv-p', quantity: 2 })))
+      .inspectionId as string;
+    const pending = await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: 'x' }, { expectedRevision: 1 }), pendingId,
+    );
+    expect(pending.status).toBe('rejected');
+
+    // closed 终态：判不合格 → 报废处置 → 闭环推单 closed
+    const closedId = (await h.service.receiveSourceFact(t1, sourceFact({ sourceRefId: 'rv-c', quantity: 2 })))
+      .inspectionId as string;
+    mustCommit(await judgeFail(h, closedId, 2, 0));
+    const ncId = (await h.service.nonconformList(t1, { inspectionId: closedId }))[0]?.id as string;
+    mustCommit(await h.service.execute(
+      envelope('nonconform.dispose.v1', { disposal: 'scrap', reason: '报废' }, { expectedRevision: 1 }), ncId,
+    ));
+    mustCommit(await h.service.execute(
+      envelope('nonconform.close.v1', { remark: '闭环' }, { expectedRevision: 2 }), ncId,
+    ));
+    expect((await h.orders.find(t1, InspectionId.create(closedId)))?.state).toBe('closed');
+    const closedReject = await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: 'x' }, { expectedRevision: 3 }), closedId,
+    );
+    expect(closedReject.status).toBe('rejected');
+    if (closedReject.status === 'rejected') expect(closedReject.reason).toContain('终态');
+
+    const passId = (await h.service.receiveSourceFact(t1, sourceFact({ sourceRefId: 'rv-s', quantity: 2 })))
+      .inspectionId as string;
+    mustCommit(await h.service.execute(
+      envelope('inspection.judge.v1', { passedQty: 2, failedQty: 0 }, { expectedRevision: 1 }), passId,
+    ));
+    const stale = await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: 'x' }, { expectedRevision: 9 }), passId,
+    );
+    expect(stale.status).toBe('rejected');
+
+    // 存储适配器未实现 revertJudgment（可选方法缺位）→ fail-closed
+    (h.orders as unknown as { revertJudgment?: (() => void) | undefined }).revertJudgment = undefined;
+    const noAdapter = await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: 'x' }, { expectedRevision: 2 }), passId,
+    );
+    expect(noAdapter.status).toBe('rejected');
+    if (noAdapter.status === 'rejected') expect(noAdapter.reason).toContain('revertJudgment');
+  });
+
+  it('幂等与待办联动：同 operationId 重放 rejected；点名单撤销清点名待办', async () => {
+    const h = newHarness({ revokeGuard: PERMISSIVE_INSPECTION_REVOKE_GUARD, overdueAssignee: supervisor });
+    const receipt = await h.service.receiveSourceFact(t1, sourceFact({ quantity: 2, sourceRefId: 'rv-td' }));
+    const id = receipt.inspectionId as string;
+    mustCommit(await judgeFail(h, id, 2, 0));
+    await h.orders.markOverdueNotified(t1, InspectionId.create(id), FIXED_NOW);
+    await h.todos.create({
+      tenant: t1,
+      assignee: supervisor,
+      title: '质检闭环超时点名',
+      source: 'inspection',
+      refType: 'inspection-order',
+      refId: id,
+    });
+    const op = 'op-revoke-once';
+    const revoked = mustCommit(await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: '撤销' }, { expectedRevision: 2, operationId: op }), id,
+    ));
+    expect(revoked.todosCompleted.length).toBe(1); // 点名待办随撤销完成
+    const replay = await h.service.execute(
+      envelope('inspection.revoke.v1', { remark: '撤销' }, { expectedRevision: 3, operationId: op }), id,
+    );
+    expect(replay.status).toBe('rejected');
   });
 });
 
@@ -795,15 +1276,19 @@ describe('模块装配与权限码', () => {
     expect(Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, InspectionModule)).toBeUndefined();
   });
 
-  it('权限码：11 路由逐点声明（06-inspection.md §5 最小集）', () => {
+  it('权限码：15 路由逐点声明（06-inspection.md §5 最小集 + fix-wave-6 6a-2 三面）', () => {
     const expected: readonly [object, string, string][] = [
       [InspectionsController.prototype, 'create', 'inspection:judge'],
       [InspectionsController.prototype, 'list', 'inspection:read'],
       [InspectionsController.prototype, 'get', 'inspection:read'],
       [InspectionsController.prototype, 'judge', 'inspection:judge'],
       [InspectionsController.prototype, 'recheck', 'inspection:judge'],
+      [InspectionsController.prototype, 'concessionView', 'inspection:read'],
+      [InspectionsController.prototype, 'concession', 'inspection:judge'],
+      [InspectionsController.prototype, 'revoke', 'inspection:judge'],
       [InspectionQueriesController.prototype, 'summary', 'inspection:read'],
       [InspectionQueriesController.prototype, 'scanOverdue', 'inspection:judge'],
+      [InspectionQueriesController.prototype, 'judgeBatch', 'inspection:judge'],
       [NonconformitiesController.prototype, 'list', 'nonconform:read'],
       [NonconformitiesController.prototype, 'get', 'nonconform:read'],
       [NonconformitiesController.prototype, 'dispose', 'nonconform:dispose'],

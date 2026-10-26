@@ -112,14 +112,18 @@ export interface DispatchPrintDocument {
   readonly title: string;
   /** 头字段（label/value 行式——渲染顺序即数组序）。 */
   readonly fields: readonly { readonly label: string; readonly value: string }[];
-  /** 外协明细行（表格式；空数组 = 非外协单）。 */
-  readonly lines: readonly {
+  /** 外协明细行（表格式；空数组 = 非外协单；状态/取消原因列随行——RREQ-DP-031）。 */
+  lines: readonly {
     readonly lineNo: number;
     readonly processCode: string;
     readonly drawingNo: string | null;
     readonly quantity: number;
     readonly unitPriceLabel: string;
     readonly promisedAt: string | null;
+    /** 行状态中文（待派工/已派工/已质检/已取消——推导口径见 dispatch-config）。 */
+    readonly statusLabel: string;
+    /** 取消外协原因（未取消为 null）。 */
+    readonly cancelReason: string | null;
   }[];
 }
 

@@ -106,6 +106,10 @@
     "./attachment": {
       "types": "./dist/attachment/index.d.ts",
       "default": "./dist/attachment/index.js"
+    },
+    "./column-preferences": {
+      "types": "./dist/column-preferences/index.d.ts",
+      "default": "./dist/column-preferences/index.js"
     }
   },
   "scripts": {

@@ -115,6 +115,39 @@ export const NOOP_NOTIFY_CHANNEL: NotifyChannel = {
   notify: async () => undefined,
 };
 
+// ---- 撤销前置闸门端口（inspection ← inventory/reporting/hours 经组合根，RQ-037） ----
+
+/** 撤销命令要校验的质检单最小形状（闸门实现方按需取用）。 */
+export interface RevokeGuardTarget {
+  readonly inspectionId: string;
+  readonly kind: InspectionKind;
+  readonly sourceType: InspectionSourceType | null;
+  readonly sourceRefId: string | null;
+}
+
+/**
+ * 撤销质检前置闸门端口（RQ-037"关联入库未入库完成方可撤 + 下一道闸门 +
+ * 工时已审禁撤"三项跨域校验的接缝）：源三项闸门分别读 IV（入库状态）、
+ * reporting/baseline（紧邻下一道报工/已质检）、HC（工时审核）——本域一律
+ * 不可见，经本端口由组合根接线实现。返回 null=可撤；返回 reason=拒绝原因。
+ * 缺省 FAIL_CLOSED_INSPECTION_REVOKE_GUARD：未接线一律拒绝（数据完整性
+ * 优先——放行/报工/工时状态不可见时不盲撤；组合根接线后替换）。
+ */
+export interface InspectionRevokeGuardPort {
+  assertRevokable(tenant: TenantId, target: RevokeGuardTarget): Promise<string | null>;
+}
+
+/** 缺省 fail-closed 闸门：未接线 = 无法确认三项跨域闸门，拒绝撤销。 */
+export const FAIL_CLOSED_INSPECTION_REVOKE_GUARD: InspectionRevokeGuardPort = {
+  assertRevokable: async () =>
+    '撤销闸门端口未接线（fail-closed）：无法确认关联入库/下一道工序/工时审核状态，拒绝撤销质检',
+};
+
+/** 测试/接线用放行闸门：三项跨域闸门全过（真实接线前不得用于组合根）。 */
+export const PERMISSIVE_INSPECTION_REVOKE_GUARD: InspectionRevokeGuardPort = {
+  assertRevokable: async () => null,
+};
+
 // ---- 待办联动 ----
 
 /** 待办联动来源码（workbench TodoStore 的 source 口径；refType = 聚合类型）。 */

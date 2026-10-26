@@ -152,4 +152,7 @@ export const RLS_TABLES: readonly RlsTableSpec[] = [
   // A8/A10 首波（2026-10-26 落库：RREQ-RP-027 每日机加工进度统计日表，报表域
   // 自持统计快照；守恒测试触发补登 + 全量重放迁移 20261026190100——103 表快照）
   tenantTable('machining_daily_stats'),
+  // fix-wave-6 6b-3 线（2026-10-26 落库：A14 / RREQ-INT-032 用户表格列显隐
+  // 偏好单表；守恒测试触发补登 + 全量重放迁移 20261026200100——104 表快照）
+  tenantTable('column_preferences'),
 ];

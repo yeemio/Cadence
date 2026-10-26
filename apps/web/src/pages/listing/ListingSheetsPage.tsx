@@ -1,12 +1,18 @@
 /**
  * 四类清单页（S2 批次）：按工作令查询零件/标准件/电气件/设备采购清单 + 骨架
  * 导入 + 选中清单详情（含行）+ 行修订。覆盖矩阵 #31-34。
+ * fix-wave-6 6b-3（A14）：列表列显隐记忆接入（useColumnVisibility，
+ * pageKey=/listings/sheets，隐藏集跨会话/跨设备恢复；6b-3 接入页由
+ * dispatch 改选本页——dispatch 页被 6a-1 在途批操作/页眉统计占用，登记）。
  */
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getSheetDetail, importSkeleton, listSheets, updateListingLine } from '../../data/listingApi';
 import { rowsOf, type CommandOutcomeView } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, RowDetail } from '../../components/ModuleTable';
+import type { TableColumn } from '../../components/ModuleTable';
+import { ColumnVisibilityMenu } from '../../components/ColumnVisibilityMenu';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -18,10 +24,19 @@ const SHEET_COLUMNS = [
   { key: 'workOrderId', label: '工作令', mono: true },
   { key: 'status', label: '状态', mono: true },
   { key: 'objectVersion', label: '版本', mono: true },
-];
+] as const satisfies readonly TableColumn[];
+
+/** 列显隐记忆键（A14 / RREQ-INT-032：pageKey=路由 path，tableKey=本页主表）。 */
+const COLUMN_PREFS_PAGE = '/listings/sheets';
+const COLUMN_PREFS_TABLE = 'main';
 
 export function ListingSheetsPage() {
   const queryClient = useQueryClient();
+  const { visibleColumns, isColumnHidden, toggleColumn } = useColumnVisibility({
+    pageKey: COLUMN_PREFS_PAGE,
+    tableKey: COLUMN_PREFS_TABLE,
+    columns: SHEET_COLUMNS,
+  });
   const [workOrderIdInput, setWorkOrderIdInput] = useState('');
   const [workOrderId, setWorkOrderId] = useState<string | null>(null);
   const [selectedSheetId, setSelectedSheetId] = useState<string | null>(null);
@@ -106,10 +121,15 @@ export function ListingSheetsPage() {
               empty="该工作令尚无清单（可先执行骨架导入）"
             >
               <ModuleTable
-                columns={SHEET_COLUMNS}
+                columns={visibleColumns}
                 rows={sheetsQuery.data ?? []}
                 selectedId={selectedSheetId}
                 onSelect={(row) => setSelectedSheetId(String(row['id']))}
+              />
+              <ColumnVisibilityMenu
+                columns={SHEET_COLUMNS}
+                isColumnHidden={isColumnHidden}
+                toggleColumn={toggleColumn}
               />
             </QueryState>
           )}

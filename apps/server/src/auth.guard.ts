@@ -18,7 +18,9 @@
  *  - 租户：TenantContext（ALS）中间件已包裹整条下游处理链（ADR-0005）；
  *  - 判定：零本地逻辑，全部委托 PermissionService（application 包，零框架）；
  *  - 放行规则：未声明 @RequirePermission 的路由 = 公开路由（/health、/modules、
- *    /auth/* 等既有行为零回归）。
+ *    /auth/* 等既有行为零回归）；@RequireLogin（fix-wave-6 6b-3，A14 首用）
+ *    = 仅登录档——解析身份并传递，但不做权限码判定（本人本人数据，登录即
+ *    有权，PRD 22 册 RREQ-INT-032）。
  *
  * 身份传递：判定通过后把 UserId 写入请求属性 REQUEST_USER_KEY，
  * 供受保护 handler 经 @Req() 读回（见 request-user.ts；users.active 启停
@@ -37,6 +39,7 @@ import {
   PERMISSION_METADATA_KEY,
   PermissionService,
   REQUEST_USER_KEY,
+  REQUIRE_LOGIN_METADATA_KEY,
   TenantContext,
   permissionCode,
 } from '@smes/application';
@@ -66,13 +69,17 @@ export class AuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (required === undefined) {
-      return true; // 公开路由：未声明权限码 = 不设防（既有端点零回归）
+    const requireLogin = this.reflector.getAllAndOverride<boolean>(
+      REQUIRE_LOGIN_METADATA_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (required === undefined && !requireLogin) {
+      return true; // 公开路由：未声明权限码且未声明仅登录 = 不设防（既有端点零回归）
     }
-    if (typeof required !== 'string') {
+    if (required !== undefined && typeof required !== 'string') {
       throw new ForbiddenException('路由权限码元数据类型非法');
     }
-    const code = permissionCode(required); // 装饰器已在定义期校验过；此处兜底 fail-closed
+    const code = required === undefined ? null : permissionCode(required); // 装饰器已在定义期校验过；此处兜底 fail-closed
 
     const request = context.switchToHttp().getRequest<MinimalRequest>();
     const user = await this.resolveUser(request);
@@ -80,6 +87,13 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException(
         '缺少或无效的访问令牌（Authorization: Bearer；dev/test 回落需 SMES_DEV_AUTH=on）',
       );
+    }
+
+    // 仅登录档（required 为空）：身份有效即放行——不做权限码判定（A14 先例：
+    // 本人本人的偏好数据，登录即有权）。身份仍写入请求供 handler 读回。
+    if (code === null) {
+      request[REQUEST_USER_KEY] = user;
+      return true;
     }
 
     const tenant = this.tenantContext.current(); // ALS 内：当前请求租户

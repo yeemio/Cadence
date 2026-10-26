@@ -9,9 +9,28 @@
  *                     合格分支随即发 InspectionReleased，不合格分支创建不合格明细）
  *   InspectionReleased（放行事实：passed 后 inventory 才可入库——合同 §2 放行规则，
  *                     inventory 消费的锚点事件）
+ *   InspectionConcessionConfirmed（fix-wave-6 6a-2 / RQ-035 特采确认：S5 让步
+ *                     接收入库语义的累加记账事实——详见下方"S5 特采与既有
+ *                     concession 处置的关系"注）
+ *   InspectionJudgedBatch（fix-wave-6 6a-2 / RQ-036 批量质检整批锚事件：
+ *                     每单 judged+released 照发，本事件为批次聚合锚）
+ *   InspectionRevoked（fix-wave-6 6a-2 / RQ-037 撤销质检：判定回退 + 放行收回
+ *                     + 特采清零 + 不合格明细作废的对外发布事实）
  *   NonconformDisposed / NonconformClosed（不合格处置与闭环；Closed 载荷的
  *                     orderClosed 标记"最后一条明细闭环推质检单进 closed"联动）
  *   InspectionOverdue（闭环超时点名 → 待办 + IM）
+ *
+ * **S5 特采（InspectionConcessionConfirmed）与既有 concession 处置枚举的关系**
+ * （17 册 §8-5"让步接收双形态"取舍，本波实施口径）：
+ *  - 既有 concession 处置 = 不合格**闭环语义**（dispose 载荷枚举之一，处置
+ *    决定留痕，无入库联动）——维持不动，不推翻既有闭环；
+ *  - 本事件族 = 源《采购-非标件采购质检》特采确认的 **S5 让步接收入库语义**
+ *    （failedQty 余量内累加 concession 数量 + 每次确认**另建**一条特采待入库
+ *    行事实，与合格放行 InspectionReleased 分立、不合并）；
+ *  - 两套词汇并存：同一次不合格量既可走处置闭环记账、也可走特采入库记账，
+ *    双记口径（是否互斥/如何对账）为开放问题回传 Owner 裁定（17 册 §8-5）；
+ *  - 待入库行本体归 IV 域（15 册）：本域只发事实事件（inventory 消费锚点），
+ *    入库联动未接线——本波"不做"面。
  *
  * 与 engine-flow 机器事件账本的分工（同 workorder 头注取舍）：机器事件
  * （ApprovalEvent 形状）是质检单/不合格处置两台状态机的**重放事实源**（乐观锁
@@ -35,6 +54,8 @@ import type {
 
 export const INSPECTION_AGGREGATE_TYPE = 'inspection-order';
 export const NONCONFORM_AGGREGATE_TYPE = 'nonconform';
+/** 批量质检批次锚聚合类型（RQ-036；体例同 reporting report-batch）。 */
+export const INSPECTION_BATCH_AGGREGATE_TYPE = 'inspection-order-batch';
 
 /** 溯源列形状：operationId + 命令动词 + 操作者（evidence-columns.v1 provenance 口径）。 */
 export interface InspectionEventProvenance {
@@ -57,7 +78,10 @@ function provenanceOf(
 export const INSPECTION_EVENT_TYPES = {
   created: 'smes.inspection.v1.created',
   judged: 'smes.inspection.v1.judged',
+  judgedBatch: 'smes.inspection.v1.judged-batch',
   released: 'smes.inspection.v1.released',
+  concessionConfirmed: 'smes.inspection.v1.concession-confirmed',
+  revoked: 'smes.inspection.v1.revoked',
   nonconformDisposed: 'smes.inspection.v1.nonconform-disposed',
   nonconformClosed: 'smes.inspection.v1.nonconform-closed',
   overdue: 'smes.inspection.v1.overdue',
@@ -111,6 +135,70 @@ export interface InspectionReleasedPayload {
   readonly sourceType: InspectionSourceType | null;
   readonly sourceRefId: string | null;
   readonly phase: InspectionJudgePhase;
+  readonly objectVersion: number;
+  readonly actor: string;
+}
+
+/**
+ * 特采确认载荷（RQ-035 / S5）：source 形态 = 源 mes_storage_entry
+ * `qc_release_kind=2` 特采待入库行（另建、不与合格行合并）——我方以独立事件
+ * 类型承载"另建一条特采待入库"事实（lineKind=concession，与合格放行
+ * InspectionReleased 分立），消费方（IV 域，未接线）据此另建特采待入库行。
+ * quantity=本次特采数量；concessionQuantity=累加后已特采数量；
+ * remainingConcessionQty=本次后剩余可特采 = max(0, failedQty − 已特采)。
+ * 撤销质检整体回退清零（无独立撤销特采——源口径），由 InspectionRevoked 事件
+ * 承载，本事件不冲销。
+ */
+export interface InspectionConcessionConfirmedPayload {
+  readonly inspectionId: string;
+  readonly kind: InspectionKind;
+  readonly itemId: string | null;
+  readonly drawingNo: string | null;
+  /** 本次特采数量（≥1）。 */
+  readonly quantity: number;
+  /** 累加后已特采数量。 */
+  readonly concessionQuantity: number;
+  /** 本次后剩余可特采数量。 */
+  readonly remainingConcessionQty: number;
+  /** 不合格数量（特采基数，冗余便于消费方对账）。 */
+  readonly failedQty: number;
+  readonly sourceType: InspectionSourceType | null;
+  readonly sourceRefId: string | null;
+  readonly objectVersion: number;
+  readonly actor: string;
+}
+
+/**
+ * 批量质检锚载荷（RQ-036）：整批"全部合格"逐单落账（合格=送检量、不合格=0），
+ * 每单的 judged/released 事件照常独立发布；本事件挂批次锚聚合（体例同
+ * reporting BatchSubmitted）。
+ */
+export interface InspectionJudgedBatchPayload {
+  readonly batchId: string;
+  readonly count: number;
+  readonly results: ReadonlyArray<{
+    readonly inspectionId: string;
+    readonly kind: InspectionKind;
+    readonly passedQty: number;
+    readonly objectVersion: number;
+  }>;
+  readonly actor: string;
+}
+
+/**
+ * 撤销质检载荷（RQ-037）：判定回退（passed/failed → pending）的对外事实。
+ * releasedQtyRetracted = 撤销前已放行数量（passed 单=原合格数，inventory
+ * 消费方据此收回待入库/冲减；failed 单=0）；concessionQuantityCleared =
+ * 撤销时清零的已特采数量；nonconformIdsVoided = 随判定作废的不合格明细。
+ */
+export interface InspectionRevokedPayload {
+  readonly inspectionId: string;
+  readonly kind: InspectionKind;
+  readonly fromState: string;
+  readonly releasedQtyRetracted: number;
+  readonly concessionQuantityCleared: number;
+  readonly nonconformIdsVoided: readonly string[];
+  readonly remark: string | null;
   readonly objectVersion: number;
   readonly actor: string;
 }
@@ -199,6 +287,51 @@ export function makeInspectionReleasedEvent(
     eventType: INSPECTION_EVENT_TYPES.released,
     tenantId: base.tenant,
     aggregate: { id: inspectionAggregateId, type: INSPECTION_AGGREGATE_TYPE, revision: payload.objectVersion },
+    occurredAt: base.occurredAt,
+    payload,
+    provenance: base.provenance,
+  });
+}
+
+export function makeInspectionConcessionConfirmedEvent(
+  base: DomainEventInput,
+  payload: InspectionConcessionConfirmedPayload,
+): BusinessEvent<InspectionConcessionConfirmedPayload> {
+  return makeBusinessEvent({
+    eventId: base.eventId,
+    eventType: INSPECTION_EVENT_TYPES.concessionConfirmed,
+    tenantId: base.tenant,
+    aggregate: { id: payload.inspectionId, type: INSPECTION_AGGREGATE_TYPE, revision: payload.objectVersion },
+    occurredAt: base.occurredAt,
+    payload,
+    provenance: base.provenance,
+  });
+}
+
+export function makeInspectionJudgedBatchEvent(
+  base: DomainEventInput,
+  payload: InspectionJudgedBatchPayload,
+): BusinessEvent<InspectionJudgedBatchPayload> {
+  return makeBusinessEvent({
+    eventId: base.eventId,
+    eventType: INSPECTION_EVENT_TYPES.judgedBatch,
+    tenantId: base.tenant,
+    aggregate: { id: payload.batchId, type: INSPECTION_BATCH_AGGREGATE_TYPE, revision: 1 },
+    occurredAt: base.occurredAt,
+    payload,
+    provenance: base.provenance,
+  });
+}
+
+export function makeInspectionRevokedEvent(
+  base: DomainEventInput,
+  payload: InspectionRevokedPayload,
+): BusinessEvent<InspectionRevokedPayload> {
+  return makeBusinessEvent({
+    eventId: base.eventId,
+    eventType: INSPECTION_EVENT_TYPES.revoked,
+    tenantId: base.tenant,
+    aggregate: { id: payload.inspectionId, type: INSPECTION_AGGREGATE_TYPE, revision: payload.objectVersion },
     occurredAt: base.occurredAt,
     payload,
     provenance: base.provenance,

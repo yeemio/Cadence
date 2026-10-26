@@ -42,7 +42,7 @@ interface OrderRow {
   objectVersion: number;
   readonly title: string;
   readonly drawingNo: string | null;
-  readonly operationCode: string | null;
+  operationCode: string | null;
   readonly material: string | null;
   readonly sizeSpec: string | null;
   readonly quantity: number;
@@ -152,6 +152,21 @@ export class InMemoryDispatchOrderStore implements DispatchOrderStore {
     row.updatedAt = new Date().toISOString();
     return toOrder(row);
   }
+
+  /** 转单字段重写（fix-wave-6 6a-1）：不推进版本/状态；乐观条件未命中返回 null。 */
+  async transfer(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    fields: { readonly assignee?: UserId | null; readonly operationCode?: string | null },
+  ): Promise<DispatchOrder | null> {
+    const row = this.rows.get(`${tenant}|${id}`);
+    if (row === undefined || row.objectVersion !== expectedObjectVersion) return null;
+    if (fields.assignee !== undefined) row.assignee = fields.assignee;
+    if (fields.operationCode !== undefined) row.operationCode = fields.operationCode;
+    row.updatedAt = new Date().toISOString();
+    return toOrder(row);
+  }
 }
 
 // ---- 外协明细（投影，版本化数据——单价补录乐观更新） ----
@@ -171,6 +186,8 @@ interface LineRow {
   marginPermyriad: number | null;
   promisedAt: string | null;
   readonly sourceListingLineId: string | null;
+  cancelReason: string | null;
+  cancelledAt: string | null;
   objectVersion: number;
   readonly createdAt: string;
   updatedAt: string;
@@ -192,6 +209,8 @@ function toLine(row: LineRow): OutsourcingLine {
     marginPermyriad: row.marginPermyriad,
     promisedAt: row.promisedAt,
     sourceListingLineId: row.sourceListingLineId,
+    cancelReason: row.cancelReason,
+    cancelledAt: row.cancelledAt,
     objectVersion: row.objectVersion,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -233,6 +252,8 @@ export class InMemoryOutsourcingLineStore implements OutsourcingLineStore {
         marginPermyriad: input.marginPermyriad,
         promisedAt: input.promisedAt,
         sourceListingLineId: input.sourceListingLineId,
+        cancelReason: null,
+        cancelledAt: null,
         objectVersion: 1,
         createdAt: now,
         updatedAt: now,
@@ -274,6 +295,22 @@ export class InMemoryOutsourcingLineStore implements OutsourcingLineStore {
     row.priceSource = fields.priceSource;
     row.marginPermyriad = fields.marginPermyriad;
     if (fields.promisedAt !== undefined) row.promisedAt = fields.promisedAt;
+    row.objectVersion += 1;
+    row.updatedAt = new Date().toISOString();
+    return toLine(row);
+  }
+
+  /** 取消外协明细行（fix-wave-6 6a-1）：落取消事实 + 时刻并 +1 版本；乐观未命中 null。 */
+  async cancel(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    fields: { readonly cancelReason: string | null; readonly cancelledAt: string },
+  ): Promise<OutsourcingLine | null> {
+    const row = this.rows.get(`${tenant}|${id}`);
+    if (row === undefined || row.objectVersion !== expectedObjectVersion) return null;
+    row.cancelReason = fields.cancelReason;
+    row.cancelledAt = fields.cancelledAt;
     row.objectVersion += 1;
     row.updatedAt = new Date().toISOString();
     return toLine(row);

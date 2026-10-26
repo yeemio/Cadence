@@ -8,8 +8,9 @@
  *  - 待检数 pendingCount = state=pending；
  *  - 已判定数 judgedCount = passed + failed + closed（终判口径）；
  *  - 合格率 passRate = passed / judgedCount（judgedCount=0 → null）；
- *  - 未闭环数 nonconformOpenCount = 不合格明细 state != closed 的条数
- *    （等价：判定不合格且处置闭环未完成的明细）；
+ *  - 未闭环数 nonconformOpenCount = 不合格明细 state ∉ {closed, voided} 的条数
+ *    （等价：判定不合格且处置闭环未完成的明细；voided=撤销质检作废的明细，
+ *    fix-wave-6 6a-2——不进活跃闭环视图）；
  *  - 超时数 overdueCount = failed 单中 closeDueAt < now 且未点名的条数。
  */
 import type { ApprovalEvent } from '@smes/engine-flow';
@@ -86,7 +87,7 @@ export function rollupInspectionSummary(
 ): InspectionSummary {
   const openNonconformsByKind = new Map<InspectionKind, number>();
   for (const nc of nonconforms) {
-    if (nc.state === 'closed') continue;
+    if (nc.state === 'closed' || nc.state === 'voided') continue;
     const order = orders.find((candidate) => candidate.id === nc.inspectionId);
     if (order === undefined) continue;
     openNonconformsByKind.set(order.kind, (openNonconformsByKind.get(order.kind) ?? 0) + 1);
@@ -123,7 +124,7 @@ export function rollupInspectionSummary(
     closedCount,
     judgedCount,
     passRate: passRateOf(passedCount, judgedCount),
-    nonconformOpenCount: nonconforms.filter((nc) => nc.state !== 'closed').length,
+    nonconformOpenCount: nonconforms.filter((nc) => nc.state !== 'closed' && nc.state !== 'voided').length,
     nonconformClosedCount: nonconforms.filter((nc) => nc.state === 'closed').length,
     overdueCount: orders.filter(
       (order) =>

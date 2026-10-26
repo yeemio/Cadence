@@ -209,6 +209,33 @@ export class InMemoryInspectionOrderStore implements InspectionOrderStore {
     row.updatedAt = new Date().toISOString();
     return toOrder(row);
   }
+
+  async revertJudgment(
+    tenant: TenantId,
+    id: InspectionId,
+    expectedObjectVersion: number,
+    nextState: string,
+    nextObjectVersion: number,
+  ): Promise<InspectionOrder | null> {
+    const row = this.rows.get(`${tenant}|${id}`);
+    if (row === undefined) return null; // 404 语义由用例层翻译
+    if (row.objectVersion !== expectedObjectVersion) {
+      throw new InspectionConflictError(
+        `质检单 '${id}' 版本推进冲突：期望 ${expectedObjectVersion}，实际 ${row.objectVersion}`,
+      );
+    }
+    row.state = nextState;
+    row.objectVersion = nextObjectVersion;
+    row.passedQty = null;
+    row.failedQty = null;
+    row.judgeRemark = null;
+    row.judgedBy = null;
+    row.judgedAt = null;
+    row.closeDueAt = null;
+    row.overdueNotifiedAt = null; // 点名标记随判定清空（再判不合格重新起时限）
+    row.updatedAt = new Date().toISOString();
+    return toOrder(row);
+  }
 }
 
 // ---- 不合格处置投影 ----

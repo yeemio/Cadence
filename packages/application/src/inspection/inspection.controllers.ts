@@ -5,14 +5,19 @@
  * parseCommandBodyForKind 解析后在控制器组装 smes.command.v1 信封交
  * service.execute（信封深冻结、幂等键与乐观锁口径由 business-core 校验）。
  *
- * 权限码（06-inspection.md §5 最小集）：
+ * 权限码（06-inspection.md §5 最小集 + fix-wave-6 6a-2 三面，17 册 §2 角色表
+ * 无独立特采/撤销码——三面均挂质检员 inspection:judge）：
  *   POST /inspection/orders                       inspection:judge（手工建单）
  *   GET  /inspection/orders                       inspection:read （队列 ?kind=&state=）
  *   GET  /inspection/orders/:id                   inspection:read （详情）
  *   POST /inspection/orders/:id/judgment          inspection:judge（合格/不合格数量）
  *   POST /inspection/orders/:id/recheck           inspection:judge（复检）
+ *   GET  /inspection/orders/:id/concession        inspection:read （特采视图：已特采/剩余，RQ-035）
+ *   POST /inspection/orders/:id/concession        inspection:judge（特采确认，RQ-035/S5）
+ *   POST /inspection/orders/:id/revocation        inspection:judge（撤销质检，RQ-037）
  *   GET  /inspection/summary                      inspection:read （汇总事实/工作台 KPI）
  *   POST /inspection/overdue-scans                inspection:judge（闭环超时点名）
+ *   POST /inspection/batch-judgments              inspection:judge（批量质检全合格，RQ-036）
  *   GET  /inspection/nonconformities              nonconform:read （明细 ?state=&inspectionId=）
  *   GET  /inspection/nonconformities/:id          nonconform:read （闭环追踪）
  *   POST /inspection/nonconformities/:id/disposal nonconform:dispose（处置+原因）
@@ -112,6 +117,43 @@ export class InspectionsController {
       parseIdParam(id, '质检单 id'),
     );
   }
+
+  /** 特采视图（RQ-035 特采弹窗打开前置读：不合格/已特采/剩余可特采）。 */
+  @Get(':id/concession')
+  @RequirePermission('inspection:read')
+  async concessionView(
+    @Param('id') id: string,
+  ): Promise<Awaited<ReturnType<InspectionService['concessionView']>>> {
+    return this.inspection.concessionView(this.tenantContext.current(), parseIdParam(id, '质检单 id'));
+  }
+
+  /** 特采确认（RQ-035/S5：累加已特采 + 特采待入库行另建事实）。 */
+  @Post(':id/concession')
+  @RequirePermission('inspection:judge')
+  async concession(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InspectionCommandResult> {
+    return this.inspection.execute(
+      envelopeOf(this.tenantContext, request, body, 'inspection.concession.v1'),
+      parseIdParam(id, '质检单 id'),
+    );
+  }
+
+  /** 撤销质检（RQ-037：判定回退待检 + 不合格明细作废 + 特采清零）。 */
+  @Post(':id/revocation')
+  @RequirePermission('inspection:judge')
+  async revoke(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InspectionCommandResult> {
+    return this.inspection.execute(
+      envelopeOf(this.tenantContext, request, body, 'inspection.revoke.v1'),
+      parseIdParam(id, '质检单 id'),
+    );
+  }
 }
 
 @Controller('inspection')
@@ -137,6 +179,18 @@ export class InspectionQueriesController {
     // 单级一次点名幂等（overdue-<单id>）不变；载荷为空对象。
     return this.inspection.execute(
       envelopeOf(this.tenantContext, request, body, 'inspection.overdue.scan.v1'),
+    );
+  }
+
+  /** 批量质检（RQ-036：整批"全部合格"，逐单版本在载荷行内、信封 initial）。 */
+  @Post('batch-judgments')
+  @RequirePermission('inspection:judge')
+  async judgeBatch(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<InspectionCommandResult> {
+    return this.inspection.execute(
+      envelopeOf(this.tenantContext, request, body, 'inspection.judge-batch.v1'),
     );
   }
 }

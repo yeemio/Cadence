@@ -28,6 +28,12 @@
  *    明细闭环后质检单推进 closed。闭环超时（closeTimeoutMs 配置）由
  *    scanOverdue 点名：InspectionOverdue 事件 + 待办（TodoStore）+ IM
  *    （NotifyChannel 缺省 no-op），一次点名幂等。
+ *
+ * 5. fix-wave-6 6a-2 三件（17 册 RQ-035/036/037）：
+ *    特采确认（inspection.concession.v1，S5——与既有 concession 处置的并存
+ *    取舍见 inspection-events.ts 头注）；批量质检（inspection.judge-batch.v1，
+ *    整批校验先于落账——reporting 先例）；撤销质检（inspection.revoke.v1，
+ *    判定回退 + 不合格明细作废 + 特采清零，三项跨域闸门经 revokeGuard 端口）。
  */
 import {
   EventId,
@@ -48,6 +54,7 @@ import {
 import type { TodoItem, TodoStore } from '../workbench/workbench-stores.js';
 import {
   DEFAULT_CLOSE_TIMEOUT_MS,
+  DEFAULT_INSPECTION_BATCH_LIMIT,
   DEFAULT_INSPECTION_FLOW_CONFIG,
   DEFAULT_NONCONFORM_FLOW_CONFIG,
   NONCONFORM_DISPOSALS,
@@ -57,41 +64,54 @@ import {
 } from './inspection-config.js';
 import {
   INSPECTION_AGGREGATE_TYPE,
+  INSPECTION_BATCH_AGGREGATE_TYPE,
   INSPECTION_EVENT_TYPES,
   NONCONFORM_AGGREGATE_TYPE,
+  makeInspectionConcessionConfirmedEvent,
   makeInspectionCreatedEvent,
+  makeInspectionJudgedBatchEvent,
   makeInspectionJudgedEvent,
   makeInspectionOverdueEvent,
   makeInspectionReleasedEvent,
+  makeInspectionRevokedEvent,
   makeNonconformClosedEvent,
   makeNonconformDisposedEvent,
   provenanceOf,
+  type InspectionConcessionConfirmedPayload,
   type InspectionCreatedPayload,
   type InspectionJudgePhase,
+  type InspectionJudgedBatchPayload,
   type InspectionJudgedPayload,
   type InspectionOverduePayload,
   type InspectionReleasedPayload,
+  type InspectionRevokedPayload,
   type NonconformClosedPayload,
   type NonconformDisposedPayload,
 } from './inspection-events.js';
 import { InspectionInputError, InspectionNotFoundError, InspectionStateError } from './inspection-errors.js';
 import {
   parseCloseNonconformPayload,
+  parseConcessionInspectionPayload,
   parseCreateInspectionPayload,
   parseDisposeNonconformPayload,
+  parseJudgeBatchPayload,
   parseJudgeInspectionPayload,
   parseOverdueScanPayload,
   parseRecheckInspectionPayload,
+  parseRevokeInspectionPayload,
   type InspectionCommand,
   type InspectionCommandKind,
+  type JudgeBatchLine,
   type JudgeInspectionPayload,
 } from './inspection-input.js';
 import {
+  FAIL_CLOSED_INSPECTION_REVOKE_GUARD,
   INSPECTION_TODO_SOURCE,
   NOOP_NOTIFY_CHANNEL,
   NOOP_STOCK_RELEASE_PORT,
   type InspectionIntakePort,
   type InspectionIntakeReceipt,
+  type InspectionRevokeGuardPort,
   type InspectionSourceFact,
   type NotifyChannel,
   type StockReleasePort,
@@ -118,6 +138,7 @@ import {
 } from './inspection-summary.js';
 import {
   newDomainEventId,
+  newInspectionBatchId,
   newInspectionId,
   newNonconformId,
 } from './inspection-ids.js';
@@ -127,11 +148,13 @@ import {
 export interface InspectionCommitted extends CommittedOutcome {
   /** 本次命令派生的待办（超时点名联动）。 */
   readonly todosCreated: readonly TodoItem[];
-  /** 本次命令完成的待办（不合格闭环清点名待办）。 */
+  /** 本次命令完成的待办（不合格闭环清点名待办 / 撤销质检清点名待办）。 */
   readonly todosCompleted: readonly TodoItem[];
   /** 命令目标聚合的提交后视图。 */
   readonly inspection?: InspectionOrder;
   readonly nonconform?: Nonconform;
+  /** 批量质检（inspection.judge-batch.v1）逐单提交后视图（按行序）。 */
+  readonly inspections?: readonly InspectionOrder[];
   /** 逾期点名产出的点名回执行（inspection.overdue.scan.v1）。 */
   readonly notifications?: readonly InspectionOverdueNotification[];
 }
@@ -149,6 +172,8 @@ export interface InspectionServiceOptions {
   readonly disposals: readonly NonconformDisposal[];
   /** 闭环超时点名待办的固定经办人（缺省 null = 点名给该单判定人）。 */
   readonly overdueAssignee: UserId | null;
+  /** 批量质检单次上限（缺省 DEFAULT_INSPECTION_BATCH_LIMIT=50；RQ-036 配置层）。 */
+  readonly batchLimit: number;
   /** 时钟注入（测试确定性）。 */
   readonly now?: () => string;
 }
@@ -156,6 +181,8 @@ export interface InspectionServiceOptions {
 export interface InspectionCrossModulePorts {
   readonly stockRelease: StockReleasePort;
   readonly notify: NotifyChannel;
+  /** 撤销质检前置闸门（缺省 fail-closed：未接线拒绝撤销；RQ-037 接缝）。 */
+  readonly revokeGuard: InspectionRevokeGuardPort;
 }
 
 /** 闭环超时点名回执（scanOverdue 返回行）。 */
@@ -191,6 +218,7 @@ export class InspectionService implements InspectionIntakePort {
     this.ports = {
       stockRelease: ports.stockRelease ?? NOOP_STOCK_RELEASE_PORT,
       notify: ports.notify ?? NOOP_NOTIFY_CHANNEL,
+      revokeGuard: ports.revokeGuard ?? FAIL_CLOSED_INSPECTION_REVOKE_GUARD,
     };
     this.options = {
       inspectionConfig: options.inspectionConfig ?? DEFAULT_INSPECTION_FLOW_CONFIG,
@@ -198,6 +226,7 @@ export class InspectionService implements InspectionIntakePort {
       closeTimeoutMs: options.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS,
       disposals: options.disposals ?? NONCONFORM_DISPOSALS,
       overdueAssignee: options.overdueAssignee ?? null,
+      batchLimit: options.batchLimit ?? DEFAULT_INSPECTION_BATCH_LIMIT,
       ...(options.now === undefined ? {} : { now: options.now }),
     };
   }
@@ -217,8 +246,11 @@ export class InspectionService implements InspectionIntakePort {
     pathId?: string,
   ): Promise<InspectionCommandResult> {
     const kind = envelope.command.kind;
+    // 创建类/事实产出组命令（无单一既有聚合目标）：expectedRevision 须 'initial'
+    // ——judge-batch 与 overdue.scan 同体例（逐单版本在载荷行内）。
     const createKinds: readonly InspectionCommandKind[] = [
       'inspection.create.v1',
+      'inspection.judge-batch.v1',
       'inspection.overdue.scan.v1',
     ];
     if (createKinds.includes(kind) && envelope.expectedRevision !== 'initial') {
@@ -232,8 +264,14 @@ export class InspectionService implements InspectionIntakePort {
         return this.createInspection(envelope);
       case 'inspection.judge.v1':
         return this.judge(envelope, this.requirePathId(pathId, kind));
+      case 'inspection.judge-batch.v1':
+        return this.judgeBatch(envelope);
       case 'inspection.recheck.v1':
         return this.recheck(envelope, this.requirePathId(pathId, kind));
+      case 'inspection.concession.v1':
+        return this.concession(envelope, this.requirePathId(pathId, kind));
+      case 'inspection.revoke.v1':
+        return this.revoke(envelope, this.requirePathId(pathId, kind));
       case 'inspection.overdue.scan.v1':
         return this.scanOverdue(envelope);
       case 'nonconform.dispose.v1':
@@ -457,6 +495,13 @@ export class InspectionService implements InspectionIntakePort {
       }
 
       await this.machineEvents.append(outcome.event);
+
+      // 合格分支（判定与批量质检共用提交路径）：judged + released + 放行端口。
+      if (!failed) {
+        return await this.passJudgmentSideEffects(envelope, order, runtime, payload.passedQty, payload.remark, 'judge');
+      }
+
+      // 不合格分支：判定字段落投影 + 自动创建不合格明细（open）——闭环追踪对象。
       const now = this.now();
       const judgment: JudgmentFields = {
         passedQty: payload.passedQty,
@@ -464,7 +509,7 @@ export class InspectionService implements InspectionIntakePort {
         judgeRemark: payload.remark,
         judgedBy: envelope.issuedBy,
         judgedAt: now,
-        closeDueAt: failed ? new Date(Date.parse(now) + this.options.closeTimeoutMs).toISOString() : null,
+        closeDueAt: new Date(Date.parse(now) + this.options.closeTimeoutMs).toISOString(),
       };
       const advanced = await this.orders.advance(
         envelope.tenantId,
@@ -475,29 +520,26 @@ export class InspectionService implements InspectionIntakePort {
         judgment,
       );
 
-      // 不合格分支：自动创建不合格明细（open）——闭环追踪对象。
-      const nonconform = failed
-        ? await this.nonconforms.create({
-            tenant: envelope.tenantId,
-            id: newNonconformId(),
-            inspectionId: InspectionId.create(id),
-            flowConfigId: this.options.nonconformConfig.flowId,
-            state: this.options.nonconformConfig.initial,
-            objectVersion: 1,
-            itemId: order.itemId,
-            quantity: payload.failedQty,
-          })
-        : null;
+      const nonconform = await this.nonconforms.create({
+        tenant: envelope.tenantId,
+        id: newNonconformId(),
+        inspectionId: InspectionId.create(id),
+        flowConfigId: this.options.nonconformConfig.flowId,
+        state: this.options.nonconformConfig.initial,
+        objectVersion: 1,
+        itemId: order.itemId,
+        quantity: payload.failedQty,
+      });
 
       const judgedPayload: InspectionJudgedPayload = {
         inspectionId: id,
         kind: advanced.kind,
         phase: 'judge',
-        outcome: failed ? 'failed' : 'passed',
+        outcome: 'failed',
         passedQty: payload.passedQty,
         failedQty: payload.failedQty,
         remark: payload.remark,
-        nonconformId: nonconform === null ? null : nonconform.id,
+        nonconformId: nonconform.id,
         closeDueAt: judgment.closeDueAt,
         objectVersion: runtime.objectVersion(),
         actor: envelope.issuedBy,
@@ -505,13 +547,6 @@ export class InspectionService implements InspectionIntakePort {
       const events: BusinessEvent[] = [
         makeInspectionJudgedEvent(this.domainEventBase(envelope), judgedPayload),
       ];
-
-      // 合格分支：放行事实（事件 + 直连端口）——passed 后库存方可入库。
-      if (!failed) {
-        events.push(
-          await this.releaseForStock(envelope, advanced, payload.passedQty, 'judge', runtime.objectVersion()),
-        );
-      }
       for (const event of events) {
         await this.domainEvents.append(event);
       }
@@ -523,7 +558,7 @@ export class InspectionService implements InspectionIntakePort {
         todosCreated: [],
         todosCompleted: [],
         inspection: advanced,
-        ...(nonconform === null ? {} : { nonconform }),
+        nonconform,
       };
     } finally {
       runtime.stop();
@@ -673,6 +708,452 @@ export class InspectionService implements InspectionIntakePort {
       todosCreated: [],
       todosCompleted: [],
       inspection: updated,
+    };
+  }
+
+  // ---- inspection.concession（fix-wave-6 6a-2 / RQ-035 特采确认，S5） ----
+
+  /**
+   * 特采确认（S5 让步接收入库语义；与既有 concession 处置枚举的关系见
+   * inspection-events.ts 头注——并存不互斥、不推翻闭环）：
+   *  - 面向非标件采购质检单（kind=nonstandard_purchase；源=非标件采购质检 3.8）；
+   *  - 前置：已质检不合格（state=failed ∧ failedQty>0）∧ 剩余可特采>0；
+   *  - 数量边界：1 ≤ quantity ≤ failedQty − 已特采（已特采 = 事件账本折叠值，
+   *    见 concessionLedgerOf——累加记账在 append-only 域事件账本，不扩投影列
+   *    【扩列涉 business-store 迁移，本波写入面外；纯读侧折叠两形态一致】）；
+   *  - 效果：累加已特采 + 发 InspectionConcessionConfirmed（待入库行另建事实，
+   *    与合格放行分立不合并；inventory 消费联动未接线——开放问题）；
+   *  - 无迁移无版本推进（源"已质检→已质检（特采）"）；无独立撤销特采——
+   *    撤销质检整体回退清零（revoke 事件承载）。
+   *  - 源差异不实施项：已确认退货不可特采（return_quantity，LP 域退货状态本
+   *    域不可见，未接线）、外购加工不走特采（receipt 行加工类型不在本域模型，
+   *    由来源侧过滤——两项登记开放问题）。
+   */
+  private async concession(
+    envelope: CommandEnvelope<InspectionCommand>,
+    id: string,
+  ): Promise<InspectionCommandResult> {
+    const payload = parseConcessionInspectionPayload(envelope.command.payload);
+    const order = await this.orders.find(envelope.tenantId, InspectionId.create(id));
+    if (order === null) {
+      return rejected(`租户 '${envelope.tenantId}' 内不存在质检单 '${id}'`);
+    }
+    if (order.flowConfigId !== this.options.inspectionConfig.flowId) {
+      return rejected(
+        `质检单由配置 '${order.flowConfigId}' 驱动，与当前装配配置 '${this.options.inspectionConfig.flowId}' 不符`,
+      );
+    }
+    if (envelope.expectedRevision !== order.objectVersion) {
+      return rejected(
+        `乐观锁冲突：expectedRevision=${envelope.expectedRevision}，质检单当前 objectVersion=${order.objectVersion}`,
+      );
+    }
+    if (order.kind !== 'nonstandard_purchase') {
+      return rejected(
+        `特采确认面向非标件采购质检单（当前 '${order.kind}'）；其余质检类别不走特采`,
+      );
+    }
+    if (order.state === 'pending') {
+      return rejected(`质检单 '${id}' 未质检，无不合格量可特采`);
+    }
+    if (order.state === 'closed') {
+      return rejected(`质检单 '${id}' 已闭环（closed 终态），不可特采确认`);
+    }
+    const concessionQty = await this.concessionLedgerOf(order);
+    const failedQty = order.failedQty ?? 0;
+    const remaining = Math.max(0, failedQty - concessionQty);
+    if (remaining <= 0) {
+      return rejected(
+        `质检单 '${id}' 无可特采数量（不合格 ${failedQty} − 已特采 ${concessionQty} = 0）`,
+      );
+    }
+    if (payload.quantity > remaining) {
+      return rejected(
+        `特采数量 ${payload.quantity} 超剩余可特采（不合格 ${failedQty} − 已特采 ${concessionQty} = ${remaining}）`,
+      );
+    }
+
+    const recorded = await this.operations.record({
+      tenant: envelope.tenantId,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: INSPECTION_AGGREGATE_TYPE,
+      aggregateId: id,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const confirmedQty = concessionQty + payload.quantity;
+    const eventPayload: InspectionConcessionConfirmedPayload = {
+      inspectionId: id,
+      kind: order.kind,
+      itemId: order.itemId,
+      drawingNo: order.drawingNo,
+      quantity: payload.quantity,
+      concessionQuantity: confirmedQty,
+      remainingConcessionQty: Math.max(0, failedQty - confirmedQty),
+      failedQty,
+      sourceType: order.sourceType,
+      sourceRefId: order.sourceRefId,
+      objectVersion: order.objectVersion,
+      actor: envelope.issuedBy,
+    };
+    const event = makeInspectionConcessionConfirmedEvent(this.domainEventBase(envelope), eventPayload);
+    await this.domainEvents.append(event);
+
+    return {
+      status: 'committed',
+      newRevision: order.objectVersion, // 特采无迁移不推进版本（源：已质检→已质检）
+      events: [event],
+      todosCreated: [],
+      todosCompleted: [],
+      inspection: order,
+    };
+  }
+
+  /** 特采视图（弹窗打开前置读：已特采/剩余可特采；RQ-035 弹窗字段口径）。 */
+  async concessionView(tenant: TenantId, id: string): Promise<InspectionConcessionView> {
+    const order = await this.orders.find(tenant, InspectionId.create(id));
+    if (order === null) {
+      throw new InspectionNotFoundError(`租户 '${tenant}' 内不存在质检单 '${id}'`);
+    }
+    const concessionQty = await this.concessionLedgerOf(order);
+    const failedQty = order.failedQty ?? 0;
+    return {
+      inspectionId: id,
+      kind: order.kind,
+      state: order.state,
+      failedQty,
+      concessionQuantity: concessionQty,
+      remainingConcessionQty: Math.max(0, failedQty - concessionQty),
+    };
+  }
+
+  /**
+   * 已特采数量（事件账本折叠）：concession-confirmed 累加、revoked 清零（撤销
+   * 质检整体回退——无独立撤销特采，源口径）。账本 append-only，折叠即可重放。
+   */
+  private async concessionLedgerOf(order: InspectionOrder): Promise<number> {
+    const events = await this.domainEvents.byAggregate({
+      id: order.id as string,
+      type: INSPECTION_AGGREGATE_TYPE,
+    });
+    let total = 0;
+    for (const event of events) {
+      if (event.eventType === INSPECTION_EVENT_TYPES.concessionConfirmed) {
+        total += (event.payload as InspectionConcessionConfirmedPayload).quantity;
+      } else if (event.eventType === INSPECTION_EVENT_TYPES.revoked) {
+        total = 0;
+      }
+    }
+    return total;
+  }
+
+  // ---- inspection.judge-batch（fix-wave-6 6a-2 / RQ-036 批量质检） ----
+
+  /**
+   * 批量质检（整批"全部合格"）：勾选多张待检单按同一判定值（合格=送检量、
+   * 不合格=0）提交。**整批口径（按 17 册 RQ-036 定义 + 仓内 reporting
+   * submit-batch 先例选定）：整批校验先于落账**——任何一行校验失败（不存在/
+   * 非待检/乐观锁过期/重复勾选/超上限）整批 rejected 零落账；校验全过后逐单
+   * 走与单条判定完全相同的联动（PASS 迁移 + judged/released 事件 + 放行端口，
+   * 共用 passJudgmentSideEffects），批次锚事件挂整批（体例同 BatchSubmitted）。
+   * 源差异：源对每条独立提交（质检模块 三、4），我方取整批原子——对齐仓内
+   * 批量语义先例（reporting RQ-005），防半批落账的对账歧义。
+   */
+  private async judgeBatch(envelope: CommandEnvelope<InspectionCommand>): Promise<InspectionCommandResult> {
+    const payload = parseJudgeBatchPayload(envelope.command.payload);
+    const tenant = envelope.tenantId;
+    if (payload.lines.length > this.options.batchLimit) {
+      return rejected(
+        `批量质检超上限：${payload.lines.length} 行 > 配置上限 ${this.options.batchLimit}`,
+      );
+    }
+
+    // 整批校验先于落账：逐行前置检查 + 重复勾选检查（同 id 二行必然乐观锁相撞，
+    // 提前以明确文案拒绝）。
+    const orders: InspectionOrder[] = [];
+    const seen = new Set<string>();
+    for (const [index, line] of payload.lines.entries()) {
+      const fault = await this.validateBatchLine(tenant, line, index, seen);
+      if (fault !== null) {
+        return rejected(fault);
+      }
+      const order = await this.orders.find(tenant, InspectionId.create(line.inspectionId));
+      orders.push(order as InspectionOrder);
+    }
+
+    const anchorId = newInspectionBatchId();
+    const recorded = await this.operations.record({
+      tenant,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: INSPECTION_BATCH_AGGREGATE_TYPE,
+      aggregateId: anchorId,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const events: BusinessEvent[] = [];
+    const committedOrders: InspectionOrder[] = [];
+    for (const [index, line] of payload.lines.entries()) {
+      const order = orders[index] as InspectionOrder;
+      const one = await this.applyBatchPassJudgment(envelope, order, line);
+      events.push(...one.events);
+      committedOrders.push(one.inspection as InspectionOrder);
+    }
+    const batchPayload: InspectionJudgedBatchPayload = {
+      batchId: anchorId,
+      count: committedOrders.length,
+      results: committedOrders.map((order) => ({
+        inspectionId: order.id as string,
+        kind: order.kind,
+        passedQty: order.quantity,
+        objectVersion: order.objectVersion,
+      })),
+      actor: envelope.issuedBy,
+    };
+    const batchEvent = makeInspectionJudgedBatchEvent(this.domainEventBase(envelope), batchPayload);
+    await this.domainEvents.append(batchEvent);
+    events.push(batchEvent);
+
+    return {
+      status: 'committed',
+      newRevision: 1, // 批次是事实产出组（锚聚合 v1），逐单版本在 events/results 内
+      events,
+      todosCreated: [],
+      todosCompleted: [],
+      inspections: committedOrders,
+    };
+  }
+
+  /** 批量行前置校验（整批口径：返回 reason 字符串 = 整批拒绝文案）。 */
+  private async validateBatchLine(
+    tenant: TenantId,
+    line: JudgeBatchLine,
+    index: number,
+    seen: Set<string>,
+  ): Promise<string | null> {
+    const at = `批量第 ${index + 1} 行（${line.inspectionId}）`;
+    if (seen.has(line.inspectionId)) {
+      return `${at}被拒：同一质检单在批内重复勾选`;
+    }
+    seen.add(line.inspectionId);
+    const order = await this.orders.find(tenant, InspectionId.create(line.inspectionId));
+    if (order === null) {
+      return `${at}被拒：租户 '${tenant}' 内不存在该质检单`;
+    }
+    if (order.flowConfigId !== this.options.inspectionConfig.flowId) {
+      return `${at}被拒：质检单由配置 '${order.flowConfigId}' 驱动，与当前装配配置 '${this.options.inspectionConfig.flowId}' 不符`;
+    }
+    if (line.expectedRevision !== order.objectVersion) {
+      return `${at}被拒：乐观锁冲突 expectedRevision=${line.expectedRevision}，当前 objectVersion=${order.objectVersion}`;
+    }
+    if (order.state !== 'pending') {
+      return `${at}被拒：质检单已处 '${order.state}'，仅待检单可判定（复检走 inspection.recheck.v1）`;
+    }
+    return null;
+  }
+
+  /** 批量单行落账：PASS 迁移 + 合格联动（与单条判定共用提交路径）。 */
+  private async applyBatchPassJudgment(
+    envelope: CommandEnvelope<InspectionCommand>,
+    order: InspectionOrder,
+    line: JudgeBatchLine,
+  ): Promise<InspectionCommitted> {
+    const runtime = await this.replayInspection(order);
+    try {
+      const outcome = runtime.send('PASS', {
+        by: envelope.issuedBy,
+        reason: line.remark ?? `批量判定合格 ${order.quantity}/0`,
+        objectVersion: order.objectVersion,
+      });
+      if (outcome.status !== 'transitioned') {
+        throw new InspectionStateError(
+          `批量质检迁移失败：状态 '${order.state}' 对 PASS 返回 ${outcome.status}（整批校验后仍被拒——配置守卫或账本不一致）`,
+        );
+      }
+      await this.machineEvents.append(outcome.event);
+      return await this.passJudgmentSideEffects(
+        envelope,
+        order,
+        runtime,
+        order.quantity, // 全部合格：合格=送检量、不合格=0（源 batchSubmitInspection 口径）
+        line.remark,
+        'judge',
+      );
+    } finally {
+      runtime.stop();
+    }
+  }
+
+  // ---- inspection.revoke（fix-wave-6 6a-2 / RQ-037 撤销质检） ----
+
+  /**
+   * 撤销质检（判定回退）：已质检单（passed/failed）撤销回待检态，清空合格/
+   * 不合格/质检人/时间（revertJudgment 投影清理）+ 点名标记；failed 单随判定
+   * 作废其不合格明细（open/disposed → voided，已结案 closed 保留）；特采累计
+   * 随整体回退清零（concessionLedgerOf 折叠口径）；发布 InspectionRevoked
+   * （放行收回 + 特采清零 + 作废明细的对外事实，inventory/报表消费锚点）。
+   * 口径（17 册 RQ-037 / 源质检模块 三、5 映射）：
+   *  - 回待检（非作废）：源"撤销→回待质检，清空结果字段"同构；重判走原管线；
+   *  - 三项跨域闸门（关联入库未完成/下一道工序已报工或已质检/工时已审核）
+   *    经 InspectionRevokeGuardPort（缺省 fail-closed 未接线拒绝；组合根接线
+   *    后由 IV/reporting+baseline/HC 实现放行判定）；
+   *  - closed 终态不可撤（闭环已结案，与源无闭环态的差异取舍——破坏已结事实）；
+   *  - 投影清理依赖存储 revertJudgment（可选方法；未实现的适配器上 fail-closed
+   *    拒绝——PG 适配器补齐为纯 UPDATE 无迁移）；
+   *  - 工时已审禁撤的级联清空归 19 HC（guard 拦截面；本域不清审核字段）。
+   */
+  private async revoke(
+    envelope: CommandEnvelope<InspectionCommand>,
+    id: string,
+  ): Promise<InspectionCommandResult> {
+    const payload = parseRevokeInspectionPayload(envelope.command.payload);
+    const order = await this.orders.find(envelope.tenantId, InspectionId.create(id));
+    if (order === null) {
+      return rejected(`租户 '${envelope.tenantId}' 内不存在质检单 '${id}'`);
+    }
+    if (order.flowConfigId !== this.options.inspectionConfig.flowId) {
+      return rejected(
+        `质检单由配置 '${order.flowConfigId}' 驱动，与当前装配配置 '${this.options.inspectionConfig.flowId}' 不符`,
+      );
+    }
+    if (envelope.expectedRevision !== order.objectVersion) {
+      return rejected(
+        `乐观锁冲突：expectedRevision=${envelope.expectedRevision}，质检单当前 objectVersion=${order.objectVersion}`,
+      );
+    }
+    if (order.state === 'pending') {
+      return rejected(`质检单 '${id}' 未质检，无可撤销的判定`);
+    }
+    if (order.state === 'closed') {
+      return rejected(`质检单 '${id}' 已闭环（closed 终态），判定回退破坏已结案事实，不可撤销`);
+    }
+    if (typeof this.orders.revertJudgment !== 'function') {
+      return rejected(
+        `存储适配器未实现 revertJudgment（撤销投影清理），fail-closed 拒绝——PG 适配器补齐后开放`,
+      );
+    }
+    const gateFault = await this.ports.revokeGuard.assertRevokable(envelope.tenantId, {
+      inspectionId: id,
+      kind: order.kind,
+      sourceType: order.sourceType,
+      sourceRefId: order.sourceRefId,
+    });
+    if (gateFault !== null) {
+      return rejected(`撤销质检闸门拦截：质检单 '${id}' ${gateFault}`);
+    }
+
+    // 不合格明细随判定作废（open/disposed → voided；closed 已结案保留）。
+    const voidedIds: string[] = [];
+    const nonconforms = await this.nonconforms.list(envelope.tenantId, {
+      inspectionId: InspectionId.create(id),
+    });
+    for (const nc of nonconforms) {
+      if (nc.state !== 'open' && nc.state !== 'disposed') continue;
+      const ncRuntime = await this.replayNonconform(nc);
+      try {
+        const ncOutcome = ncRuntime.send('VOID', {
+          by: envelope.issuedBy,
+          reason: payload.remark ?? '撤销质检：判定回退，不合格明细随判定作废',
+          objectVersion: nc.objectVersion,
+        });
+        if (ncOutcome.status !== 'transitioned') {
+          throw new InspectionStateError(
+            `不合格明细作废迁移失败：状态 '${nc.state}' 对 VOID 返回 ${ncOutcome.status}`,
+          );
+        }
+        await this.machineEvents.append(ncOutcome.event);
+        await this.nonconforms.advance(
+          envelope.tenantId,
+          nc.id,
+          nc.objectVersion,
+          ncRuntime.state(),
+          ncRuntime.objectVersion(),
+        );
+        voidedIds.push(nc.id);
+      } finally {
+        ncRuntime.stop();
+      }
+    }
+
+    const recorded = await this.operations.record({
+      tenant: envelope.tenantId,
+      operationId: envelope.operationId,
+      command: envelope.command.kind,
+      aggregateType: INSPECTION_AGGREGATE_TYPE,
+      aggregateId: id,
+      occurredAt: this.now(),
+    });
+    if (recorded === null) {
+      return rejected(`操作幂等冲突：operationId '${envelope.operationId}' 已落账，拒绝重复执行`);
+    }
+
+    const concessionCleared = await this.concessionLedgerOf(order);
+    const runtime = await this.replayInspection(order);
+    let advanced: InspectionOrder | null = null;
+    try {
+      const outcome = runtime.send('REVOKE', {
+        by: envelope.issuedBy,
+        reason: payload.remark ?? '撤销质检：判定回退待检',
+        objectVersion: order.objectVersion,
+      });
+      if (outcome.status !== 'transitioned') {
+        return rejected(`状态 '${order.state}' 对 REVOKE 返回 ${outcome.status}（配置守卫或规则不一致）`);
+      }
+      await this.machineEvents.append(outcome.event);
+      advanced = await (this.orders.revertJudgment as NonNullable<
+        InspectionOrderStore['revertJudgment']
+      >)(
+        envelope.tenantId,
+        InspectionId.create(id),
+        order.objectVersion,
+        runtime.state(),
+        runtime.objectVersion(),
+      );
+    } finally {
+      runtime.stop();
+    }
+    if (advanced === null) {
+      return rejected(`租户 '${envelope.tenantId}' 内不存在质检单 '${id}'`);
+    }
+
+    const revokedPayload: InspectionRevokedPayload = {
+      inspectionId: id,
+      kind: order.kind,
+      fromState: order.state,
+      releasedQtyRetracted: order.state === 'passed' ? (order.passedQty ?? 0) : 0,
+      concessionQuantityCleared: concessionCleared,
+      nonconformIdsVoided: voidedIds,
+      remark: payload.remark,
+      objectVersion: runtime.objectVersion(),
+      actor: envelope.issuedBy,
+    };
+    const event = makeInspectionRevokedEvent(this.domainEventBase(envelope), revokedPayload);
+    await this.domainEvents.append(event);
+
+    // 点名待办随撤销完成（闭环追踪对象已不存在）。
+    const todosCompleted =
+      order.overdueNotifiedAt !== null && order.judgedBy !== null
+        ? await this.completeTodosFor(
+            envelope.tenantId,
+            this.options.overdueAssignee ?? order.judgedBy,
+            id,
+          )
+        : [];
+
+    return {
+      status: 'committed',
+      newRevision: runtime.objectVersion(),
+      events: [event],
+      todosCreated: [],
+      todosCompleted,
+      inspection: advanced,
     };
   }
 
@@ -1126,6 +1607,70 @@ export class InspectionService implements InspectionIntakePort {
   }
 
   /**
+   * 合格判定提交路径（单条 judge 与批量 judge-batch 共用；调用方已完成：
+   * 状态前置校验 + PASS 迁移 + 幂等记账 + 机器事件 append）：判定字段落投影
+   * → judged 事件 → released 放行（事件 + 直连端口）。runtime 生命周期归调用方。
+   */
+  private async passJudgmentSideEffects(
+    envelope: CommandEnvelope<InspectionCommand>,
+    order: InspectionOrder,
+    runtime: ApprovalFlowRuntime,
+    passedQty: number,
+    remark: string | null,
+    phase: InspectionJudgePhase,
+  ): Promise<InspectionCommitted> {
+    const judgment: JudgmentFields = {
+      passedQty,
+      failedQty: 0,
+      judgeRemark: remark,
+      judgedBy: envelope.issuedBy,
+      judgedAt: this.now(),
+      closeDueAt: null,
+    };
+    const advanced = await this.orders.advance(
+      envelope.tenantId,
+      order.id,
+      order.objectVersion,
+      runtime.state(),
+      runtime.objectVersion(),
+      judgment,
+    );
+    const judgedPayload: InspectionJudgedPayload = {
+      inspectionId: order.id as string,
+      kind: advanced.kind,
+      phase,
+      outcome: 'passed',
+      passedQty,
+      failedQty: 0,
+      remark,
+      nonconformId: null,
+      closeDueAt: null,
+      objectVersion: runtime.objectVersion(),
+      actor: envelope.issuedBy,
+    };
+    const judgedEvent = makeInspectionJudgedEvent(this.domainEventBase(envelope), judgedPayload);
+    const releasedEvent = await this.releaseForStock(
+      envelope,
+      advanced,
+      passedQty,
+      phase,
+      runtime.objectVersion(),
+    );
+    const events: BusinessEvent[] = [judgedEvent, releasedEvent];
+    for (const event of events) {
+      await this.domainEvents.append(event);
+    }
+    return {
+      status: 'committed',
+      newRevision: runtime.objectVersion(),
+      events,
+      todosCreated: [],
+      todosCompleted: [],
+      inspection: advanced,
+    };
+  }
+
+  /**
    * 放行事实：构造 released 域事件 + StockReleasePort 直连通知（通知式合同：
    * 实现方不抛错）。事件由调用方统一 append（与 judged 事件同一提交批次）。
    */
@@ -1275,4 +1820,14 @@ export interface NonconformDetail {
   readonly milestones: readonly InspectionMilestone[];
   /** 关联质检单当前态（闭环追踪视图）。 */
   readonly inspectionState: string | null;
+}
+
+/** 特采视图（RQ-035 特采弹窗：不合格/已特采/剩余可特采）。 */
+export interface InspectionConcessionView {
+  readonly inspectionId: string;
+  readonly kind: InspectionKind;
+  readonly state: string;
+  readonly failedQty: number;
+  readonly concessionQuantity: number;
+  readonly remainingConcessionQty: number;
 }

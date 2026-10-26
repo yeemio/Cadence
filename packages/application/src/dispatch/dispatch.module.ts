@@ -47,6 +47,7 @@ import {
   type KitCheckReadPort,
   type OutsourcingPriceSource,
 } from './dispatch-ports.js';
+import { JsonTablesDispatchExcelPort, type DispatchExcelPort } from './dispatch-excel-port.js';
 import { DispatchOrdersController, DispatchTasksController, OutsourcingController } from './dispatch.controllers.js';
 import { DispatchService, type DispatchServiceOptions } from './dispatch.service.js';
 
@@ -60,6 +61,7 @@ export const DISPATCH_KIT_CHECK_PORT = Symbol('smes.dispatch.kitCheckPort');
 export const DISPATCH_PRICE_SOURCE = Symbol('smes.dispatch.priceSource');
 export const DISPATCH_INSPECTION_INTAKE = Symbol('smes.dispatch.inspectionIntake');
 export const DISPATCH_PRINT_PORT = Symbol('smes.dispatch.printPort');
+export const DISPATCH_EXCEL_PORT = Symbol('smes.dispatch.excelPort');
 export const DISPATCH_SERVICE_OPTIONS = Symbol('smes.dispatch.serviceOptions');
 
 export interface DispatchModuleOptions {
@@ -83,6 +85,8 @@ export interface DispatchModuleOptions {
   readonly inspectionIntake?: InspectionIntakePort | undefined;
   /** 打印端口（外协加工单）；缺省 = 空实现（打印数据查询仍完整可用）。 */
   readonly print?: DispatchPrintPort | undefined;
+  /** Excel 导出端口（派工单导出，6a-1）；缺省 = json-tables 回声（ExcelJS 适配器合流替换）。 */
+  readonly excelPort?: DispatchExcelPort | undefined;
   /** 服务选项（状态机配置/齐套拦截 kind 集/时钟）；缺省 = 初版默认。 */
   readonly serviceOptions?: Partial<DispatchServiceOptions> | undefined;
 }
@@ -114,6 +118,7 @@ export class DispatchModule {
       { provide: DISPATCH_PRICE_SOURCE, useValue: options.priceSource ?? DISPATCH_EMPTY_PRICE_SOURCE },
       { provide: DISPATCH_INSPECTION_INTAKE, useValue: options.inspectionIntake ?? DISPATCH_NOOP_INSPECTION_INTAKE },
       { provide: DISPATCH_PRINT_PORT, useValue: options.print ?? DISPATCH_NOOP_PRINT_PORT },
+      { provide: DISPATCH_EXCEL_PORT, useValue: options.excelPort ?? new JsonTablesDispatchExcelPort() },
       { provide: DISPATCH_SERVICE_OPTIONS, useValue: serviceOptions },
       {
         provide: DispatchService,
@@ -128,6 +133,7 @@ export class DispatchModule {
           priceSource: OutsourcingPriceSource,
           inspectionIntake: InspectionIntakePort,
           print: DispatchPrintPort,
+          excel: DispatchExcelPort,
           serviceOpts: Partial<DispatchServiceOptions>,
         ) =>
           new DispatchService(
@@ -137,7 +143,7 @@ export class DispatchModule {
             domainEvents,
             machineEvents,
             todos,
-            { kitCheck, priceSource, inspectionIntake, print },
+            { kitCheck, priceSource, inspectionIntake, print, excel },
             serviceOpts,
           ),
         inject: [
@@ -151,6 +157,7 @@ export class DispatchModule {
           DISPATCH_PRICE_SOURCE,
           DISPATCH_INSPECTION_INTAKE,
           DISPATCH_PRINT_PORT,
+          DISPATCH_EXCEL_PORT,
           DISPATCH_SERVICE_OPTIONS,
         ],
       },

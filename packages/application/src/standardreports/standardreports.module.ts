@@ -8,8 +8,11 @@
  * 组合根显式 MODULES_ENABLED 开启，同 M2 环节模块口径）。
  */
 import { DynamicModule, Module, Provider } from '@nestjs/common';
+import { REPORT_CENTER_PACK } from '@smes/engine-reporting';
 import { StandardReportsController } from './standardreports.controllers.js';
 import { StandardReportsService } from './standardreports.service.js';
+import { ReportCenterController } from './report-center.controllers.js';
+import { ReportCenterReportsService } from './report-center.service.js';
 import {
   UNBOUND_REPORT_SOURCE_PROVIDER,
   type ReportSourceProvider,
@@ -37,11 +40,21 @@ export class StandardReportsModule {
           new StandardReportsService(STANDARD_REPORTS_PACK, sources),
         inject: [STANDARD_REPORTS_SOURCE_PROVIDER],
       },
+      // 报表中心服务（r2/r7/r8/r9/r12/r13 六张）：同一 ReportSourceProvider 端口
+      // （sourceKind→适配器路由在组合根同一映射里补六源绑定——service 头注口径）；
+      // 6a-3 裁决 1 修复：此前 ReportCenterController 未注册（编译在、路由死代码，
+      // GET /report-center/metrics 404）——控制器与服务一并装入本模块。
+      {
+        provide: ReportCenterReportsService,
+        useFactory: (sources: ReportSourceProvider) =>
+          new ReportCenterReportsService(REPORT_CENTER_PACK, sources),
+        inject: [STANDARD_REPORTS_SOURCE_PROVIDER],
+      },
     ];
 
     return {
       module: StandardReportsModule,
-      controllers: [StandardReportsController],
+      controllers: [StandardReportsController, ReportCenterController],
       providers,
     };
   }

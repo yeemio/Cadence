@@ -43,6 +43,10 @@ export {
   RequirePermission,
 } from './core/auth/require-permission.decorator.js';
 export {
+  REQUIRE_LOGIN_METADATA_KEY,
+  RequireLogin,
+} from './core/auth/require-login.decorator.js';
+export {
   REQUEST_USER_KEY,
   type AuthenticatedRequest,
 } from './core/auth/request-user.js';
@@ -862,6 +866,7 @@ export {
 // ---- inspection 四类质检模块（M2-W4，06-inspection.md v1.0） ----
 export {
   DEFAULT_CLOSE_TIMEOUT_MS,
+  DEFAULT_INSPECTION_BATCH_LIMIT,
   DEFAULT_INSPECTION_FLOW_CONFIG,
   DEFAULT_NONCONFORM_FLOW_CONFIG,
   INSPECTION_FLOW_ID,
@@ -890,6 +895,7 @@ export type {
 } from './inspection/inspection-config.js';
 export {
   NonconformId,
+  newInspectionBatchId,
   newInspectionId,
   newNonconformId,
 } from './inspection/inspection-ids.js';
@@ -901,31 +907,39 @@ export {
 } from './inspection/inspection-errors.js';
 export {
   INSPECTION_AGGREGATE_TYPE,
+  INSPECTION_BATCH_AGGREGATE_TYPE,
   INSPECTION_EVENT_TYPES,
   NONCONFORM_AGGREGATE_TYPE,
 } from './inspection/inspection-events.js';
 export type {
+  InspectionConcessionConfirmedPayload,
   InspectionCreatedPayload,
   InspectionEventProvenance,
   InspectionJudgePhase,
+  InspectionJudgedBatchPayload,
   InspectionJudgedPayload,
   InspectionOverduePayload,
   InspectionReleasedPayload,
+  InspectionRevokedPayload,
   NonconformClosedPayload,
   NonconformDisposedPayload,
 } from './inspection/inspection-events.js';
 export {
   EMPTY_INSPECTION_INTAKE_PORT,
+  FAIL_CLOSED_INSPECTION_REVOKE_GUARD,
   INSPECTION_TODO_SOURCE,
   NOOP_NOTIFY_CHANNEL,
   NOOP_STOCK_RELEASE_PORT,
+  PERMISSIVE_INSPECTION_REVOKE_GUARD,
 } from './inspection/inspection-ports.js';
 export type {
   InspectionIntakePort,
   InspectionIntakeReceipt,
+  InspectionRevokeGuardPort,
   InspectionSourceFact,
   NotifyChannel,
   NotifyMessage,
+  RevokeGuardTarget,
   StockReleaseFact,
   StockReleasePort,
 } from './inspection/inspection-ports.js';
@@ -949,12 +963,16 @@ export {
 } from './inspection/inspection-input.js';
 export type {
   CloseNonconformPayload,
+  ConcessionInspectionPayload,
   CreateInspectionPayload,
   DisposeNonconformPayload,
   InspectionCommand,
   InspectionCommandKind,
   InspectionEnvelopeBody,
+  JudgeBatchLine,
+  JudgeBatchPayload,
   JudgeInspectionPayload,
+  RevokeInspectionPayload,
 } from './inspection/inspection-input.js';
 export {
   milestoneHistory as inspectionMilestoneHistory,
@@ -977,6 +995,7 @@ export {
 export type {
   InspectionCommandResult,
   InspectionCommitted,
+  InspectionConcessionView,
   InspectionCrossModulePorts,
   InspectionDetail,
   InspectionOverdueNotification,
@@ -991,6 +1010,7 @@ export {
   INSPECTION_NOTIFY_CHANNEL,
   INSPECTION_ORDER_STORE,
   INSPECTION_OPERATION_STORE,
+  INSPECTION_REVOKE_GUARD_PORT,
   INSPECTION_SERVICE_OPTIONS,
   INSPECTION_STOCK_RELEASE_PORT,
   INSPECTION_TODO_STORE,
@@ -1307,6 +1327,7 @@ export {
   DISPATCH_PRICE_SOURCE,
   DISPATCH_INSPECTION_INTAKE,
   DISPATCH_PRINT_PORT,
+  DISPATCH_EXCEL_PORT,
   DISPATCH_SERVICE_OPTIONS,
 } from './dispatch/dispatch.module.js';
 export type { DispatchModuleOptions } from './dispatch/dispatch.module.js';
@@ -1318,6 +1339,10 @@ export type {
   DispatchCrossModulePorts,
   DispatchDetail,
   OutsourcingSupplierRow,
+  DispatchBatchItemResult,
+  DispatchBatchCommitted,
+  DispatchBatchResult,
+  OutsourcingLineView,
 } from './dispatch/dispatch.service.js';
 export {
   DispatchInputError,
@@ -1333,11 +1358,16 @@ export {
   DISPATCH_KINDS,
   DISPATCH_STATE_IDS,
   DISPATCH_STATES,
+  DISPATCH_TERMINAL_STATES,
+  OUTSOURCING_LINE_STATUS_IDS,
   dispatchKindLabel,
   dispatchStateLabel,
+  isDispatchOrderActive,
+  outsourcingLineStatusLabel,
+  outsourcingLineStatusOf,
   progressStageOfDispatchKind,
 } from './dispatch/dispatch-config.js';
-export type { DispatchKind, DispatchStateId } from './dispatch/dispatch-config.js';
+export type { DispatchKind, DispatchStateId, OutsourcingLineStatus } from './dispatch/dispatch-config.js';
 export {
   DispatchId,
   OutsourcingLineId,
@@ -1354,6 +1384,8 @@ export {
   makeDispatchStartedEvent,
   makeDispatchCompletedEvent,
   makeDispatchCancelledEvent,
+  makeDispatchTransferredEvent,
+  makeOutsourcingLineCancelledEvent,
   makeOutsourcingPricedEvent,
   provenanceOf as dispatchProvenanceOf,
 } from './dispatch/dispatch-events.js';
@@ -1364,6 +1396,8 @@ export type {
   DispatchStartedPayload,
   DispatchCompletedPayload,
   DispatchCancelledPayload,
+  DispatchTransferredPayload,
+  OutsourcingLineCancelledPayload,
   OutsourcingPricedPayload,
   DispatchProgressFactPayload,
   InspectionIntakeReceiptPayload,
@@ -1378,7 +1412,11 @@ export {
   parseDispatchStartPayload,
   parseDispatchCompletePayload,
   parseDispatchCancelPayload,
+  parseDispatchTransferPayload,
+  parseOutsourcingLineCancelPayload,
   parseOutsourcingPriceBackfillPayload,
+  parseBatchAssignBody as parseDispatchBatchAssignBody,
+  parseBatchCancelBody as parseDispatchBatchCancelBody,
   parseIdParam as parseDispatchIdParam,
   parseStateFilter as parseDispatchStateFilter,
   parseKindFilter,
@@ -1396,6 +1434,11 @@ export type {
   DispatchStartPayload,
   DispatchCompletePayload,
   DispatchCancelPayload,
+  DispatchTransferPayload,
+  OutsourcingLineCancelPayload,
+  DispatchBatchItem,
+  DispatchBatchAssignInput,
+  DispatchBatchCancelInput,
   OutsourcingPriceBackfillPayload,
 } from './dispatch/dispatch-input.js';
 export {
@@ -1408,6 +1451,10 @@ export {
   toKitCheckFact,
   createDispatchProgressAdapter,
 } from './dispatch/dispatch-ports.js';
+export {
+  JsonTablesDispatchExcelPort,
+} from './dispatch/dispatch-excel-port.js';
+export type { DispatchExcelPort } from './dispatch/dispatch-excel-port.js';
 export type {
   KitCheckFact,
   KitCheckReadPort,
@@ -2440,3 +2487,25 @@ export {
 } from './attachment/read-reference-tokens.js';
 export type { ReadReferenceClaims } from './attachment/read-reference-tokens.js';
 export { AttachmentController } from './attachment/attachment.controllers.js';
+
+// ---- column-preferences：用户表格列显隐（fix-wave-6 6b-3，A14 / RREQ-INT-032） ----
+export {
+  ColumnPreferencesModule,
+  COLUMN_PREFERENCE_STORE,
+} from './column-preferences/column-preferences.module.js';
+export type { ColumnPreferencesModuleOptions } from './column-preferences/column-preferences.module.js';
+export { ColumnPreferenceService } from './column-preferences/column-preferences.service.js';
+export type { PageColumnPreferences } from './column-preferences/column-preferences.service.js';
+export { InMemoryColumnPreferenceStore } from './column-preferences/in-memory-column-preferences-stores.js';
+export { ColumnPreferenceInputError } from './column-preferences/column-preferences-errors.js';
+export {
+  normalizeHiddenProps,
+  parsePageQuery,
+  parseSavePayload,
+} from './column-preferences/column-preferences-input.js';
+export type { SaveColumnPreferencePayload } from './column-preferences/column-preferences-input.js';
+export type {
+  ColumnPreferenceRecord,
+  ColumnPreferenceStore,
+} from './column-preferences/column-preferences-stores.js';
+export { ColumnPreferenceController } from './column-preferences/column-preferences.controllers.js';

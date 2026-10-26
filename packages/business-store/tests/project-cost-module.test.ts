@@ -85,7 +85,8 @@ describe('project cost RLS 补登（ADR-0005 全表覆盖）', () => {
     expect(names.has('cost_project_snapshots')).toBe(true);
     expect(names.has('cost_price_entries')).toBe(true);
     // 守恒计数 102 → 103：A8/A10 首波 machining_daily_stats 补登（schema-conformance 同步）
-    expect(RLS_TABLES).toHaveLength(103);
+    // 守恒计数 103 → 104：fix-wave-6 6b-3 column_preferences 补登（schema-conformance 同步）
+    expect(RLS_TABLES).toHaveLength(104);
   });
 });
 

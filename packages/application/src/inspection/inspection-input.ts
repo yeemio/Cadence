@@ -23,7 +23,10 @@ import { InspectionInputError } from './inspection-errors.js';
 export const INSPECTION_COMMAND_KINDS = [
   'inspection.create.v1',
   'inspection.judge.v1',
+  'inspection.judge-batch.v1',
   'inspection.recheck.v1',
+  'inspection.concession.v1',
+  'inspection.revoke.v1',
   'inspection.overdue.scan.v1',
   'nonconform.dispose.v1',
   'nonconform.close.v1',
@@ -211,6 +214,79 @@ export function parseJudgeInspectionPayload(input: unknown): JudgeInspectionPayl
 export function parseRecheckInspectionPayload(input: unknown): JudgeInspectionPayload {
   const record = requireObject(input, 'inspection.recheck 载荷');
   return parseJudgmentQuantities(record, '复检');
+}
+
+// ---- inspection.concession 载荷（fix-wave-6 6a-2 / RQ-035 特采确认） ----
+
+/**
+ * 特采确认载荷：quantity = 本次特采数量（源 NsPurchaseQcSubmitDTO.inboundQuantity，
+ * ≥1）。源口径"无审批、无原因"——不设 reason 字段；服务层校验
+ * quantity ≤ 不合格 − 已特采（剩余可特采边界）。
+ */
+export interface ConcessionInspectionPayload {
+  readonly quantity: number;
+}
+
+export function parseConcessionInspectionPayload(input: unknown): ConcessionInspectionPayload {
+  const record = requireObject(input, 'inspection.concession 载荷');
+  return { quantity: requireQuantity(record['quantity'], '特采数量 quantity') };
+}
+
+// ---- inspection.judge-batch 载荷（fix-wave-6 6a-2 / RQ-036 批量质检） ----
+
+/** 批量行：目标质检单 + 该单乐观锁版本（整批"全部合格"无数量载荷）。 */
+export interface JudgeBatchLine {
+  readonly inspectionId: string;
+  readonly expectedRevision: number;
+  readonly remark: string | null;
+}
+
+export interface JudgeBatchPayload {
+  readonly lines: readonly JudgeBatchLine[];
+}
+
+/** 批内行解析上限（防御值——真实业务上限由服务层 batchLimit 配置拒绝）。 */
+const BATCH_LINE_PARSE_LIMIT = 500;
+
+export function parseJudgeBatchPayload(input: unknown): JudgeBatchPayload {
+  const record = requireObject(input, 'inspection.judge-batch 载荷');
+  const rawLines = record['lines'];
+  if (!Array.isArray(rawLines) || rawLines.length < 1) {
+    throw new InspectionInputError('inspection.judge-batch 载荷 lines 须为非空数组');
+  }
+  if (rawLines.length > BATCH_LINE_PARSE_LIMIT) {
+    throw new InspectionInputError(`inspection.judge-batch 单次最多 ${BATCH_LINE_PARSE_LIMIT} 行（防御上限）`);
+  }
+  const lines = rawLines.map((line, index) => {
+    const row = requireObject(line, `批量第 ${index + 1} 行`);
+    const expectedRevision = row['expectedRevision'];
+    if (typeof expectedRevision !== 'number' || !Number.isInteger(expectedRevision) || expectedRevision < 1) {
+      throw new InspectionInputError(
+        `批量第 ${index + 1} 行 expectedRevision 须为 >= 1 的整数：${JSON.stringify(expectedRevision)}`,
+      );
+    }
+    return {
+      inspectionId: parseIdParam(
+        String(requireBoundedString(row['inspectionId'], `批量第 ${index + 1} 行 inspectionId`, 1, 128)),
+        `批量第 ${index + 1} 行质检单 id`,
+      ),
+      expectedRevision,
+      remark: optionalBoundedString(row['remark'], `批量第 ${index + 1} 行备注 remark`, 1, 2000) ?? null,
+    };
+  });
+  return { lines };
+}
+
+// ---- inspection.revoke 载荷（fix-wave-6 6a-2 / RQ-037 撤销质检） ----
+
+/** 撤销载荷：remark = 撤销原因（推荐必填留痕，口径同 reporting 撤销）。 */
+export interface RevokeInspectionPayload {
+  readonly remark: string | null;
+}
+
+export function parseRevokeInspectionPayload(input: unknown): RevokeInspectionPayload {
+  const record = requireObject(input, 'inspection.revoke 载荷');
+  return { remark: optionalBoundedString(record['remark'], '撤销原因 remark', 1, 2000) ?? null };
 }
 
 export interface DisposeNonconformPayload {

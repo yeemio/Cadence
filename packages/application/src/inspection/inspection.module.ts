@@ -37,8 +37,12 @@ import type {
   InspectionOrderStore,
   NonconformStore,
 } from './inspection-stores.js';
-import type { NotifyChannel, StockReleasePort } from './inspection-ports.js';
-import { NOOP_NOTIFY_CHANNEL, NOOP_STOCK_RELEASE_PORT } from './inspection-ports.js';
+import type { InspectionRevokeGuardPort, NotifyChannel, StockReleasePort } from './inspection-ports.js';
+import {
+  FAIL_CLOSED_INSPECTION_REVOKE_GUARD,
+  NOOP_NOTIFY_CHANNEL,
+  NOOP_STOCK_RELEASE_PORT,
+} from './inspection-ports.js';
 import {
   InspectionQueriesController,
   InspectionsController,
@@ -54,6 +58,7 @@ export const INSPECTION_MACHINE_EVENT_STORE = Symbol('smes.inspection.machineEve
 export const INSPECTION_TODO_STORE = Symbol('smes.inspection.todoStore');
 export const INSPECTION_STOCK_RELEASE_PORT = Symbol('smes.inspection.stockReleasePort');
 export const INSPECTION_NOTIFY_CHANNEL = Symbol('smes.inspection.notifyChannel');
+export const INSPECTION_REVOKE_GUARD_PORT = Symbol('smes.inspection.revokeGuardPort');
 export const INSPECTION_SERVICE_OPTIONS = Symbol('smes.inspection.serviceOptions');
 
 export interface InspectionModuleOptions {
@@ -73,6 +78,11 @@ export interface InspectionModuleOptions {
   readonly stockReleasePort?: StockReleasePort | undefined;
   /** IM 点名端口（integration-im / 组合根实现）；缺省 = no-op。 */
   readonly notifyChannel?: NotifyChannel | undefined;
+  /**
+   * 撤销质检前置闸门端口（RQ-037：入库未完成/下一道闸门/工时已审三项跨域
+   * 校验接缝）；缺省 = fail-closed（未接线拒绝撤销——组合根接线后替换）。
+   */
+  readonly revokeGuardPort?: InspectionRevokeGuardPort | undefined;
   /** 服务选项（两份状态机配置/闭环超时阈值/处置枚举/点名经办人/时钟）；缺省 = 初版默认。 */
   readonly serviceOptions?: Partial<InspectionServiceOptions> | undefined;
 }
@@ -102,6 +112,10 @@ export class InspectionModule {
       { provide: INSPECTION_TODO_STORE, useValue: options.todoStore ?? new InMemoryTodoStore() },
       { provide: INSPECTION_STOCK_RELEASE_PORT, useValue: options.stockReleasePort ?? NOOP_STOCK_RELEASE_PORT },
       { provide: INSPECTION_NOTIFY_CHANNEL, useValue: options.notifyChannel ?? NOOP_NOTIFY_CHANNEL },
+      {
+        provide: INSPECTION_REVOKE_GUARD_PORT,
+        useValue: options.revokeGuardPort ?? FAIL_CLOSED_INSPECTION_REVOKE_GUARD,
+      },
       { provide: INSPECTION_SERVICE_OPTIONS, useValue: serviceOptions },
       {
         provide: InspectionService,
@@ -114,6 +128,7 @@ export class InspectionModule {
           todos: TodoStore,
           stockRelease: StockReleasePort,
           notify: NotifyChannel,
+          revokeGuard: InspectionRevokeGuardPort,
           serviceOpts: Partial<InspectionServiceOptions>,
         ) =>
           new InspectionService(
@@ -123,7 +138,7 @@ export class InspectionModule {
             domainEvents,
             machineEvents,
             todos,
-            { stockRelease, notify },
+            { stockRelease, notify, revokeGuard },
             serviceOpts,
           ),
         inject: [
@@ -135,6 +150,7 @@ export class InspectionModule {
           INSPECTION_TODO_STORE,
           INSPECTION_STOCK_RELEASE_PORT,
           INSPECTION_NOTIFY_CHANNEL,
+          INSPECTION_REVOKE_GUARD_PORT,
           INSPECTION_SERVICE_OPTIONS,
         ],
       },

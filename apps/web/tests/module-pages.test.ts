@@ -224,6 +224,59 @@ describe('dispatch 模块装配（#38-43）', () => {
     const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
     expect((body['command'] as { kind: string }).kind).toBe('dispatch.create.v1');
   });
+
+  // ---- fix-wave-6 6a-1 增量端点钉形 ----
+
+  it('转单命令：POST :id/transfer，kind=dispatch.transfer.v1，乐观锁取行 objectVersion', async () => {
+    respond({ status: 'committed' });
+    await dispatchApi.transferDispatchOrder(
+      'dsp-1',
+      { objectVersion: 3 },
+      { assignee: 'u-worker-02', operationCode: 'proc-mill' },
+    );
+    expect(calls[0]?.url).toBe('/dispatch/orders/dsp-1/transfer');
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
+    expect(body['expectedRevision']).toBe(3);
+    const command = body['command'] as { kind: string; payload: Record<string, unknown> };
+    expect(command.kind).toBe('dispatch.transfer.v1');
+    expect(command.payload).toMatchObject({ assignee: 'u-worker-02', operationCode: 'proc-mill' });
+  });
+
+  it('导出与统计：GET /dispatch/orders/export 与 /stats（状态统计不含 state 维）', async () => {
+    respond({ kind: 'json-tables', sheets: [] });
+    await dispatchApi.exportDispatchOrders({ kind: 'part', state: 'draft' });
+    expect(calls[0]?.url).toBe('/dispatch/orders/export?kind=part&state=draft');
+    respond({ counts: { draft: 2 } });
+    await dispatchApi.getDispatchOrderStats({ kind: 'part' });
+    expect(calls[1]?.url).toBe('/dispatch/orders/stats?kind=part');
+  });
+
+  it('批操作：POST batch-assign/batch-cancel（批 operationId + 行级 expectedRevision 数组）', async () => {
+    respond({ status: 'committed', items: [] });
+    await dispatchApi.batchAssignDispatchOrders({
+      assignee: 'u-worker-01',
+      items: [{ id: 'dsp-1', expectedRevision: 1 }],
+    });
+    expect(calls[0]?.url).toBe('/dispatch/orders/batch-assign');
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
+    expect(typeof body['operationId']).toBe('string');
+    expect(body['assignee']).toBe('u-worker-01');
+    expect(body['items']).toEqual([{ id: 'dsp-1', expectedRevision: 1 }]);
+    respond({ status: 'committed', items: [] });
+    await dispatchApi.batchCancelDispatchOrders({ items: [{ id: 'dsp-1', expectedRevision: 1 }] });
+    expect(calls[1]?.url).toBe('/dispatch/orders/batch-cancel');
+  });
+
+  it('取消外协明细：POST :id/cancel，kind=outsourcing.line.cancel.v1（原因选填）', async () => {
+    respond({ status: 'committed' });
+    await dispatchApi.cancelOutsourcingLine('osl-1', { objectVersion: 1 }, { reason: '供应商取消' });
+    expect(calls[0]?.url).toBe('/outsourcing/lines/osl-1/cancel');
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
+    expect(body['expectedRevision']).toBe(1);
+    const command = body['command'] as { kind: string; payload: Record<string, unknown> };
+    expect(command.kind).toBe('outsourcing.line.cancel.v1');
+    expect(command.payload).toMatchObject({ reason: '供应商取消' });
+  });
 });
 
 // ---- reporting ----

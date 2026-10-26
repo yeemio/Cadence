@@ -40,13 +40,19 @@ export function inspectionStateLabel(state: string): string {
 }
 
 /**
- * 质检单默认配置（初版合法集）：
+ * 质检单默认配置（初版合法集 + fix-wave-6 6a-2 撤销回退）：
  *   pending --PASS(decision:approve)--> passed          判定合格（放行）
  *   pending --FAIL(decision:reject)--> failed           判定不合格（进闭环）
  *   failed  --RECHECK_PASS(decision:approve)--> passed  复检合格（放行）
  *   failed  --CLOSE--> closed                           不合格闭环完成（终态）
- * passed/closed 为终态；failed 非终态（等待处置闭环或复检）。closed 仅由
- * "该单全部不合格明细已闭环"推入（nonconform.close 联动，本模块不发独立命令）。
+ *   passed  --REVOKE--> pending                         撤销质检（RQ-037 判定回退）
+ *   failed  --REVOKE--> pending                         撤销质检（清结果+作废不合格明细）
+ * closed 为唯一终态（闭环完成不可回退——已结案事实不破坏）。passed 自
+ * fix-wave-6 起不再是终态：撤销质检需要回退出边（RQ-037"已质检单撤销回待检态"，
+ * 与源三份采购质检 3.6/质检模块 三、5"撤销→回待质检"同构）；放行事实的收回
+ * 经 InspectionRevoked 域事件（inventory 消费锚点），不回滚已发布的放行事件
+ * （append-only 账本语义）。closed 仅由"该单全部不合格明细已闭环"推入
+ * （nonconform.close 联动，本模块不发独立命令），无 REVOKE 出边。
  */
 export const DEFAULT_INSPECTION_FLOW_CONFIG: ApprovalFlowConfig = defineApprovalFlowConfig({
   schemaVersion: 1,
@@ -54,7 +60,7 @@ export const DEFAULT_INSPECTION_FLOW_CONFIG: ApprovalFlowConfig = defineApproval
   initial: 'pending',
   states: [
     { id: 'pending' },
-    { id: 'passed', final: true },
+    { id: 'passed' },
     { id: 'failed' },
     { id: 'closed', final: true },
   ],
@@ -63,6 +69,8 @@ export const DEFAULT_INSPECTION_FLOW_CONFIG: ApprovalFlowConfig = defineApproval
     { from: 'pending', event: 'FAIL', to: 'failed', decision: 'reject', eventAction: 'failed' },
     { from: 'failed', event: 'RECHECK_PASS', to: 'passed', decision: 'approve', eventAction: 'recheck-passed' },
     { from: 'failed', event: 'CLOSE', to: 'closed', eventAction: 'closed' },
+    { from: 'passed', event: 'REVOKE', to: 'pending', eventAction: 'revoked' },
+    { from: 'failed', event: 'REVOKE', to: 'pending', eventAction: 'revoked' },
   ],
 });
 
@@ -72,17 +80,17 @@ export const DEFAULT_INSPECTION_FLOW_CONFIG: ApprovalFlowConfig = defineApproval
 export const NONCONFORM_FLOW_ID = 'nonconform';
 
 /** 不合格处置状态 id。 */
-export const NONCONFORM_STATE_IDS = ['open', 'disposed', 'closed'] as const;
+export const NONCONFORM_STATE_IDS = ['open', 'disposed', 'closed', 'voided'] as const;
 
 export type NonconformStateId = (typeof NONCONFORM_STATE_IDS)[number];
 
-/** 处置三态目录（open=待处置 / disposed=已处置 / closed=已闭环）。 */
+/** 处置状态目录（open=待处置 / disposed=已处置 / closed=已闭环 / voided=已作废）。 */
 export const NONCONFORM_STATES: ReadonlyArray<{
   readonly id: NonconformStateId;
   readonly label: string;
 }> = NONCONFORM_STATE_IDS.map((id, index) => ({
   id,
-  label: ['待处置', '已处置', '已闭环'][index] as string,
+  label: ['待处置', '已处置', '已闭环', '已作废'][index] as string,
 }));
 
 export function nonconformStateLabel(state: string): string {
@@ -90,7 +98,11 @@ export function nonconformStateLabel(state: string): string {
 }
 
 /**
- * 不合格处置默认配置：open --DISPOSE--> disposed --CLOSE--> closed（终态）。
+ * 不合格处置默认配置：open --DISPOSE--> disposed --CLOSE--> closed（终态）；
+ * fix-wave-6 6a-2 增 voided 旁支：open/disposed --VOID--> voided（终态）——
+ * 仅由撤销质检级联触发（判定被撤销时其自动生成的不合格明细随判定作废，
+ * 历史留痕在两本 append-only 账本，投影行进 voided 不进活跃闭环视图）；
+ * closed 已结案不回退作废（与质检单 closed 无 REVOKE 出边同口径）。
  * 处置方式（返工/让步/报废）不进迁移动词——它是处置命令的载荷与投影列，
  * 随 NonconformDisposed 事件留痕（枚举见 NONCONFORM_DISPOSALS，默认配置层）。
  */
@@ -98,10 +110,12 @@ export const DEFAULT_NONCONFORM_FLOW_CONFIG: ApprovalFlowConfig = defineApproval
   schemaVersion: 1,
   flowId: NONCONFORM_FLOW_ID,
   initial: 'open',
-  states: [{ id: 'open' }, { id: 'disposed' }, { id: 'closed', final: true }],
+  states: [{ id: 'open' }, { id: 'disposed' }, { id: 'closed', final: true }, { id: 'voided', final: true }],
   transitions: [
     { from: 'open', event: 'DISPOSE', to: 'disposed', eventAction: 'disposed' },
     { from: 'disposed', event: 'CLOSE', to: 'closed', eventAction: 'closed' },
+    { from: 'open', event: 'VOID', to: 'voided', eventAction: 'voided' },
+    { from: 'disposed', event: 'VOID', to: 'voided', eventAction: 'voided' },
   ],
 });
 
@@ -194,3 +208,9 @@ export function nonconformDisposalLabel(disposal: string): string {
  * 初版口径，对账阶段按客户口径调整（service options.closeTimeoutMs 注入）。
  */
 export const DEFAULT_CLOSE_TIMEOUT_MS = 72 * 60 * 60 * 1000;
+
+/**
+ * 批量质检单次上限默认值（RQ-036；对齐 reporting DEFAULT_REPORT_BATCH_LIMIT
+ * 先例）：超限整批拒绝（弱网/大勾选分片口径，service options.batchLimit 注入）。
+ */
+export const DEFAULT_INSPECTION_BATCH_LIMIT = 50;

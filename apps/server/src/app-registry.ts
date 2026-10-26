@@ -19,6 +19,7 @@ import {
   DispatchModule,
   AftercareClaimModule,
   AttachmentModule,
+  ColumnPreferencesModule,
   IssueModule,
   HoursModule,
   InspectionModule,
@@ -136,6 +137,7 @@ import {
   type RoutingStore,
   type StandardTimeStore,
   type MenuConfigStore,
+  type ColumnPreferenceStore,
   type NotificationStore,
   type ApprovalFlowConfigStore,
   type AftercareClaimStore,
@@ -396,6 +398,11 @@ export interface StorePorts {
   readonly attachmentStore?: AttachmentStore | undefined;
   /** 对象存储端口（AttachmentModule 注入点；字节持久面——缺省 = 模块内存实现）。 */
   readonly objectStorage?: ObjectStoragePort | undefined;
+  /**
+   * 列显隐偏好存储（ColumnPreferencesModule 注入点，fix-wave-6 6b-3 A14：
+   * PG 形态经 connectColumnPreferenceStore 注入；缺省回落内存实现）。
+   */
+  readonly columnPreferenceStore?: ColumnPreferenceStore | undefined;
 }
 
 /**
@@ -566,10 +573,11 @@ export const MODULE_DEFINITIONS: Record<
       machineEventStore: stores.dispatchMachineEventStore,
       todoStore: stores.todoStore,
       // 跨模块接线（#7~#10）：workorder 齐套读 + baseline 取价 + inspection
-      // 回厂触发 + 打印
+      // 回厂触发 + 打印；#20 同实例 ExcelJS 导出（6a-1 RREQ-DP-026 派工单导出）
       kitCheck: wiring.dispatch?.kitCheck,
       priceSource: wiring.dispatch?.priceSource,
       inspectionIntake: wiring.dispatch?.inspectionIntake,
+      excelPort: wiring.dispatch?.excelPort,
       print: wiring.dispatch?.print,
     }),
   // M2 Wave-4 账本模块（跨模块消费端口 validDispatch/reportFeed/各成本源暂缺省，
@@ -685,6 +693,14 @@ export const MODULE_DEFINITIONS: Record<
       attachmentStore: stores.attachmentStore,
       objectStorage: stores.objectStorage,
     }),
+  // fix-wave-6 6b-3（A14 / RREQ-INT-032）用户表格列显隐偏好：小域两端点
+  // （GET 按页拉取 + PUT 幂等 upsert），@RequireLogin 档（登录即可，无独立
+  // 权限码——本人本人的偏好数据；激活价语义同 U6 先例，仅显式
+  // MODULES_ENABLED 开启；存储缺省回落模块内存实现——零 DB boot 语义完整）。
+  'column-preferences': (stores) =>
+    ColumnPreferencesModule.register({
+      columnPreferenceStore: stores.columnPreferenceStore,
+    }),
   'aftercare-claim': (stores, wiring) =>
     AftercareClaimModule.register({
       orderStore: stores.dispatchOrderStore,
@@ -698,8 +714,17 @@ export const MODULE_DEFINITIONS: Record<
   // HTTP/推送面——SSE 数据帧通道 + 5s 聚合节拍 + A10 日跑批定时器。事实源从
   // StorePorts 逐项解析（各源模块未启用 → 对应读面 undefined → 块级降级占位，
   // screen-ports.ts 头注契约）；日统计存储 = PG 句柄或组合根内存缺省。
-  screen: (stores) =>
-    ScreenHttpModule.register({
+  screen: (stores) => {
+    // A10 存储装配断链返工（6a-3 裁决 1）：组合根是共享实例的唯一裁决点——
+    // screen 启用时 machiningDailyStatsStore 恒有值（options 注入 PG 句柄或
+    // 此处内存缺省）。防御性 fail-fast 取代原 `!` 断言（undefined 进
+    // MachiningDailyStatsService 会在首查询 500——装配期违约应启动即炸）。
+    if (stores.machiningDailyStatsStore === undefined) {
+      throw new ModuleRegistryError(
+        'screen 模块装配违约：machiningDailyStatsStore 恒有值（组合根工厂裁决，PG 注入或内存缺省）',
+      );
+    }
+    return ScreenHttpModule.register({
       sources: {
         workOrders: stores.workOrderStore,
         dispatchOrders: stores.dispatchOrderStore,
@@ -721,7 +746,7 @@ export const MODULE_DEFINITIONS: Record<
                 }
               },
       },
-      dailyStore: stores.machiningDailyStatsStore!,
+      dailyStore: stores.machiningDailyStatsStore,
       // 屏显静态配置 env 注入（部署期覆盖缺省值；非法值回落 DEFAULT——呈现面容错）
       config: {
         companyNameLines: [
@@ -736,7 +761,8 @@ export const MODULE_DEFINITIONS: Record<
       // A10 跑批租户集：saas 形态 SMES_TENANTS 逗号清单；缺省单租户 'default'
       dailyTenants: parseDailyTenants(process.env['SMES_TENANTS']),
       publicStream: process.env['SMES_SCREEN_PUBLIC_STREAM'] === 'on',
-    }),
+    });
+  },
 };
 
 /** 组合根装配选项。 */
@@ -893,6 +919,18 @@ export interface BuildAppModuleOptions {
    * 缺省 = 模块内存适配器——字节重启即失，部署期换装 MinIO/S3 不动业务面）。
    */
   readonly objectStorage?: ObjectStoragePort | undefined;
+  /**
+   * A10 机加日统计存储（A8/A10 首波，6a-3 裁决 1 修复项）：PG 形态 main.ts
+   * 经 connectMachiningDailyStore 注入；screen 模块启用而未注入时组合根工厂
+   * 调用处回落内存实例（同 sharedTodoStore 裁决先例——零 DB boot 语义完整）。
+   */
+  readonly machiningDailyStatsStore?: MachiningDailyStatsStore | undefined;
+  /**
+   * 列显隐偏好存储（ColumnPreferencesModule 注入点，fix-wave-6 6b-3 A14：
+   * PG 形态 main.ts 经 connectColumnPreferenceStore 注入；未注入 = 模块装配
+   * 回落内存实现——零 DB boot 语义完整）。
+   */
+  readonly columnPreferenceStore?: ColumnPreferenceStore | undefined;
 }
 
 export class ModuleRegistryError extends Error {
@@ -1202,7 +1240,16 @@ export function buildAppModule(
         issueDomainEventStore: options.issueDomainEventStore,
         aftercareClaimStore: options.aftercareClaimStore,
         attachmentStore: options.attachmentStore,
+      // A14 验收阻塞项修复：PG 句柄此前在此字面量被静默丢弃（同型事故见上方 screen 注释）——
+      // 缺失时 column-preferences 工厂恒回落内存实现，偏好不落库跨设备失效。
+      columnPreferenceStore: options.columnPreferenceStore,
         objectStorage: options.objectStorage,
+        // A10 存储装配链（6a-3 裁决 1 修复项）：screen 启用而组合根未注入 PG
+        // 句柄时在此裁决内存缺省（此前工厂调用漏传本键 → screen 工厂内恒
+        // undefined，`!` 断言掩盖 → GET /screen/machining-daily-stats 500）。
+        machiningDailyStatsStore:
+          options.machiningDailyStatsStore ??
+          (enabled.includes('screen') ? new InMemoryMachiningDailyStatsStore() : undefined),
       }, wiring.register);
     }),
   ];

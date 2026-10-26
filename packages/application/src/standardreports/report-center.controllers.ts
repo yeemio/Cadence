@@ -33,7 +33,9 @@ export class ReportCenterController {
     metrics: Awaited<ReturnType<ReportCenterReportsService['listMetrics']>>;
   }> {
     const metrics = this.reports.listMetrics();
-    return { packId: 'report-center', version: 3, metrics };
+    // 6a-3 裁决 4 修复：版本号此前硬编码 3（包演进即失真）——改读服务持有的
+    // 包实值（packVersion ← REPORT_CENTER_PACK.version，单一事实源）。
+    return { packId: 'report-center', version: this.reports.packVersion, metrics };
   }
 
   @Post('query')

@@ -30,6 +30,8 @@ import { connectNotificationStore } from '@smes/business-store/notifications';
 import { connectApprovalConfigStore } from '@smes/business-store/approval-config';
 import { connectIssueStore } from '@smes/business-store/issue';
 import { connectAttachmentStore, connectAttachmentObjectStorage } from '@smes/business-store/attachment';
+import { connectColumnPreferenceStore } from '@smes/business-store/column-preferences';
+import { connectMachiningDailyStore } from '@smes/business-store/standardreports';
 import { metricSourceSetOf } from '@smes/metric-pack';
 import { hostBasedTenantResolver, TenantResolutionError, type TenantId } from '@smes/business-core';
 import { buildAppModule, parseModulesEnabled } from './app-registry.js';
@@ -57,6 +59,7 @@ import { MetricPackErrorFilter } from './metric-pack-error.filter.js';
 import { BackfillErrorFilter } from './backfill-error.filter.js';
 import { CapabilityErrorFilter } from './capability-error.filter.js';
 import { UWaveErrorFilter } from './u-wave-error.filter.js';
+import { ColumnPreferenceErrorFilter } from './column-preference-error.filter.js';
 
 const DEFAULT_PORT = 3000;
 
@@ -116,6 +119,18 @@ async function bootstrap(): Promise<void> {
   // 不注入 = buildAppModule 回落模块内存实现（零 DB boot 语义完整）。
   const issueStoreHandle = process.env['DATABASE_URL'] ? connectIssueStore() : undefined;
   const attachmentStoreHandle = process.env['DATABASE_URL'] ? connectAttachmentStore() : undefined;
+  // fix-wave-6 6b-3（A14）：列显隐偏好存储——同上惰性连接；零 DB 不注入 =
+  // buildAppModule 装配时回落模块内存实现（零 DB boot 语义完整）。
+  const columnPreferenceStoreHandle = process.env['DATABASE_URL']
+    ? connectColumnPreferenceStore()
+    : undefined;
+  // A10 机加日统计存储（A8/A10 首波，6a-3 裁决 1 修复项）：PG 形态经
+  // connectMachiningDailyStore 注入（此前该工厂零消费——screen 的
+  // machiningDailyStatsStore 在零 DB/PG 两形态下均落空，端点 500）；零 DB
+  // 不注入 = buildAppModule 工厂调用处回落内存实例（零 DB boot 语义完整）。
+  const machiningDailyStoreHandle = process.env['DATABASE_URL']
+    ? connectMachiningDailyStore()
+    : undefined;
   // fix-wave-4 W4-2（D-3）：attachment 对象字节 PG 适配器——同上惰性连接；有
   // DATABASE_URL 的部署形态附件字节入库 attachment_objects（bytea），重启随
   // pg-data 卷存活（修复内存适配器重启即丢、download-reference 502）。
@@ -219,6 +234,10 @@ async function bootstrap(): Promise<void> {
       aftercareClaimStore: dispatchStoreHandle?.aftercareClaimStore,
       attachmentStore: attachmentStoreHandle?.attachmentStore,
       objectStorage: attachmentObjectStorage,
+      // fix-wave-6 6b-3（A14）：列显隐偏好存储注入
+      columnPreferenceStore: columnPreferenceStoreHandle?.columnPreferenceStore,
+      // A10 机加日统计存储注入（6a-3 裁决 1 修复项：PG 形态持久化日表）
+      machiningDailyStatsStore: machiningDailyStoreHandle?.dailyStore,
       // U7 项目成本：三存储 + 六块源读面（issue 记录/清单行/工序原材料关联同源注入）
       costingProjectEntryStore: projectCostStoreHandle?.projectEntryStore,
       costingProjectSnapshotStore: projectCostStoreHandle?.projectSnapshotStore,
@@ -315,6 +334,7 @@ async function bootstrap(): Promise<void> {
     new BackfillErrorFilter(),
     new CapabilityErrorFilter(),
     new UWaveErrorFilter(),
+    new ColumnPreferenceErrorFilter(),
   );
 
   // 跨模块端口接线收口（M2 后第一增量）：buildAppModule 已把 store 级适配器随

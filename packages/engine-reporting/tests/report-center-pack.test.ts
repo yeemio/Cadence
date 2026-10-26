@@ -298,3 +298,140 @@ describe('r8 逾期交货采购件（purchase-overdue-daily）', () => {
     expect(september.rows.map((row) => row.key.orderLineId)).toEqual(['po-1#1', 'po-3#2']); // L2 计划到货 10-05 出窗
   });
 });
+
+describe('r9 采购件情况汇总（purchase-parts-summary）', () => {
+  /**
+   * 事实行夹具（源适配器已物化：lineAmountMinor = receivedQty × unitPriceMinor
+   * half-up 到分；partType 两分；draft 态订单与未定价行不归集——行集取舍在
+   * 源侧，引擎只认行形状）。businessTime = 订单承诺到货时刻。
+   */
+  const rows: MetricSourceRow[] = [
+    { // wo-1×非标件：po-1 一行
+      occurredAt: '2026-09-01T08:00:00Z', businessTime: '2026-09-20T00:00:00Z',
+      workOrderId: 'wo-1', partType: 'drawing-part', orderId: 'po-1', orderLineId: 'po-1#1',
+      lineAmountMinor: 10000,
+    },
+    { // wo-1×非标件：po-2 首行（同单两行 → order-count 去重计 1、金额累加）
+      occurredAt: '2026-09-05T08:00:00Z', businessTime: '2026-10-10T00:00:00Z',
+      workOrderId: 'wo-1', partType: 'drawing-part', orderId: 'po-2', orderLineId: 'po-2#1',
+      lineAmountMinor: 5000,
+    },
+    { // wo-1×非标件：po-2 次行
+      occurredAt: '2026-09-05T08:00:00Z', businessTime: '2026-10-10T00:00:00Z',
+      workOrderId: 'wo-1', partType: 'drawing-part', orderId: 'po-2', orderLineId: 'po-2#2',
+      lineAmountMinor: 3000,
+    },
+    { // wo-1×标准件（同单跨类目行 → 独立分组）
+      occurredAt: '2026-09-06T08:00:00Z', businessTime: '2026-10-10T00:00:00Z',
+      workOrderId: 'wo-1', partType: 'standard-part', orderId: 'po-2', orderLineId: 'po-2#3',
+      lineAmountMinor: 2000,
+    },
+    { // 无工作令（手工类目 → null 组，Web 显示「—」）
+      occurredAt: '2026-10-01T08:00:00Z', businessTime: '2026-11-01T00:00:00Z',
+      workOrderId: null, partType: 'standard-part', orderId: 'po-3', orderLineId: 'po-3#1',
+      lineAmountMinor: 800,
+    },
+  ];
+
+  it('工作令×零件类型：一张采购单跨行只计一次（distinct-count）；金额按分合计；无工作令落 null 组', () => {
+    const definition = findMetric(REPORT_CENTER_PACK, 'purchase-parts-summary', 1)!;
+    const result = evaluateMetric(definition, { metricId: 'purchase-parts-summary', version: 1 }, rows);
+    expect(result.rows.map((row) => `${String(row.key.workOrderId)}:${String(row.key.partType)}`)).toEqual([
+      'wo-1:drawing-part',
+      'wo-1:standard-part',
+      'null:standard-part',
+    ]);
+    const drawing = result.rows.find((row) => row.key.workOrderId === 'wo-1' && row.key.partType === 'drawing-part');
+    expect(drawing?.values).toEqual({ 'purchase-amount-minor': 18000, 'order-count': 2 }); // po-1 + po-2（po-2 两行计 1）
+    const standard = result.rows.find((row) => row.key.workOrderId === 'wo-1' && row.key.partType === 'standard-part');
+    expect(standard?.values).toEqual({ 'purchase-amount-minor': 2000, 'order-count': 1 });
+    const noWorkOrder = result.rows.find((row) => row.key.workOrderId === null);
+    expect(noWorkOrder?.values).toEqual({ 'purchase-amount-minor': 800, 'order-count': 1 });
+  });
+
+  it('business 窗口锚承诺到货：10 月窗只剩 po-2 三行（同单两非标行去重计 1）', () => {
+    const definition = findMetric(REPORT_CENTER_PACK, 'purchase-parts-summary', 1)!;
+    const result = evaluateMetric(
+      definition,
+      { metricId: 'purchase-parts-summary', version: 1, ...OCTOBER },
+      rows,
+    );
+    expect(result.rows.map((row) => `${String(row.key.workOrderId)}:${String(row.key.partType)}`)).toEqual([
+      'wo-1:drawing-part',
+      'wo-1:standard-part',
+    ]);
+    expect(result.rows[0]?.values).toEqual({ 'purchase-amount-minor': 8000, 'order-count': 1 }); // 5000+3000，po-2 去重计 1
+  });
+});
+
+describe('r7 下钻 未按期交货明细（outsource-delivery-late-detail）', () => {
+  /**
+   * 明细行夹具（源适配器已物化，统计截止日 asOf=2026-10-24——与 r7 主口径
+   * 夹具同一批派工事实）：
+   * L1/L2 同键两行（O2×D2×OP10 同计划/实际交货日）→ 合并 line-count=2；
+   * L3 未质检逾期（asOf 10-24 > 计划 09-10，迟 14 日）→ 实际交货日 null 组；
+   * L4 未逾期（lateDrawingKey null）→ 根过滤剔除；L5 未下发（status 1）→ 剔除。
+   */
+  const rows: MetricSourceRow[] = [
+    { // O2×D2 已质检 09-15 > 计划 09-10 → 迟 5 日（行 1）
+      occurredAt: '2026-09-02T08:00:00Z', businessTime: '2026-09-10T00:00:00Z', availableTime: '2026-10-24T00:05:00Z',
+      statMonth: '2026-09', supplierId: 'S1', orderId: 'O2', drawingNo: 'D2', processCode: 'OP10',
+      plannedDeliveryDate: '2026-09-10', actualInspectDate: '2026-09-15',
+      drawingKey: 'W2::D2', lateDrawingKey: 'W2::D2', lateDays: 5,
+      dispatchStatus: 2, dispatchTime: '2026-09-02T08:00:00Z', lineId: 'l-1',
+    },
+    { // O2×D2 同键第二行（line-count 计 2；late-days 同值 max）
+      occurredAt: '2026-09-02T08:00:00Z', businessTime: '2026-09-10T00:00:00Z', availableTime: '2026-10-24T00:05:00Z',
+      statMonth: '2026-09', supplierId: 'S1', orderId: 'O2', drawingNo: 'D2', processCode: 'OP10',
+      plannedDeliveryDate: '2026-09-10', actualInspectDate: '2026-09-15',
+      drawingKey: 'W2::D2', lateDrawingKey: 'W2::D2', lateDays: 5,
+      dispatchStatus: 2, dispatchTime: '2026-09-02T08:00:00Z', lineId: 'l-2',
+    },
+    { // O2×D1 未质检、asOf 10-24 > 计划 09-10 → 迟 14 日；实际交货日 null 组
+      occurredAt: '2026-09-02T08:00:00Z', businessTime: '2026-09-10T00:00:00Z', availableTime: '2026-10-24T00:05:00Z',
+      statMonth: '2026-09', supplierId: 'S1', orderId: 'O2', drawingNo: 'D1', processCode: 'OP10',
+      plannedDeliveryDate: '2026-09-10', actualInspectDate: null,
+      drawingKey: 'W1::D1', lateDrawingKey: 'W1::D1', lateDays: 14,
+      dispatchStatus: 2, dispatchTime: '2026-09-02T08:00:00Z', lineId: 'l-3',
+    },
+    { // O3×D3 未质检且 asOf 10-24 < 计划 11-05 → 未逾期（lateDrawingKey null）→ 根过滤剔除
+      occurredAt: '2026-10-20T08:00:00Z', businessTime: '2026-11-05T00:00:00Z', availableTime: '2026-10-24T00:05:00Z',
+      statMonth: '2026-11', supplierId: 'S2', orderId: 'O3', drawingNo: 'D3', processCode: 'OP20',
+      plannedDeliveryDate: '2026-11-05', actualInspectDate: null,
+      drawingKey: 'W3::D3', lateDrawingKey: null, lateDays: null,
+      dispatchStatus: 2, dispatchTime: '2026-10-20T08:00:00Z', lineId: 'l-4',
+    },
+    { // O5 未下发（status 1）→ 根过滤剔除
+      occurredAt: '2026-09-03T08:00:00Z', businessTime: '2026-09-10T00:00:00Z',
+      statMonth: '2026-09', supplierId: 'S1', orderId: 'O5', drawingNo: 'D9', processCode: 'OP10',
+      plannedDeliveryDate: '2026-09-10', actualInspectDate: null,
+      drawingKey: 'W1::D9', lateDrawingKey: 'W1::D9', lateDays: 21,
+      dispatchStatus: 1, dispatchTime: null, lineId: 'l-5',
+    },
+  ];
+
+  it('仅未按期行：同键多行合并（line-count=2、late-days 同值 max）；未质检逾期实际交货日落 null 组', () => {
+    const definition = findMetric(REPORT_CENTER_PACK, 'outsource-delivery-late-detail', 1)!;
+    const result = evaluateMetric(definition, { metricId: 'outsource-delivery-late-detail', version: 1 }, rows);
+    expect(
+      result.rows.map(
+        (row) => `${row.key.supplierId}:${String(row.key.orderId)}:${String(row.key.drawingNo)}:${String(row.key.actualInspectDate)}`,
+      ),
+    ).toEqual(['S1:O2:D2:2026-09-15', 'S1:O2:D1:null']); // L4 未逾期、L5 未下发 → 剔除
+    expect(result.rows[0]?.values).toEqual({ 'late-days': 5, 'line-count': 2 }); // L1+L2 同键合并
+    expect(result.rows[1]?.values).toEqual({ 'late-days': 14, 'line-count': 1 });
+  });
+
+  it('business 窗口锚计划交货月：11 月窗空（唯一 11 月行本就未逾期被根过滤剔除）', () => {
+    const definition = findMetric(REPORT_CENTER_PACK, 'outsource-delivery-late-detail', 1)!;
+    const result = evaluateMetric(
+      definition,
+      {
+        metricId: 'outsource-delivery-late-detail', version: 1,
+        from: '2026-11-01T00:00:00Z', to: '2026-11-30T23:59:59Z',
+      },
+      rows,
+    );
+    expect(result.rows).toEqual([]);
+  });
+});

@@ -140,6 +140,22 @@ export interface InspectionOrderStore {
     fields: JudgmentFields,
   ): Promise<InspectionOrder | null>;
   markOverdueNotified(tenant: TenantId, id: InspectionId, notifiedAt: string): Promise<InspectionOrder | null>;
+  /**
+   * 撤销判定投影清理（inspection.revoke.v1 专用；fix-wave-6 6a-2，**可选方法**）：
+   * 仅当 objectVersion === expected 时 state→nextState、版本→nextObjectVersion、
+   * 判定五字段（passedQty/failedQty/judgeRemark/judgedBy/judgedAt）与 closeDueAt/
+   * overdueNotifiedAt 全部清空（null）——RQ-037"清空合格/不合格/质检人/时间"。
+   * 行不存在返回 null；版本不符抛 InspectionConflictError（同 updateJudgment 合同）。
+   * 可选原因：PG 适配器（business-store，本波写入面外）未实现时用例层
+   * fail-closed 拒绝撤销——补齐侧为纯 UPDATE（全部列既有，无迁移需求）。
+   */
+  revertJudgment?(
+    tenant: TenantId,
+    id: InspectionId,
+    expectedObjectVersion: number,
+    nextState: string,
+    nextObjectVersion: number,
+  ): Promise<InspectionOrder | null>;
 }
 
 // ---- 不合格处置投影行 ----

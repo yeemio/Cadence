@@ -3,10 +3,12 @@
  *
  * 公开事件 = business-core BusinessEvent 形状（append-only 事件表 + Outbox，
  * 证据七公共列在持久化层补齐）。命名空间：smes.dispatch.v1.<过去式动作>；
- * 事件清单（合同词汇 6 个）：
+ * 事件清单（合同词汇 6 个 + fix-wave-6 6a-1 增 2 个）：
  *   DispatchCreated / DispatchAssigned（→待办推送执行人）/ DispatchStarted /
  *   DispatchCompleted（外协单含回厂质检回执）/ DispatchCancelled（→reporting
- *   侧禁止再报）/ OutsourcingPriced（→costing 重算信号）。
+ *   侧禁止再报）/ OutsourcingPriced（→costing 重算信号）；
+ *   DispatchTransferred（转单审计快照——RREQ-DP-024 我方形态）、
+ *   OutsourcingLineCancelled（取消外协明细行——RREQ-DP-031）。
  *
  * 与 engine-flow 机器事件账本的分工：机器事件（ApprovalEvent 形状）是派工单
  * 状态机的**重放事实源**（乐观锁与对账口径）；本文件域事件是对外**发布事实**
@@ -51,7 +53,11 @@ export const DISPATCH_EVENT_TYPES = {
   dispatchStarted: 'smes.dispatch.v1.dispatch-started',
   dispatchCompleted: 'smes.dispatch.v1.dispatch-completed',
   dispatchCancelled: 'smes.dispatch.v1.dispatch-cancelled',
+  /** 转单审计（fix-wave-6 6a-1 / RREQ-DP-024 我方形态：executing 整单换执行人/工序，快照入事件账本）。 */
+  dispatchTransferred: 'smes.dispatch.v1.dispatch-transferred',
   outsourcingPriced: 'smes.dispatch.v1.outsourcing-priced',
+  /** 取消外协明细行（RREQ-DP-031：行状态流转 + 原因记录）。 */
+  outsourcingLineCancelled: 'smes.dispatch.v1.outsourcing-line-cancelled',
 } as const;
 
 // ---- 进度事实（workorder ProgressFact 同形镜像——上卷载荷） ----
@@ -148,6 +154,52 @@ export interface OutsourcingPricedPayload {
   readonly unitPriceMinor: number;
   /** 行数量（costing 归集口径：金额 = unitPriceMinor × quantity）。 */
   readonly quantity: number;
+  readonly objectVersion: number;
+  readonly actor: string;
+}
+
+/**
+ * 转单审计载荷（mes_transfer_operation 快照语义的我方事件账本形态——RREQ-DP-024）：
+ * 转单前后执行人/工序全快照 + 单据上下文（kind/工作令/图号/数量/进度），append-only
+ * 不可改写；非状态机迁移（state 保持 executing，objectVersion 不推进）。
+ */
+export interface DispatchTransferredPayload {
+  readonly kind: DispatchKind;
+  readonly workOrderId: string | null;
+  readonly drawingNo: string | null;
+  /** 转单前执行人（null = 原无执行人）。 */
+  readonly fromAssignee: string | null;
+  /** 转单后执行人（null = 未换执行人）。 */
+  readonly toAssignee: string | null;
+  /** 转单前工序（null = 原无工序）。 */
+  readonly fromOperationCode: string | null;
+  /** 转单后工序（null = 未换工序）。 */
+  readonly toOperationCode: string | null;
+  /** 转单时状态（恒 executing——仅执行中可转）。 */
+  readonly state: string;
+  readonly quantity: number;
+  readonly doneQty: number;
+  readonly remark: string | null;
+  readonly objectVersion: number;
+  readonly actor: string;
+}
+
+/** 取消外协明细行载荷（RREQ-DP-031：行状态 dispatched→cancelled + 原因 + 行快照）。 */
+export interface OutsourcingLineCancelledPayload {
+  readonly dispatchId: string;
+  /** 父单状态快照（取消时口径）。 */
+  readonly dispatchState: string;
+  readonly lineNo: number;
+  readonly processCode: string;
+  readonly drawingNo: string | null;
+  readonly supplierRef: string;
+  readonly quantity: number;
+  /** 取消前行状态（推导口径：dispatched）。 */
+  readonly previousStatus: string;
+  /** 取消后行状态（cancelled）。 */
+  readonly status: string;
+  /** 取消原因（≤200 字，可空）。 */
+  readonly cancelReason: string | null;
   readonly objectVersion: number;
   readonly actor: string;
 }
@@ -249,6 +301,38 @@ export function makeOutsourcingPricedEvent(
   return makeBusinessEvent({
     eventId: base.eventId,
     eventType: DISPATCH_EVENT_TYPES.outsourcingPriced,
+    tenantId: base.tenant,
+    aggregate: { id: lineId, type: OUTSOURCING_LINE_AGGREGATE_TYPE, revision: payload.objectVersion },
+    occurredAt: base.occurredAt,
+    payload,
+    provenance: base.provenance,
+  });
+}
+
+export function makeDispatchTransferredEvent(
+  base: DomainEventInput,
+  payload: DispatchTransferredPayload,
+  dispatchId: string,
+): BusinessEvent<DispatchTransferredPayload> {
+  return makeBusinessEvent({
+    eventId: base.eventId,
+    eventType: DISPATCH_EVENT_TYPES.dispatchTransferred,
+    tenantId: base.tenant,
+    aggregate: { id: dispatchId, type: DISPATCH_ORDER_AGGREGATE_TYPE, revision: payload.objectVersion },
+    occurredAt: base.occurredAt,
+    payload,
+    provenance: base.provenance,
+  });
+}
+
+export function makeOutsourcingLineCancelledEvent(
+  base: DomainEventInput,
+  payload: OutsourcingLineCancelledPayload,
+  lineId: string,
+): BusinessEvent<OutsourcingLineCancelledPayload> {
+  return makeBusinessEvent({
+    eventId: base.eventId,
+    eventType: DISPATCH_EVENT_TYPES.outsourcingLineCancelled,
     tenantId: base.tenant,
     aggregate: { id: lineId, type: OUTSOURCING_LINE_AGGREGATE_TYPE, revision: payload.objectVersion },
     occurredAt: base.occurredAt,

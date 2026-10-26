@@ -6,10 +6,12 @@
  *
  * 五个实现（表 ↔ 端口分工见 prisma/schema.prisma dispatch 节与迁移头注）：
  *  - PgDispatchOrderStore        → dispatch_orders 投影（六类派工单头，
- *                                  advance 乐观可回填 doneQty/assignee）
+ *                                  advance 乐观可回填 doneQty/assignee；transfer
+ *                                  转单字段重写不推进版本——fix-wave-6 6a-1）
  *  - PgOutsourcingLineStore      → outsourcing_lines 投影（外协明细，
- *                                  appendLines 批量插入行号唯一；backfillPrice =
- *                                  object_version 条件更新，零行命中 → null）
+ *                                  appendLines 批量插入行号唯一；backfillPrice /
+ *                                  cancel = object_version 条件更新 +1 版本，
+ *                                  零行命中 → null——cancel 落两列取消事实）
  *  - PgDispatchOperationStore    → dispatch_operations 幂等记账（PK=租户|operationId，
  *                                  P2002 = 已落账 → record 返回 null）
  *  - PgDispatchDomainEventStore  → 域事件 + Outbox 同事务落账（**复用既有
@@ -141,6 +143,8 @@ interface OutsourcingLineDbRow {
   readonly marginPermyriad: number | null;
   readonly promisedAt: Date | null;
   readonly sourceListingLineId: string | null;
+  readonly cancelledAt: Date | null;
+  readonly cancelReason: string | null;
   readonly objectVersion: number;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -162,6 +166,8 @@ export function rowToOutsourcingLine(row: OutsourcingLineDbRow): OutsourcingLine
     marginPermyriad: row.marginPermyriad,
     promisedAt: row.promisedAt === null ? null : row.promisedAt.toISOString(),
     sourceListingLineId: row.sourceListingLineId,
+    cancelledAt: row.cancelledAt === null ? null : row.cancelledAt.toISOString(),
+    cancelReason: row.cancelReason,
     objectVersion: row.objectVersion,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -275,6 +281,31 @@ export class PgDispatchOrderStore implements DispatchOrderStore {
     const row = await this.prisma.dispatchOrderRecord.findFirstOrThrow({ where: { tenantId: tenant, id } });
     return rowToDispatchOrder(row);
   }
+
+  /**
+   * 转单字段重写（fix-wave-6 6a-1，RREQ-DP-024）：非状态机迁移——**不推进
+   * objectVersion、不写机器事件**（审计快照 DispatchTransferred 由服务层落
+   * event_records）。乐观条件更新（同 advance 的 where 口径）：零行命中
+   * （不存在/版本不符）返回 null；fields 只携带显式变更维（undefined = 不动）。
+   */
+  async transfer(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    fields: { readonly assignee?: UserId | null; readonly operationCode?: string | null },
+  ): Promise<DispatchOrder | null> {
+    const updated = await this.prisma.dispatchOrderRecord.updateMany({
+      where: { tenantId: tenant, id, objectVersion: expectedObjectVersion },
+      data: {
+        ...(fields.assignee === undefined ? {} : { assignee: fields.assignee }),
+        ...(fields.operationCode === undefined ? {} : { operationCode: fields.operationCode }),
+        updatedAt: new Date(),
+      },
+    });
+    if (updated.count === 0) return null;
+    const row = await this.prisma.dispatchOrderRecord.findFirstOrThrow({ where: { tenantId: tenant, id } });
+    return rowToDispatchOrder(row);
+  }
 }
 
 // ---- 外协明细（投影，backfillPrice 乐观更新） ----
@@ -355,6 +386,34 @@ export class PgOutsourcingLineStore implements OutsourcingLineStore {
         ...(fields.promisedAt === undefined
           ? {}
           : { promisedAt: fields.promisedAt === null ? null : new Date(fields.promisedAt) }),
+        objectVersion: expectedObjectVersion + 1,
+        updatedAt: new Date(),
+      },
+    });
+    if (updated.count === 0) return null;
+    const row = await this.prisma.outsourcingLineRecord.findFirstOrThrow({
+      where: { tenantId: tenant, id },
+    });
+    return rowToOutsourcingLine(row);
+  }
+
+  /**
+   * 取消外协明细行（fix-wave-6 6a-1，RREQ-DP-031）：行是版本化数据（非状态机）
+   * ——落取消事实（cancelled_at + cancel_reason）并 +1 版本，同 backfillPrice
+   * 乐观口径（(tenant, id, object_version=expected) 条件更新，零行 = 版本不符
+   * 或不存在 → null）。域事件 OutsourcingLineCancelled 由服务层落 event_records。
+   */
+  async cancel(
+    tenant: TenantId,
+    id: string,
+    expectedObjectVersion: number,
+    fields: { readonly cancelReason: string | null; readonly cancelledAt: string },
+  ): Promise<OutsourcingLine | null> {
+    const updated = await this.prisma.outsourcingLineRecord.updateMany({
+      where: { tenantId: tenant, id, objectVersion: expectedObjectVersion },
+      data: {
+        cancelReason: fields.cancelReason,
+        cancelledAt: new Date(fields.cancelledAt),
         objectVersion: expectedObjectVersion + 1,
         updatedAt: new Date(),
       },
