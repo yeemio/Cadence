@@ -382,6 +382,7 @@ async function bootstrap(): Promise<void> {
     error: TenantResolutionError,
   ): void => {
     const isUnknownTenant = error.reason === 'unknown-tenant';
+    // 分叉复刻锚：apps/server/tests/tenant-resolution-status.e2e.test.ts——改此处分叉须同步复刻（低危回指，验收登记项顺手清偿）。
     const statusCode = isUnknownTenant ? 404 : 421;
     response.statusCode = statusCode;
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
