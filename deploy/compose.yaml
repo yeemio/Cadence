@@ -98,6 +98,9 @@ services:
       SMES_DOMAIN: ${SMES_DOMAIN:-}
       # 已知租户清单（SaaS 形态）：逗号分隔静态列表（租户管理流程属 M4 后续波）。
       SMES_TENANTS: ${SMES_TENANTS:-}
+      # 模块启停透传（缺省=注册表 DEFAULT_MODULES_ENABLED 基础六模块；全量演示
+      # 用 MODULES_ENABLED 显式传全清单——注册表 MODULE_DEFINITIONS 键，core 恒必装）。
+      MODULES_ENABLED: ${MODULES_ENABLED:-}
     ports:
       - "${SERVER_PORT:-3000}:3000"
     restart: unless-stopped

@@ -90,13 +90,15 @@ RUN set -eux \
   && cp -R /tmp/generated-prisma-client/node_modules/.prisma "$entry_node_modules/" \
   && cp -R /tmp/generated-prisma-client/node_modules/@prisma/client/. "$client_dir/" \
   && rm -rf /tmp/generated-prisma-client \
-  # peer 注入（取舍写明）：application 声明 @nestjs/common 为 peerDependency
-  # （零框架纪律：框架由组合根提供；本地经 devDep 链接满足）。prod 子图不装
-  # devDeps，故在根 node_modules 注入符号链接——等价 pnpm deploy 的 peer 解析，
-  # 不改任何 package.json（application 为并发线领地）。仅此一个 peer 面
-  # （全仓 packages 只有 application import @nestjs/common）。
+  # peer 注入（取舍写明）：application 声明 @nestjs/common 与 rxjs 为
+  # peerDependency（零框架纪律：框架由组合根提供；本地经 devDep 链接满足）。
+  # prod 子图不装 devDeps，故在根 node_modules 注入符号链接——等价 pnpm deploy
+  # 的 peer 解析，不改任何 package.json。两个 peer 面：@nestjs/common（全仓
+  # packages 仅 application import）+ rxjs（S1 audit-write 拦截器运行时 import
+  # mergeMap——2026-10-26 部署拉起时由镜像自检步抓出补齐）。
   && mkdir -p /repo/node_modules/@nestjs \
   && ln -sfn "$(ls -d /repo/node_modules/.pnpm/@nestjs+common@*/node_modules/@nestjs/common | head -1)" /repo/node_modules/@nestjs/common \
+  && ln -sfn "$(ls -d /repo/node_modules/.pnpm/rxjs@*/node_modules/rxjs | head -1)" /repo/node_modules/rxjs \
   # 构建期自证：生成客户端在 prod 树内可解析（引擎 + index 就位）；
   # application dist 经注入 peer 可整树 import（装饰器需 reflect-metadata 先行）
   && cd /repo/packages/business-store \
