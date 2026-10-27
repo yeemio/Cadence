@@ -22,11 +22,13 @@
  *     MAIN 仓 id 不同（default=wh-seed-main，其余 wh-seed-main-<tenant>），
  *     env 用 code 而非 id 引用正是为此（全局单值 id 只能命中一个租户）。
  *
- * 口令（M1 收尾波-③ 真实认证）：全部种子身份默认口令 = demo-password
- * （明文写在此注释与下方常量——种子演示环境，非生产凭据；口令策略/改密
- * 流程是非目标）。哈希走与 application/src/auth/password.ts 同一 scrypt
- * 自述格式（scrypt$N$r$p$salt$hash，N=16384/r=8/p=1/keylen=64）——种子脚本
- * 不引 dist，参数内联钉死（同 ruleKey 先例）；每次种子随机盐。
+ * 口令（M1 收尾波-③ 真实认证；M2 安全前置批 SP-2 同批升档）：全部种子身份
+ * 默认口令 = demo-password（明文写在此注释与下方常量——种子演示环境，非生产
+ * 凭据；13 字符 ≥ SP-4 缺省下限 8，无需调整）。哈希走与
+ * application/src/auth/password.ts 同一 scrypt 自述格式
+ * （scrypt$N$r$p$salt$hash，N=65536/r=8/p=1/keylen=64 + maxmem 128MiB——
+ * SP-2 同批升档，同格式同源）——种子脚本不引 dist，参数内联钉死（同
+ * ruleKey 先例）；每次种子随机盐。
  *
  * 可测形状（D-15）：主逻辑收在 seedMain(prisma) 导出（PrismaClient 由调用方
  * 注入——tests/seed.test.ts 用内存桩锚定幂等）；直跑入口用 argv[1] realpath
@@ -72,8 +74,10 @@ function locationIdFor(tenant) {
 
 function hashPassword(password) {
   const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 });
-  return ['scrypt', 16384, 8, 1, salt.toString('hex'), hash.toString('hex')].join('$');
+  // SP-2 同批升档：N=65536（2^16）+ maxmem 128MiB（64MiB 需求超 node 缺省 32MiB，
+  // 不显式传 maxmem 则 scryptSync 直接抛错）——与 application password.ts 同源同格式。
+  const hash = scryptSync(password, salt, 64, { N: 65536, r: 8, p: 1, maxmem: 128 * 1024 * 1024 });
+  return ['scrypt', 65536, 8, 1, salt.toString('hex'), hash.toString('hex')].join('$');
 }
 
 /** 与 src/org/policy-mapping.ts 的 policyRuleKey 同形状（种子脚本不引 dist，内联钉死）。 */

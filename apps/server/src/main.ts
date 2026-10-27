@@ -6,6 +6,16 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { TenantContext, reportSourceProviderOf, type ReportSourceProvider, LocalFileSystemObjectStorage } from '@smes/application';
+import {
+  DEFAULT_PASSWORD_MIN_LENGTH,
+  InMemoryLoginAttemptStore,
+  LOGIN_LOCK_MS_DEFAULT,
+  LOGIN_MAX_FAILURES_DEFAULT,
+  LOGIN_WINDOW_MS_DEFAULT,
+  PASSWORD_MAX_LENGTH,
+  type LoginAttemptStoreParams,
+  type PasswordPolicy,
+} from '@smes/application';
 import { connectApprovalStore } from '@smes/business-store/approval';
 import { connectBaselineStore } from '@smes/business-store/baseline';
 import { connectCostingStore, connectProjectCostStore } from '@smes/business-store/costing';
@@ -74,17 +84,88 @@ interface TenantMiddlewareResponse {
   end(body: string): unknown;
 }
 
+// ---------------------------------------------------------------------------
+// M2 安全前置批线 A env 解析（SP-1 登录限流 / SP-4 口令策略）——集中在本
+// 组合根入口，配置非法 fail-fast 拒启动（沿 SMES_TENANT_MODE 拼写错误不
+// 静默语义，main.ts L373 先例）；空串 = 未设（compose ${VAR:-} 空串透传形态）。
+// ---------------------------------------------------------------------------
+
+/** 正整数 env：非空时须为 ≥1 的整数，否则 fail-fast。 */
+function parsePositiveIntEnv(name: string, fallback: number, max?: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const trimmed = raw.trim();
+  const message = max === undefined
+    ? `环境变量 ${name} 须为正整数（当前：'${raw}'）——拒绝启动（fail-fast）`
+    : `环境变量 ${name} 须为 1~${max} 的整数（当前：'${raw}'）——拒绝启动（fail-fast）`;
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(message);
+  }
+  const value = Number(trimmed);
+  if (!Number.isSafeInteger(value) || value < 1 || (max !== undefined && value > max)) {
+    throw new Error(message);
+  }
+  return value;
+}
+
+/**
+ * SP-1 登录限流参数（缺省 5 次失败 / 15 分钟计数窗 / 锁定 15 分钟；秒值
+ * 转 ms）。e2e 与演示需要短窗时经 env 覆写。
+ */
+function parseLoginRateLimitEnv(): LoginAttemptStoreParams {
+  const maxFailures = parsePositiveIntEnv('SMES_LOGIN_MAX_FAILURES', LOGIN_MAX_FAILURES_DEFAULT);
+  const windowSeconds = parsePositiveIntEnv('SMES_LOGIN_WINDOW_SECONDS', LOGIN_WINDOW_MS_DEFAULT / 1000);
+  const lockSeconds = parsePositiveIntEnv('SMES_LOGIN_LOCK_SECONDS', LOGIN_LOCK_MS_DEFAULT / 1000);
+  return {
+    maxFailures,
+    windowMs: windowSeconds * 1000,
+    lockMs: lockSeconds * 1000,
+  };
+}
+
+/**
+ * SP-4 口令强度策略：最小长度缺省 8（1~128，越界 fail-fast）；字符类要求
+ * 开关缺省关（on|off，其他取值 fail-fast——渐进收紧不破既有使用习惯）。
+ */
+function parsePasswordPolicyEnv(): PasswordPolicy {
+  const minLength = parsePositiveIntEnv(
+    'SMES_PASSWORD_MIN_LENGTH',
+    DEFAULT_PASSWORD_MIN_LENGTH,
+    PASSWORD_MAX_LENGTH,
+  );
+  const classesRaw = process.env['SMES_PASSWORD_REQUIRE_CLASSES'];
+  let requireClasses = false;
+  if (classesRaw !== undefined && classesRaw.trim() !== '') {
+    const trimmed = classesRaw.trim();
+    if (trimmed === 'on') {
+      requireClasses = true;
+    } else if (trimmed !== 'off') {
+      throw new Error(
+        `环境变量 SMES_PASSWORD_REQUIRE_CLASSES 须为 on|off（当前：'${classesRaw}'）——拒绝启动（fail-fast）`,
+      );
+    }
+  }
+  return { minLength, requireClasses };
+}
+
 async function bootstrap(): Promise<void> {
   const enabled = parseModulesEnabled(process.env['MODULES_ENABLED']);
   // 策略注入测试钩子（POST /dev/policies）：默认关；显式 on 才装配（生产形态不开）。
   const devPolicyEndpoint = process.env['SMES_DEV_POLICY_ENDPOINT'] === 'on';
+
+  // M2 安全前置批线 A：SP-1 登录限流参数 + SP-4 口令策略（env 非法 fail-fast
+  // 在此先行——起服前拒绝，不进 NestFactory）。
+  const loginRateLimit = parseLoginRateLimitEnv();
+  const passwordPolicy = parsePasswordPolicyEnv();
 
   // 启动零 DB 依赖（硬合同）：无 DATABASE_URL 时不构造任何 PrismaClient
   // （组织/策略/基础数据/待办/审批存储回落内存实现，模块仍可装配）；设了也只
   // 构造客户端——PrismaClient 惰性连接，bootstrap 阶段零查询、零握手，
   // 首条业务请求才真正连库。四个装配工厂各持一个惰性客户端（按模块子路径
   // 分面，组合根不合并——连接在首查询时才发生，常态单租户部署无感）。
-  const businessStore = process.env['DATABASE_URL'] ? connectBusinessStore() : undefined;
+  const businessStore = process.env['DATABASE_URL']
+    ? connectBusinessStore({ loginAttempt: loginRateLimit })
+    : undefined;
   const masterdataStore = process.env['DATABASE_URL'] ? connectMasterdataStore() : undefined;
   const workbenchStore = process.env['DATABASE_URL'] ? connectWorkbenchStore() : undefined;
   const approvalStore = process.env['DATABASE_URL'] ? connectApprovalStore() : undefined;
@@ -194,6 +275,11 @@ async function bootstrap(): Promise<void> {
       departmentStore: businessStore?.departmentStore,
       positionStore: businessStore?.positionStore,
       sessionStore: businessStore?.sessionStore,
+      // M2 安全前置批线 A（SP-1/SP-4）：PG 形态限流存储（参数随构造）；
+      // 零 DB 回落内存实例（同 sessionStore 透传先例）；口令策略恒 env 覆写形态。
+      loginAttemptStore:
+        businessStore?.loginAttemptStore ?? new InMemoryLoginAttemptStore(loginRateLimit),
+      passwordPolicy,
       itemStore: masterdataStore?.itemStore,
       resourceStore: masterdataStore?.resourceStore,
       customerStore: masterdataStore?.customerStore,

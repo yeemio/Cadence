@@ -46,6 +46,8 @@ import {
   InMemoryAftercareClaimStore,
   InMemoryIssueRecordStore,
   InMemoryListingLineStore,
+  // M2 安全前置批 SP-1：登录失败计数/锁定共享实例（同 sharedSessionStore 先例）
+  InMemoryLoginAttemptStore,
   InventoryModule,
   ListingModule,
   MasterdataModule,
@@ -117,6 +119,8 @@ import {
   type ReportDomainEventStore,
   type ReportOperationStore,
   type PurchaseOrderStore,
+  // M2 安全前置批 SP-1：登录失败计数/锁定端口（AuthModule 注入点）
+  type LoginAttemptStore,
   type PurchaseRequestStore,
   type PurchaseReturnStore,
   type ReleaseFactStore,
@@ -132,6 +136,8 @@ import {
   type TodoStore,
   type UnitStore,
   type UserStore,
+  // M2 安全前置批 SP-4：口令强度策略（OrgModule 注入点）
+  type PasswordPolicy,
   type WarehouseStore,
   type InspectionOrderStore,
   type WorkReportStore,
@@ -213,6 +219,17 @@ export interface StorePorts {
   readonly positionStore?: PositionStore | undefined;
   /** 会话存储（AuthModule 注入点；users.active 停用撤销同源，收尾波-③）。 */
   readonly sessionStore?: SessionStore | undefined;
+  /**
+   * 登录失败计数/锁定存储（AuthModule 注入点，M2 安全前置批 SP-1）。
+   * 缺省 = 组合根内存实例（缺省参数 5/15min/15min）；PG 形态由 main.ts 经
+   * connectBusinessStore 构造注入（env 覆写参数随构造传递）。
+   */
+  readonly loginAttemptStore?: LoginAttemptStore | undefined;
+  /**
+   * 口令强度策略（OrgModule 注入点，M2 安全前置批 SP-4）：校验点仅设置口。
+   * 缺省 = 缺省策略（min 8、字符类关）；main.ts 按 env 覆写构造注入。
+   */
+  readonly passwordPolicy?: PasswordPolicy | undefined;
   /** 物品主数据存储（MasterdataModule 注入点）。 */
   readonly itemStore?: ItemStore | undefined;
   /** 资源主数据存储（MasterdataModule 注入点）。 */
@@ -433,6 +450,8 @@ export const MODULE_DEFINITIONS: Record<
       sessionRevoker: stores.sessionStore,
       departmentStore: stores.departmentStore,
       positionStore: stores.positionStore,
+      // SP-4 口令强度策略（缺省 = min 8、字符类关）
+      ...(stores.passwordPolicy === undefined ? {} : { passwordPolicy: stores.passwordPolicy }),
     }),
   masterdata: (stores) =>
     MasterdataModule.register({
@@ -817,6 +836,10 @@ export interface BuildAppModuleOptions {
   readonly departmentStore?: DepartmentStore | undefined;
   readonly positionStore?: PositionStore | undefined;
   readonly sessionStore?: SessionStore | undefined;
+  /** 登录失败计数/锁定存储（SP-1；缺省 = 组合根内存实例，PG 形态 main.ts 注入）。 */
+  readonly loginAttemptStore?: LoginAttemptStore | undefined;
+  /** 口令强度策略（SP-4；缺省 = min 8、字符类关，main.ts 按 env 覆写注入）。 */
+  readonly passwordPolicy?: PasswordPolicy | undefined;
   readonly itemStore?: ItemStore | undefined;
   readonly resourceStore?: ResourceStore | undefined;
   readonly customerStore?: CustomerStore | undefined;
@@ -1120,6 +1143,9 @@ export function buildAppModule(
   // 会话撤销同源：org 的 users.active 停用撤销与 auth 的会话判定必须同一存储
   // （零 DB 形态同样成立——内存实例只此一个）。
   const sharedSessionStore = options.sessionStore ?? new InMemorySessionStore();
+  // SP-1 登录失败计数/锁定共享：auth.login 的限流判定唯一实例（同
+  // sharedSessionStore 裁决——零 DB 内存实例；PG/env 覆写形态经 options 注入）。
+  const sharedLoginAttemptStore = options.loginAttemptStore ?? new InMemoryLoginAttemptStore();
 
   // 跨模块接线共享存储（M2 后第一增量，ADR-0004 装配/ADR-0011 依赖方向）：组合根
   // 在零 DB 形态下为已装配模块预建与模块缺省**同实现**的内存实例——生产模块的
@@ -1224,7 +1250,12 @@ export function buildAppModule(
   const imports = [
     // 认证恒装配（收尾波-③）：基础层（与 /health 同类），不经 MODULES_ENABLED
     // 开关——守卫的 Bearer 解析与 /auth/* 端点不随模块启停消失；/modules 清单不变。
-    AuthModule.register({ userStore: sharedUserStore, sessionStore: sharedSessionStore }),
+    // SP-1：登录失败计数/锁定共享实例注入（缺省内存参数 5/15min/15min）。
+    AuthModule.register({
+      userStore: sharedUserStore,
+      sessionStore: sharedSessionStore,
+      loginAttemptStore: sharedLoginAttemptStore,
+    }),
     ...enabled.map((name) => {
       const factory = MODULE_DEFINITIONS[name];
       if (!factory) {
@@ -1237,6 +1268,9 @@ export function buildAppModule(
         departmentStore: options.departmentStore,
         positionStore: options.positionStore,
         sessionStore: sharedSessionStore,
+        // SP-1/SP-4（M2 安全前置批线 A）：登录限流存储与口令策略随 org/auth 接线
+        loginAttemptStore: sharedLoginAttemptStore,
+        passwordPolicy: options.passwordPolicy,
         itemStore: sharedItemStore,
         resourceStore: options.resourceStore,
         customerStore: options.customerStore,

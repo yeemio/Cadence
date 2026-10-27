@@ -51,10 +51,12 @@ export {
   type AuthenticatedRequest,
 } from './core/auth/request-user.js';
 
-// ---- auth：真实认证（M1 收尾波-③：密码 + opaque token 会话 + 登录流） ----
-export { hashPassword, verifyPassword } from './auth/password.js';
+// ---- auth：真实认证（M1 收尾波-③：密码 + opaque token 会话 + 登录流；
+// M2 安全前置批：SP-2 scrypt 升档 2^16 + SP-1 登录速率限制） ----
+export { hashPassword, verifyPassword, passwordHashMatchesCurrentParams } from './auth/password.js';
 export {
   SCRYPT_KEYLEN,
+  SCRYPT_MAXMEM,
   SCRYPT_N,
   SCRYPT_P,
   SCRYPT_R,
@@ -67,7 +69,14 @@ export type {
   SessionRevoker,
   SessionStore,
 } from './auth/session-stores.js';
-export { AuthCredentialsError, AuthInputError } from './auth/auth-errors.js';
+export { InMemoryLoginAttemptStore } from './auth/login-attempt-stores.js';
+export type { LoginAttemptStore, LoginAttemptStoreParams } from './auth/login-attempt-stores.js';
+export {
+  LOGIN_LOCK_MS_DEFAULT,
+  LOGIN_MAX_FAILURES_DEFAULT,
+  LOGIN_WINDOW_MS_DEFAULT,
+} from './auth/login-attempt-stores.js';
+export { AuthCredentialsError, AuthInputError, AuthRateLimitError } from './auth/auth-errors.js';
 export { parseLoginInput, requireBearerToken } from './auth/auth-input.js';
 export type { LoginPayload } from './auth/auth-input.js';
 export {
@@ -100,6 +109,14 @@ export {
 export type { OrgModuleOptions } from './org/org.module.js';
 export { OrgService } from './org/org.service.js';
 export type { GrantDiff, RoleGrantView } from './org/org.service.js';
+export {
+  assertValidPasswordPolicy,
+  DEFAULT_PASSWORD_MIN_LENGTH,
+  DEFAULT_PASSWORD_POLICY,
+  PASSWORD_MAX_LENGTH,
+  passwordPolicyViolation,
+} from './org/password-policy.js';
+export type { PasswordPolicy } from './org/password-policy.js';
 export {
   InMemoryDepartmentStore,
   InMemoryPositionStore,

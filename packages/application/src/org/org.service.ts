@@ -18,6 +18,8 @@ import type { SessionRevoker } from '../auth/session-stores.js';
 import { hashPassword } from '../auth/password.js';
 import { InMemoryDepartmentStore, InMemoryPositionStore } from './in-memory-org-stores.js';
 import { OrgInputError, OrgNotFoundError } from './org-errors.js';
+import { DEFAULT_PASSWORD_POLICY, passwordPolicyViolation } from './password-policy.js';
+import type { PasswordPolicy } from './password-policy.js';
 import {
   parseBackfillIdParam,
   parseCreateDepartmentInput,
@@ -73,6 +75,12 @@ export class OrgService {
      */
     private readonly departments: DepartmentStore = new InMemoryDepartmentStore(),
     private readonly positions: PositionStore = new InMemoryPositionStore(),
+    /**
+     * 口令强度策略（M2 安全前置批 SP-4，可选尾参）：校验点仅设置口
+     * （createUser 初始口令 / setUserPassword 重置）；登录不校验。缺省 =
+     * 缺省策略（min 8、字符类关）；OrgModule.register 注入 env 覆写形态。
+     */
+    private readonly passwordPolicy: PasswordPolicy = DEFAULT_PASSWORD_POLICY,
   ) {}
 
   // ---- 用户 ----
@@ -80,6 +88,9 @@ export class OrgService {
   async createUser(tenant: TenantId, input: unknown): Promise<UserAccount> {
     // 明文口令只到本层：scrypt 哈希后过端口（D-2）；不带 = 未设口令态（登录 401）
     const { password, ...rest } = parseCreateUserInput(input);
+    if (password !== undefined) {
+      this.requirePolicyPassword(password); // SP-4：设置口校验（登录口不校验）
+    }
     return this.users.create({
       tenant,
       ...rest,
@@ -152,6 +163,7 @@ export class OrgService {
     if (target === null) {
       throw new OrgNotFoundError(`租户 '${tenant}' 内不存在用户 '${userId}'`);
     }
+    this.requirePolicyPassword(password); // SP-4：设置口校验（404 判定之后——目标不存在语义优先，与既有测试锚一致）
     const updated = await this.users.updatePassword(tenant, id, hashPassword(password));
     if (updated === null) {
       throw new OrgNotFoundError(`租户 '${tenant}' 内不存在用户 '${userId}'`);
@@ -160,6 +172,18 @@ export class OrgService {
       await this.sessions.revokeAllForUser(tenant, id);
     }
     return updated;
+  }
+
+  /**
+   * SP-4 策略校验：不满足 → OrgInputError 400 同族，文案含策略要求、不含
+   * 口令本体与用户存在性（弱口令拒绝与"用户不存在"路径不可区分策略要求之外
+   * 的任何信息）。
+   */
+  private requirePolicyPassword(password: string): void {
+    const violation = passwordPolicyViolation(this.passwordPolicy, password);
+    if (violation !== null) {
+      throw new OrgInputError(violation);
+    }
   }
 
   /** 期望态设置用户在当前租户的角色集合（PUT /org/users/:id/roles）。 */

@@ -22,6 +22,8 @@ import {
   OrgUsersController,
 } from './org.controllers.js';
 import { OrgService } from './org.service.js';
+import { assertValidPasswordPolicy, DEFAULT_PASSWORD_POLICY } from './password-policy.js';
+import type { PasswordPolicy } from './password-policy.js';
 import type {
   DepartmentStore,
   PositionStore,
@@ -33,7 +35,6 @@ export const ORG_USER_STORE = Symbol('smes.org.userStore');
 export const ORG_ROLE_STORE = Symbol('smes.org.roleStore');
 export const ORG_DEPARTMENT_STORE = Symbol('smes.org.departmentStore');
 export const ORG_POSITION_STORE = Symbol('smes.org.positionStore');
-
 export interface OrgModuleOptions {
   /** 用户元数据存储；缺省 = 内存实现（重启即失）。显式 undefined 同缺省。 */
   readonly userStore?: UserStore | undefined;
@@ -48,11 +49,21 @@ export interface OrgModuleOptions {
    * 组合根注入 SessionStore；缺省 null = 停用不撤会话（单模块装配形态）。
    */
   readonly sessionRevoker?: SessionRevoker | undefined;
+  /**
+   * 口令强度策略（M2 安全前置批 SP-4）：校验点仅设置口（建号初始口令 +
+   * 管理员重置）；缺省 = 缺省策略（min 8、字符类关）；组合根按 env 覆写
+   * 注入（SMES_PASSWORD_MIN_LENGTH / SMES_PASSWORD_REQUIRE_CLASSES，main.ts
+   * 读取——越界 fail-fast 在装配面完成）。
+   */
+  readonly passwordPolicy?: PasswordPolicy | undefined;
 }
 
 @Module({})
 export class OrgModule {
   static register(options: OrgModuleOptions = {}): DynamicModule {
+    // SP-4：策略装配面自校验（非法配置 fail-fast，不静默回落）
+    const passwordPolicy = options.passwordPolicy ?? DEFAULT_PASSWORD_POLICY;
+    assertValidPasswordPolicy(passwordPolicy);
     const providers: Provider[] = [
       { provide: ORG_USER_STORE, useValue: options.userStore ?? new InMemoryUserStore() },
       { provide: ORG_ROLE_STORE, useValue: options.roleStore ?? new InMemoryRoleStore() },
@@ -80,6 +91,7 @@ export class OrgModule {
             options.sessionRevoker ?? null,
             departments,
             positions,
+            passwordPolicy,
           ),
         inject: [
           ORG_USER_STORE,

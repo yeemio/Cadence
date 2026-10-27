@@ -136,6 +136,26 @@ model SessionRecord {
   @@map("sessions")
 }
 
+/// 登录失败计数/锁定行（M2 安全前置批 SP-1）。轻量运营状态——同 sessions
+/// 取舍：不套证据公共列、不设 append-only 触发器。计数键 = (tenant_id,
+/// username)（@@unique 兼作 ON CONFLICT 原子自增目标与 tenant_id 前导索引）；
+/// 窗口/锁定语义在应用端口（application/src/auth/login-attempt-stores.ts），
+/// PG 侧计数自增走单语句原子 upsert（pg-org-stores.ts PgLoginAttemptStore）。
+/// 成功登录清零 = 删行；username 不设外键——键含"不存在的用户"（防候选
+/// 用户名爆破），与 policies 的通用字符串 id 取舍同向。
+model LoginAttemptRecord {
+  id            String    @id @default(uuid(7))
+  tenantId      String    @map("tenant_id")
+  username      String
+  failureCount  Int       @map("failure_count")
+  lastFailureAt DateTime  @db.Timestamptz(6) @map("last_failure_at")
+  lockedUntil   DateTime? @db.Timestamptz(6) @map("locked_until")
+  updatedAt     DateTime  @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([tenantId, username])
+  @@map("login_attempts")
+}
+
 /// 角色元数据（RBAC 角色名 = PolicyRule.role 段形状，application 侧 roleName() 校验）。
 /// 角色-权限与用户-角色绑定不在本表——存 policies（PolicyStore 事实源）。
 model RoleRecord {

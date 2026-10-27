@@ -19,6 +19,8 @@ import {
   type CreateSessionInput,
   type DepartmentMaster,
   type DepartmentStore,
+  type LoginAttemptStore,
+  type LoginAttemptStoreParams,
   type PolicyRule,
   type PolicyStore,
   type PositionMaster,
@@ -39,7 +41,7 @@ import type {
   CreateUserInput,
 } from '@smes/application';
 import { uuidv7 } from '../ids/uuidv7.js';
-import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
+import { rlsSessionEnabled, setRlsTenantOn, withRlsTenantSession } from '../rls-session.js';
 import { policyRuleKey, policyRuleToRow, policyRowToRule } from './policy-mapping.js';
 
 /** 唯一键冲突（P2002）-> 域冲突错误；其余原样上抛（不吞连接错误）。 */
@@ -224,6 +226,79 @@ export class PgSessionStore implements SessionStore {
     await this.prisma.sessionRecord.updateMany({
       where: { tenantId: tenant, userId, revokedAt: null },
       data: { revokedAt: new Date() },
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 登录失败计数/锁定 PG 实现（M2 安全前置批 SP-1）——语义与 InMemoryLoginAttemptStore
+// 逐位一致（窗口滑动按最近一次失败起算、锁定到期后重新起算、成功清零删行）。
+// 计数自增走**单语句原子 upsert**（INSERT ... ON CONFLICT DO UPDATE，CASE 与
+// 当前行值比较——行级原子，防并发爆破漏计）；raw 写经交互式事务 SET
+// app.current_tenant 后同句柄执行（D-14 收口体例，rls-session.ts 已知边界）。
+// ---------------------------------------------------------------------------
+
+/** 登录限流参数（与 application 端口 LoginAttemptStoreParams 同形状）。 */
+export type PgLoginAttemptStoreParams = LoginAttemptStoreParams;
+
+export class PgLoginAttemptStore implements LoginAttemptStore {
+  private readonly maxFailures: number;
+  private readonly windowMs: number;
+  private readonly lockMs: number;
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    params: PgLoginAttemptStoreParams = {},
+  ) {
+    this.maxFailures = params.maxFailures ?? 5;
+    this.windowMs = params.windowMs ?? 15 * 60 * 1000;
+    this.lockMs = params.lockMs ?? 15 * 60 * 1000;
+  }
+
+  async isLocked(tenant: TenantId, username: string, now: Date): Promise<boolean> {
+    const row = await this.prisma.loginAttemptRecord.findFirst({
+      where: { tenantId: tenant, username, lockedUntil: { not: null, gt: now } },
+    });
+    return row !== null;
+  }
+
+  async registerFailure(tenant: TenantId, username: string, now: Date): Promise<void> {
+    // 日期参数以 ISO-8601（含时区后缀）字符串 + ::timestamptz 显式转型传入——
+    // 不依赖会话时钟的 timestamp→timestamptz 隐式解释，任何 TZ 配置下同义。
+    const nowIso = now.toISOString();
+    const lockUntilIso = new Date(now.getTime() + this.lockMs).toISOString();
+    const windowStartIso = new Date(now.getTime() - this.windowMs).toISOString();
+    // INSERT 分支的锁定判定（首败即锁 = maxFailures ≤ 1 的退化配置；常态 null）
+    const insertLockedUntil = this.maxFailures <= 1 ? lockUntilIso : null;
+    const maxFailures = this.maxFailures;
+    await this.prisma.$transaction(async (tx) => {
+      await setRlsTenantOn(tx);
+      await tx.$executeRaw`
+        INSERT INTO "login_attempts" ("id", "tenant_id", "username", "failure_count", "last_failure_at", "locked_until", "updated_at")
+        VALUES (${uuidv7()}::text, ${String(tenant)}::text, ${username}::text, 1, ${nowIso}::timestamptz, ${insertLockedUntil}::timestamptz, ${nowIso}::timestamptz)
+        ON CONFLICT ("tenant_id", "username") DO UPDATE SET
+          "failure_count" = CASE
+            WHEN "login_attempts"."locked_until" > ${nowIso}::timestamptz THEN "login_attempts"."failure_count"
+            WHEN "login_attempts"."locked_until" IS NOT NULL OR "login_attempts"."last_failure_at" < ${windowStartIso}::timestamptz THEN 1
+            ELSE "login_attempts"."failure_count" + 1
+          END,
+          "locked_until" = CASE
+            WHEN "login_attempts"."locked_until" > ${nowIso}::timestamptz THEN "login_attempts"."locked_until"
+            WHEN (CASE
+              WHEN "login_attempts"."locked_until" > ${nowIso}::timestamptz THEN "login_attempts"."failure_count"
+              WHEN "login_attempts"."locked_until" IS NOT NULL OR "login_attempts"."last_failure_at" < ${windowStartIso}::timestamptz THEN 1
+              ELSE "login_attempts"."failure_count" + 1
+            END) >= ${maxFailures}::int THEN ${lockUntilIso}::timestamptz
+            ELSE NULL
+          END,
+          "last_failure_at" = ${nowIso}::timestamptz,
+          "updated_at" = ${nowIso}::timestamptz`;
+    });
+  }
+
+  async clear(tenant: TenantId, username: string): Promise<void> {
+    await this.prisma.loginAttemptRecord.deleteMany({
+      where: { tenantId: tenant, username },
     });
   }
 }
@@ -448,14 +523,21 @@ export class PgPositionStore implements PositionStore {
 export interface BusinessStoreOptions {
   /** 显式覆盖数据源（缺省读 DATABASE_URL 环境变量，Prisma 原生行为）。 */
   readonly datasourceUrl?: string;
+  /**
+   * 登录限流参数（M2 安全前置批 SP-1）：组合根按 env 覆写注入（缺省
+   * 5 次 / 15 分钟窗 / 锁 15 分钟——与 application 端口缺省同源）。
+   */
+  readonly loginAttempt?: LoginAttemptStoreParams;
 }
 
-/** 组合根装配句柄：六端口实现（users/roles/policies/sessions + S1 机构/岗位）+ 优雅断连。 */
+/** 组合根装配句柄：七端口实现（users/roles/policies/sessions/login-attempts + S1 机构/岗位）+ 优雅断连。 */
 export interface BusinessStoreHandle {
   readonly policyStore: PolicyStore;
   readonly userStore: UserStore;
   readonly roleStore: RoleStore;
   readonly sessionStore: SessionStore;
+  /** 登录失败计数/锁定存储（SP-1：AuthService.login 端口注入）。 */
+  readonly loginAttemptStore: LoginAttemptStore;
   /** 机构/部门主数据存储（S1 backfill：0920 #3）。 */
   readonly departmentStore: DepartmentStore;
   /** 岗位主数据存储（S1 backfill：0920 #7）。 */
@@ -482,6 +564,7 @@ export function connectBusinessStore(options: BusinessStoreOptions = {}): Busine
     userStore: new PgUserStore(client),
     roleStore: new PgRoleStore(client),
     sessionStore: new PgSessionStore(client),
+    loginAttemptStore: new PgLoginAttemptStore(client, options.loginAttempt ?? {}),
     departmentStore: new PgDepartmentStore(client),
     positionStore: new PgPositionStore(client),
     async disconnect(): Promise<void> {

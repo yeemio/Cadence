@@ -120,6 +120,7 @@
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
     "db:seed": "node prisma/seed.mjs",
+    "db:seed-factory": "node prisma/seed-factory.mjs",
     "db:e2e": "node scripts/e2e-write-read.mjs"
   },
   "dependencies": {

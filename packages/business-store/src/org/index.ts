@@ -7,6 +7,7 @@
 export {
   connectBusinessStore,
   PgDepartmentStore,
+  PgLoginAttemptStore,
   PgPolicyStore,
   PgPositionStore,
   PgRoleStore,
@@ -16,6 +17,7 @@ export {
 export type {
   BusinessStoreHandle,
   BusinessStoreOptions,
+  PgLoginAttemptStoreParams,
 } from './pg-org-stores.js';
 export {
   policyRuleKey,

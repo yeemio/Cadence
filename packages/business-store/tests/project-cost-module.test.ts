@@ -87,7 +87,8 @@ describe('project cost RLS 补登（ADR-0005 全表覆盖）', () => {
     // 守恒计数 102 → 103：A8/A10 首波 machining_daily_stats 补登（schema-conformance 同步）
     // 守恒计数 103 → 104：fix-wave-6 6b-3 column_preferences 补登（schema-conformance 同步）
     // 守恒计数 104 → 106：fix-wave-6 6b-1 B3 货架/货架库位两表补登（schema-conformance 同步）
-    expect(RLS_TABLES).toHaveLength(106);
+    // 守恒计数 106 → 107：M2 安全前置批线 A login_attempts 补登（schema-conformance 同步）
+    expect(RLS_TABLES).toHaveLength(107);
   });
 });
 
