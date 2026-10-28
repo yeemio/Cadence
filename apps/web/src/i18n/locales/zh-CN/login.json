@@ -1,0 +1,19 @@
+{
+  "form": {
+    "title": "登录",
+    "description": "使用账号进入主应用",
+    "username": "用户名",
+    "password": "口令"
+  },
+  "action": {
+    "signIn": "登录",
+    "signingIn": "登录中…"
+  },
+  "error": {
+    "fallback": "登录失败，请稍后重试"
+  },
+  "demo": {
+    "notice": "演示账号：{{accounts}}，默认口令 {{password}}（种子演示环境，非生产凭据）。",
+    "accounts": "admin（管理员）/ demo-admin（演示管理员）/ approver（审批人）/ viewer（只读访客）；工厂种子环境另有六岗：plan01（计划）/ purch01（采购）/ prod01（生产）/ qc01（质检）/ wh01（仓管）/ appr01（审批）"
+  }
+}

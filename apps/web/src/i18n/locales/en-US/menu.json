@@ -1,0 +1,100 @@
+{
+  "overview": "Operations Overview",
+  "workbench": "Workbench",
+  "masterdata": {
+    "title": "Master Data",
+    "item": "Items",
+    "resource": "Resources",
+    "customer": "Customers",
+    "supplier": "Suppliers",
+    "unit": "Units of Measure"
+  },
+  "manufacturing": {
+    "title": "Manufacturing",
+    "workorder": "Work Orders",
+    "workorder-parts": "Parts Requests",
+    "listing-sheets": "Listings",
+    "listing-gap-checks": "Gap Checks",
+    "dispatch": "Dispatch",
+    "outsourcing-lines": "Outsourcing Lines",
+    "scan": "Scan"
+  },
+  "reporting": {
+    "title": "Reporting",
+    "reports": "Reports",
+    "report-verification": "Report Verification",
+    "mobile-report": "Mobile Reporting"
+  },
+  "purchasing": {
+    "title": "Purchasing",
+    "purchase-requests": "Purchase Requests",
+    "purchase-orders": "Purchase Orders",
+    "purchase-receiving": "Purchase Receiving",
+    "purchase-returns": "Purchase Returns",
+    "purchase-details": "Purchase Details"
+  },
+  "quality": {
+    "title": "Quality",
+    "inspections": "Inspection Queue",
+    "nonconformities": "Nonconformity Handling"
+  },
+  "warehouse": {
+    "title": "Warehouse",
+    "warehouses": "Warehouses & Locations",
+    "stock-levels": "Live Stock",
+    "stock-operations": "Stock Operations",
+    "stocktakes": "Stocktakes",
+    "shipping-orders": "Shipping Tasks"
+  },
+  "costing": {
+    "title": "Cost & Hours",
+    "hours-stats": "Hours Statistics",
+    "costing": "Costing"
+  },
+  "standard-reports": "Standard Reports",
+  "ai-query": "AI Query",
+  "drawing": {
+    "title": "Drawings",
+    "library": "Drawing Library",
+    "audit": "View Audit Trail"
+  },
+  "baseline": {
+    "title": "Process & Equipment",
+    "processes": "Processes",
+    "routings": "Routings",
+    "standard-times": "Standard Times",
+    "equipment": "Equipment Records",
+    "fault-reports": "Fault Reports",
+    "outsourcing-rules": "Outsourcing Pricing",
+    "material-validations": "Material Validations"
+  },
+  "system": {
+    "title": "System",
+    "user": "Users & Roles",
+    "role": "Roles & Grants",
+    "department": "Departments",
+    "position": "Positions",
+    "audit": "Operation Logs",
+    "menus": "Menu Management",
+    "approval-config": "Approval Flow Config",
+    "session": "Session Audit"
+  },
+  "notifications": "Notifications",
+  "m": {
+    "workbench": "Workbench",
+    "report": "Report",
+    "hours": "Hours",
+    "stock": "Stock",
+    "verify": "Report Verification",
+    "parts": "Parts Requests",
+    "parts-approval": "Parts Approval",
+    "inspection": "Inspection",
+    "fault": "Fault Report",
+    "receipt": "Receipt",
+    "transfer": "Stock Transfer",
+    "stocktake": "Stocktake",
+    "progress": "Work Order Progress",
+    "op-progress": "Operation Progress",
+    "mine": "My Reports"
+  }
+}

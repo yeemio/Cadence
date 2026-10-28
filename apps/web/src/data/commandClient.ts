@@ -17,6 +17,11 @@ export interface CommandOutcomeView {
   readonly committed: boolean;
   readonly reason: string | null;
   readonly status: string;
+  /**
+   * 命令端点原始响应体（UX-WH-02：committed 回执携带聚合视图——movement/
+   * movements/warehouse 等，业务单号回显从中抽取；error 路径缺省无体）。
+   */
+  readonly body?: Readonly<Record<string, unknown>> | null;
 }
 
 export class ModuleApiError extends Error {
@@ -66,34 +71,63 @@ export async function postCommand(
     method: 'POST',
     body: JSON.stringify(commandEnvelope(kind, payload, expectedRevision)),
   });
+  // UX-VW-R2-03：可见错误不携带 API 路径（页面直出 message；路径定位走
+  // 浏览器开发者工具网络面，用户文案保持人话）。
   if (typeof body !== 'object' || body === null || !('status' in body)) {
-    throw new ModuleApiError(undefined, `命令端点响应形状非法（缺 status 字段）：${path}`);
+    throw new ModuleApiError(undefined, '命令响应形状非法（缺 status 字段）');
   }
   const record = body as { status?: unknown; reason?: unknown };
   const status = typeof record.status === 'string' ? record.status : String(record.status);
   if (status !== 'committed' && status !== 'rejected' && status !== 'indeterminate') {
-    throw new ModuleApiError(undefined, `命令结果未知（status=${status}）：${path}`);
+    throw new ModuleApiError(undefined, `命令结果未知（status=${status}）`);
   }
   return {
     committed: status === 'committed',
     status,
     reason: typeof record.reason === 'string' ? record.reason : null,
+    body: record,
   };
+}
+
+/**
+ * 命令回执里的业务单号抽取（UX-WH-02）：committed 响应按模块实态把聚合视图挂
+ * 在 movement / movements / warehouse / stocktake / shippingOrder 键下——逐键收
+ * 集其中的 id（transfer 两腿流水按序全部返回）。无回执体/无命中返回空数组。
+ */
+export function businessIdsOfOutcome(outcome: CommandOutcomeView): readonly string[] {
+  const body = outcome.body;
+  if (body === undefined || body === null) return [];
+  const ids: string[] = [];
+  const pushId = (value: unknown): void => {
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      const id = (value as Record<string, unknown>)['id'];
+      if (typeof id === 'string' && id.length > 0) ids.push(id);
+    }
+  };
+  pushId(body['movement']);
+  if (Array.isArray(body['movements'])) {
+    for (const row of body['movements']) pushId(row);
+  }
+  pushId(body['warehouse']);
+  pushId(body['stocktake']);
+  pushId(body['shippingOrder']);
+  return ids;
 }
 
 /** GET 列表端点 → 行数组（envelopeKey 为控制器实态的响应键；坏形状抛错不静默）。 */
 export async function fetchRows(path: string, envelopeKey: string): Promise<readonly Record<string, unknown>[]> {
   const body: unknown = await request(path);
+  // UX-VW-R2-03：错误文案不露 API 路径（SPA HTML 误入等坏形状下路径不进用户文案）。
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-    throw new ModuleApiError(undefined, `列表响应形状非法（期望对象）：${path}`);
+    throw new ModuleApiError(undefined, '列表响应形状非法（期望对象），请稍后重试');
   }
   const rows = (body as Record<string, unknown>)[envelopeKey];
   if (!Array.isArray(rows)) {
-    throw new ModuleApiError(undefined, `列表响应缺 '${envelopeKey}' 数组：${path}`);
+    throw new ModuleApiError(undefined, `列表响应缺 '${envelopeKey}' 数组`);
   }
   return rows.map((row, index) => {
     if (typeof row !== 'object' || row === null || Array.isArray(row)) {
-      throw new ModuleApiError(undefined, `列表响应 ${envelopeKey}[${index}] 非对象行：${path}`);
+      throw new ModuleApiError(undefined, `列表响应 ${envelopeKey}[${index}] 非对象行`);
     }
     return row as Record<string, unknown>;
   });
@@ -103,11 +137,11 @@ export async function fetchRows(path: string, envelopeKey: string): Promise<read
 export async function fetchObject(path: string, envelopeKey: string): Promise<Record<string, unknown>> {
   const body: unknown = await request(path);
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-    throw new ModuleApiError(undefined, `响应形状非法（期望对象）：${path}`);
+    throw new ModuleApiError(undefined, '响应形状非法（期望对象），请稍后重试');
   }
   const value = (body as Record<string, unknown>)[envelopeKey];
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new ModuleApiError(undefined, `响应缺 '${envelopeKey}' 对象：${path}`);
+    throw new ModuleApiError(undefined, `响应缺 '${envelopeKey}' 对象`);
   }
   return value as Record<string, unknown>;
 }
@@ -116,7 +150,7 @@ export async function fetchObject(path: string, envelopeKey: string): Promise<Re
 export async function fetchRawObject(path: string): Promise<Record<string, unknown>> {
   const body: unknown = await request(path);
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-    throw new ModuleApiError(undefined, `响应形状非法（期望对象）：${path}`);
+    throw new ModuleApiError(undefined, '响应形状非法（期望对象），请稍后重试');
   }
   return body as Record<string, unknown>;
 }

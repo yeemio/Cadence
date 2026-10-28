@@ -41,7 +41,15 @@ export class DispatchErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof DispatchConflictError
+        ? 'dispatch.conflict'
+        : exception instanceof DispatchStateError
+          ? 'dispatch.state_conflict'
+          : exception instanceof DispatchNotFoundError
+            ? 'dispatch.not_found'
+            : 'dispatch.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

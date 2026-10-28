@@ -1,0 +1,149 @@
+{
+  "levels": {
+    "title": "Real-time inventory",
+    "description": "Available-qty basis (availableQty = on hand − reserved, machine-computed, not a stored column); the mobile inventory query uses the same path.",
+    "filter": {
+      "warehouse-label": "Warehouse filter (optional)",
+      "item-label": "Item filter (optional)",
+      "apply": "Apply filter"
+    },
+    "empty": "No inventory rows under the current filter",
+    "columns": {
+      "item": "Item",
+      "warehouse": "Warehouse",
+      "on-hand": "On hand",
+      "reserved": "Reserved",
+      "available": "Available"
+    }
+  },
+  "balances": {
+    "title": "Stock by location",
+    "empty": "No location balance rows",
+    "columns": {
+      "item": "Item",
+      "warehouse": "Warehouse",
+      "location": "Location",
+      "quantity": "Quantity"
+    }
+  },
+  "movements": {
+    "title": "Stock movements",
+    "description": "Transaction numbers shown as short codes; click \"Copy\" in the row for the full number; hover a timestamp for the raw ISO value.",
+    "empty": "No movement records",
+    "columns": {
+      "id": "Transaction number",
+      "kind": "Kind",
+      "item": "Item",
+      "quantity": "Quantity",
+      "occurred-at": "At"
+    },
+    "copy": "Copy",
+    "copied": "Copied",
+    "copy-aria": "Copy full transaction number {{id}}"
+  },
+  "movement-kind": {
+    "purchase-in": "Purchase stock-in",
+    "inspection-in": "Inspection release stock-in",
+    "production-in": "Production stock-in",
+    "issue-out": "Stock-out",
+    "shipping-out": "Shipping stock-out",
+    "transfer-out": "Transfer out",
+    "transfer-in": "Transfer in",
+    "stocktake-gain": "Stocktake gain",
+    "stocktake-loss": "Stocktake loss"
+  },
+  "operations": {
+    "success": {
+      "committed": "Operation committed.",
+      "movement-ids": "Transaction number {{ids}}"
+    },
+    "receive": {
+      "title": "Stock-in",
+      "description": "Three stock-in sources: inspection = inspection release (inspection order required); purchase = purchase receipt (receiptKey idempotency key required); production = production stock-in.",
+      "kind-label": "Stock-in source",
+      "kind": {
+        "production": "Production stock-in",
+        "inspection": "Inspection release",
+        "purchase": "Purchase receipt"
+      },
+      "item-label": "Item id",
+      "warehouse-label": "Warehouse id",
+      "quantity-label": "Quantity",
+      "inspection-label": "Inspection order id (required for inspection)",
+      "receipt-key-label": "Receipt idempotency key receiptKey (required for purchase)",
+      "wo-label": "Work order (optional)",
+      "remark-label": "Remark (optional)",
+      "submit": "Run stock-in"
+    },
+    "issue": {
+      "title": "Stock-out",
+      "description": "Direct deduction from available qty or reservation write-off (reservationKey); parts shipping goes through the same command via the parts request \"Ship\" action.",
+      "item-label": "Item id",
+      "warehouse-label": "Warehouse id",
+      "quantity-label": "Quantity",
+      "purpose-label": "Stock-out purpose",
+      "purpose": {
+        "production": "Production",
+        "parts": "Parts",
+        "manual": "Manual"
+      },
+      "wo-label": "Work order (optional)",
+      "reservation-label": "Reservation key (optional = direct deduction)",
+      "remark-label": "Remark (optional)",
+      "submit": "Run stock-out"
+    },
+    "transfer": {
+      "title": "Transfer / move",
+      "description": "Cross-warehouse transfer (two different warehouses) or intra-warehouse move (same warehouse, two different locations).",
+      "item-label": "Item id",
+      "quantity-label": "Quantity",
+      "from-warehouse-label": "Source warehouse",
+      "to-warehouse-label": "Target warehouse",
+      "from-location-label": "Source location (optional)",
+      "to-location-label": "Target location (optional)",
+      "remark-label": "Remark (optional)",
+      "submit": "Run transfer"
+    }
+  },
+  "warehouses": {
+    "title": "Warehouses",
+    "description": "Click a row to view warehouse details (with locations, location codes ascending).",
+    "empty": "No warehouses yet (create one below)",
+    "columns": {
+      "id": "id",
+      "code": "Code",
+      "name": "Name"
+    }
+  },
+  "warehouse-detail": {
+    "title": "Warehouse details (with locations)",
+    "fields": {
+      "code": "Warehouse code",
+      "name": "Name",
+      "id": "Warehouse id",
+      "default-location": "Default location",
+      "location-count": "Locations",
+      "created-at": "Created at",
+      "updated-at": "Updated at"
+    },
+    "locations-heading": "Locations",
+    "location-columns": {
+      "code": "Location code",
+      "name": "Location name",
+      "id": "Location id",
+      "created-at": "Created at"
+    }
+  },
+  "define": {
+    "title": "Create warehouse",
+    "description": "At least 1 location, the first is the default location (start with a single location; multi-location comes later).",
+    "code-label": "Warehouse code",
+    "code-placeholder": "WH-01",
+    "name-label": "Warehouse name",
+    "name-placeholder": "Main material warehouse",
+    "location-code-label": "Location code (default location)",
+    "location-code-placeholder": "LOC-01",
+    "location-name-label": "Location name (optional)",
+    "submit": "Create warehouse"
+  }
+}

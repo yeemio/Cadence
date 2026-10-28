@@ -11,7 +11,7 @@
  * 接口可达性，不虚构后端没有的权限）。
  */
 import { buildMenuTree, flattenRoutes, permissionCode, SCAN_READ } from '@smes/product-ui';
-import type { AppModuleManifest } from '@smes/product-ui';
+import type { AppModuleManifest, MenuNode } from '@smes/product-ui';
 
 const pc = permissionCode;
 
@@ -161,6 +161,18 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
         entryPoint: 'reporting/verification.tsx',
         menuConfig: { title: '报工核查', permission: pc('report:read') },
       },
+      {
+        // UX-PRD-01（e1a8bd）：侧栏补「移动报工」入口。移动页 /m/report 挂移动
+        // 导航面（mobile.ts），桌面注册表不得复制该路径（mobile.test「两注册表
+        // 路径不重叠」钉死 + main.tsx 桌面分支先装配会劫持移动路由）——按合同
+        // 「或其桌面引导」分支走引导页（pages/workbench/MobileReportGuidePage）。
+        // 权限码与 m.report 同码 report:submit（M5 先例：动作页挂动作码）。
+        code: 'mobile-report',
+        routePath: '/reports/mobile',
+        marketCategory: 'process',
+        entryPoint: 'workbench/MobileReportGuidePage.tsx',
+        menuConfig: { title: '移动报工', permission: pc('report:submit') },
+      },
     ],
   },
   {
@@ -181,6 +193,17 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
         marketCategory: 'process',
         entryPoint: 'listing/purchase-orders.tsx',
         menuConfig: { title: '采购订单', permission: pc('purchase:read') },
+      },
+      {
+        // UX-PUR-01/02（e1a8bd）：收货入口从「选中订单→详情内」提为侧栏直达。
+        // 别名路径挂同一页面组件（listing/purchase-orders.tsx，收货操作在
+        // 订单详情内）——不复制 /purchase/orders 路径（路由清单唯一性，menu.test
+        // 钉死），不改收货业务逻辑（页面内部零触碰）。
+        code: 'purchase-receiving',
+        routePath: '/purchase/receiving',
+        marketCategory: 'process',
+        entryPoint: 'listing/purchase-orders.tsx',
+        menuConfig: { title: '采购收货', permission: pc('purchase:read') },
       },
       {
         code: 'purchase-returns',
@@ -290,6 +313,17 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
     marketCategory: 'process',
     entryPoint: 'reporting/standard-reports.tsx',
     menuConfig: { title: '标准报表', permission: pc('report:read') },
+  },
+  {
+    // AI 问数首版（CONTRACT v1 · 2026-10-28）：规则引擎问数页——三域自然语言
+    // 查询（工作令进度/物料缺口/质量检验）返回结构化事实卡。菜单码=后端控制器
+    // 实态码 ai-query:read（ai-query.controllers.ts 端点统一 @RequirePermission；
+    // 域码缺失走回答通道 denied，菜单只管端点级可达性）。
+    code: 'ai-query',
+    routePath: '/ai-query',
+    marketCategory: 'base',
+    entryPoint: 'ai-query/index.tsx',
+    menuConfig: { title: 'AI 问数', permission: pc('ai-query:read') },
   },
   {
     // 图纸文档组（D-WO-05 图纸页面呈现面）：drawing 域桌面页。独立成组裁量：
@@ -463,3 +497,33 @@ export const menuTree = buildMenuTree(DEMO_MANIFESTS);
 
 /** 全量路由清单（含 hideInMenu 项；权限守卫在路由层按 permission 码执行）。 */
 export const menuRoutes = flattenRoutes(menuTree);
+
+/**
+ * i18n 波 1（ADR-0012）：静态菜单树 → menu namespace key 映射。
+ * 条目 title 中文原文保留不动（zh-CN 权威源 + 渲染回落值，menu.test 断言零触碰）；
+ * 渲染层（MenuNav）经 shell/menuTitle.ts 优先 key→t()。
+ * 键形态 `menu:<group>.title`（分组）/ `menu:<group>.<segment>`（组内叶子，
+ * segment=子码去掉 `<group>-` 前缀）/ `menu:<code>`（根叶子）。
+ * 映射表以 `<code>::<静态 title>` 复合键索引——树内存在 code 撞名（costing 组
+ * 与其同名叶子 costing），复合键零撞键；且 title 被 menu_configs 配置集覆盖后
+ * 复合键自然失配 → 渲染层回落配置 title 原文（管理员语言业务数据不翻译，§5 b 类）。
+ */
+function buildMenuTitleKeys(nodes: readonly MenuNode[]): Record<string, string> {
+  const keys: Record<string, string> = {};
+  for (const node of nodes) {
+    if (node.children !== undefined && node.children.length > 0) {
+      keys[`${node.code}::${node.title}`] = `menu:${node.code}.title`;
+      for (const child of node.children) {
+        const segment = child.code.startsWith(`${node.code}-`)
+          ? child.code.slice(node.code.length + 1)
+          : child.code;
+        keys[`${child.code}::${child.title}`] = `menu:${node.code}.${segment}`;
+      }
+    } else {
+      keys[`${node.code}::${node.title}`] = `menu:${node.code}`;
+    }
+  }
+  return keys;
+}
+
+export const MENU_TITLE_KEYS: Readonly<Record<string, string>> = buildMenuTitleKeys(menuTree);

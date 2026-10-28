@@ -2,8 +2,11 @@
  * 侧栏菜单渲染：分组节点渲染节标题，叶子节点渲染导航链接（hover/active 态）。
  * 图标为菜单代码 → lucide 图标的装配层视觉映射（未知代码回退 Circle）；
  * 菜单数据仍来自 product-ui 的 sidebar 投影（本文件不碰可见性语义）。
+ * i18n 波 1：title 显示走 menuNodeTitle（key→t() 优先，配置集覆盖/无 key
+ * 回落 title 原文——见 shell/menuTitle.ts 头注）。
  */
 import { NavLink } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -42,6 +45,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { MenuNode } from '@smes/product-ui';
+import { MENU_TITLE_KEYS } from '../menu';
+import { menuNodeTitle } from './menuTitle';
 import { cn } from '@/lib/utils';
 
 /** 菜单代码（ADR-0010 通用词）→ 图标。S2 批次新增九循环模块叶子映射。 */
@@ -86,13 +91,23 @@ function iconFor(code: string): LucideIcon {
 }
 
 export function MenuNav({ nodes }: { nodes: readonly MenuNode[] }) {
+  const { t } = useTranslation();
+  // UX-VW-01：侧栏空态引导（只读岗/无菜单权限账号不再只有品牌区一片空白）。
+  // 组件级呈现——菜单注册与投影语义不在此文件（menu.ts / product-ui 投影不动）。
+  if (nodes.length === 0) {
+    return (
+      <div className="px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+        当前账号暂无可用的菜单。请联系管理员为账号分配角色与权限，分配后重新登录或刷新页面即可看到对应功能入口。
+      </div>
+    );
+  }
   return (
     <nav className="flex flex-col gap-0.5">
       {nodes.map((node) =>
         node.children !== undefined && node.children.length > 0 ? (
           <div key={node.code} className="mt-5 first:mt-0">
             <div className="px-3 pb-1.5 text-xs font-medium text-muted-foreground">
-              {node.title}
+              {menuNodeTitle(node, MENU_TITLE_KEYS, t)}
             </div>
             <div className="flex flex-col gap-0.5">
               <MenuNav nodes={node.children} />
@@ -107,6 +122,7 @@ export function MenuNav({ nodes }: { nodes: readonly MenuNode[] }) {
 }
 
 function MenuLink({ node }: { node: MenuNode }) {
+  const { t } = useTranslation();
   if (node.routePath === undefined) return null;
   const { routePath } = node;
   const Icon = iconFor(node.code);
@@ -124,7 +140,7 @@ function MenuLink({ node }: { node: MenuNode }) {
       }
     >
       <Icon className="size-4 shrink-0" />
-      {node.title}
+      {menuNodeTitle(node, MENU_TITLE_KEYS, t)}
     </NavLink>
   );
 }

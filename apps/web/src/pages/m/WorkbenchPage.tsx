@@ -120,7 +120,20 @@ export function MobileWorkbenchPage() {
         </CardHeader>
         <CardContent>
           {quickEntries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">当前身份无可用入口。</p>
+            // UX-AP-03：空态说明成因（入口按权限显示）并给指引；权限未就绪
+            // （会话投影尚未返回）先不认定缺权，只报加载中。
+            permissionData === undefined ? (
+              <p className="text-sm text-muted-foreground">正在获取账号权限…</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-muted-foreground">
+                  当前账号没有任何可显示的移动端入口——入口按账号权限显示，权限不足时不会出现。
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  可联系管理员开通移动端相关权限；已有业务也可登录桌面端，在工作台办理。
+                </p>
+              </div>
+            )
           ) : (
             <div className="grid grid-cols-4 gap-2">
               {quickEntries.map((entry) => {

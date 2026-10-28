@@ -48,22 +48,35 @@ function parseNotification(row: unknown, index: number): NotificationView {
   };
 }
 
+/**
+ * 响应体守卫（R2-NOTIF-01）：request 在非 JSON 体（SPA HTML/空体等）时回落
+ * null——此前 `(body as Record)['notifications']` 对 null 取属性抛 TypeError
+ * 直出页面（`Cannot read properties of null (reading 'notifications')`）。
+ * 此处统一收口：非对象体抛人话 ModuleApiError（不露路径/技术细节）。
+ */
+function requireObjectBody(body: unknown, what: string): Record<string, unknown> {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new ModuleApiError(undefined, `${what}响应无效，请稍后重试`);
+  }
+  return body as Record<string, unknown>;
+}
+
 /** 本人收件箱（notification:read；新→旧）。 */
 export async function fetchNotifications(): Promise<readonly NotificationView[]> {
-  const body: unknown = await request('/notifications');
-  const rows = (body as Record<string, unknown>)['notifications'];
+  const body = requireObjectBody(await request('/notifications'), '通知列表');
+  const rows = body['notifications'];
   if (!Array.isArray(rows)) {
-    throw new ModuleApiError(undefined, "通知列表响应缺 'notifications' 数组");
+    throw new ModuleApiError(undefined, '通知列表响应无效，请稍后重试');
   }
   return rows.map(parseNotification);
 }
 
 /** 本人未读计数（notification:read；顶栏铃铛轮询入口）。 */
 export async function fetchUnreadCount(): Promise<number> {
-  const body: unknown = await request('/notifications/unread-count');
-  const count = (body as Record<string, unknown>)['count'];
+  const body = requireObjectBody(await request('/notifications/unread-count'), '未读计数');
+  const count = body['count'];
   if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
-    throw new ModuleApiError(undefined, '未读计数响应缺非负整数 count');
+    throw new ModuleApiError(undefined, '未读计数响应无效，请稍后重试');
   }
   return count;
 }
@@ -76,10 +89,11 @@ export async function markNotificationRead(id: string): Promise<NotificationView
 
 /** 全部置读（notification:write；返回本次置读条数，0 = 本无未读）。 */
 export async function markAllNotificationsRead(): Promise<number> {
-  const body: unknown = await request('/notifications/read-all', { method: 'POST' });
-  const updated = (body as Record<string, unknown>)['updated'];
+  // method POST 不可省（控制器实态 POST /notifications/read-all；工作树回归修复）。
+  const body = requireObjectBody(await request('/notifications/read-all', { method: 'POST' }), '全部置读');
+  const updated = body['updated'];
   if (typeof updated !== 'number' || !Number.isInteger(updated) || updated < 0) {
-    throw new ModuleApiError(undefined, '全部置读响应缺非负整数 updated');
+    throw new ModuleApiError(undefined, '全部置读响应无效，请稍后重试');
   }
   return updated;
 }

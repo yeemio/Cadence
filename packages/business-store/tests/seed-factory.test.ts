@@ -219,13 +219,16 @@ describe('seed-factory.mjs 幂等与终态形状', () => {
     expect(userRows.every((row) => String(row['passwordHash']).startsWith('scrypt$65536$8$1$'))).toBe(true);
     expect(userRows.every((row) => row['tenantId'] === 'default' && row['active'] === true)).toBe(true);
 
-    // ---- casbin 两形态：6 条 grant-role + 65 条 grant-permission = 71
-    //（码集 = architecture/ROLE-PACKS.md v1.0 §1：13/9/11/7/17/8）----
+    // ---- casbin 两形态：6 条 grant-role + 66 条 grant-permission = 72
+    //（码集 = architecture/ROLE-PACKS.md v1.0 §1：14/9/11/7/17/8——plan-role
+    // 相对文档 §1.0 的 13 码多 parts:approve 一码：工厂夹具 WO manager=plan01
+    // 兼一级配件审批人（ROLE-PACKS §1.6 L1=项目经理），无码则 UI 可批 API 403
+    // （AP-SEED-01），修复依据见 seed-factory.mjs 行内注）----
     const policyRows = table(tables, 'policies').rows;
     const grantRoles = policyRows.filter((row) => row['kind'] === 'grant-role');
     const grantPerms = policyRows.filter((row) => row['kind'] === 'grant-permission');
     expect(grantRoles).toHaveLength(6);
-    expect(grantPerms).toHaveLength(65);
+    expect(grantPerms).toHaveLength(66);
     expect(grantRoles.map((row) => String(row['role'])).sort()).toEqual(
       ['appr-role', 'plan-role', 'prod-role', 'purch-role', 'qc-role', 'wh-role'],
     );
@@ -240,6 +243,12 @@ describe('seed-factory.mjs 幂等与终态形状', () => {
       'notification:read',
       'workbench:read',
     ]);
+    // AP-SEED-01 锚：plan-role 含 parts:approve（一级配件审批人被派时必须可批）
+    expect(
+      grantPerms
+        .filter((row) => row['role'] === 'plan-role')
+        .some((row) => row['resource'] === 'parts' && row['action'] === 'approve'),
+    ).toBe(true);
     // 共码锚（ROLE-PACKS §3）：purchase:receive 同时授采购与仓管
     const receiveRoles = grantPerms
       .filter((row) => row['resource'] === 'purchase' && row['action'] === 'receive')

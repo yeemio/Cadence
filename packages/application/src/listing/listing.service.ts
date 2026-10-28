@@ -710,11 +710,15 @@ export class ListingService {
         lineCount: kindLines.length,
         checkedLineCount: kindResolved.length,
         gapLineCount,
-        complete: gapLineCount === 0,
+        complete: kindLines.length > 0 && gapLineCount === 0,
       };
     });
     gapLines.sort((a, b) => a.kind.localeCompare(b.kind) || a.itemId.localeCompare(b.itemId));
-    const complete = gapLines.length === 0;
+    // 整单与类目级 complete 同口径：须以"确有清单行被核查"为前提——0 行时差集
+    // 恒空，直接判 complete=true 属 vacuous truth（UX-PLAN-03 Round-2 复测裁决：
+    // 0 行类目不得标「齐套」，读面显示「无清单行/未参与核查」）。含 pending 行
+    // 的类目维持"可解析口径下无缺口"判 true（测试钉住语义）。
+    const complete = allLines.length > 0 && gapLines.length === 0;
 
     const gapCheckId = newGapCheckId();
 

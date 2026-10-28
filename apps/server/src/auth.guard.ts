@@ -84,9 +84,7 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<MinimalRequest>();
     const user = await this.resolveUser(request);
     if (user === undefined) {
-      throw new UnauthorizedException(
-        '缺少或无效的访问令牌（Authorization: Bearer；dev/test 回落需 SMES_DEV_AUTH=on）',
-      );
+      throw new UnauthorizedException('缺少或无效的访问令牌，请先登录后再访问');
     }
 
     // 仅登录档（required 为空）：身份有效即放行——不做权限码判定（A14 先例：
@@ -99,7 +97,10 @@ export class AuthGuard implements CanActivate {
     const tenant = this.tenantContext.current(); // ALS 内：当前请求租户
     const allowed = await this.permissions.authorize(tenant, user, code);
     if (!allowed) {
-      throw new ForbiddenException(`租户 '${tenant}' 内用户 '${user}' 无权限码 '${code}'`);
+      // UX-VW-R2-02：可见文案人话化——租户/用户 id/权限码不进响应体（页面直出
+      // message，技术标识经文案泄漏给终端用户）；判定逻辑零改动，定位仍以
+      // 服务端日志/权限配置为准。
+      throw new ForbiddenException('当前账号没有访问该功能的权限，请联系管理员开通');
     }
 
     request[REQUEST_USER_KEY] = user; // 身份传递给 handler

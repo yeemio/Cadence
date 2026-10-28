@@ -1,6 +1,8 @@
 /**
  * 采购退货页（S2 批次）：按采购订单查退货单 + 退货建单（行号×数量×原因）+
  * 撤销操作。覆盖矩阵 #61 采购退货。
+ * UX-PUR-R2-07：可见文案不露命令名/状态码（词源 listing-config
+ * PURCHASE_RETURN_STATES：已登记/已撤销）。
  */
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,10 +14,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+/** 退货单状态 id → 中文（词源 listing-config PURCHASE_RETURN_STATES，不自造词）。 */
+const RETURN_STATE_LABELS: Readonly<Record<string, string>> = {
+  open: '已登记',
+  revoked: '已撤销',
+};
+
+function returnStateLabel(state: string): string {
+  return RETURN_STATE_LABELS[state] ?? state;
+}
+
 const LIST_COLUMNS = [
   { key: 'id', label: 'id', mono: true },
   { key: 'purchaseOrderId', label: '采购订单', mono: true },
-  { key: 'state', label: '状态', mono: true },
+  { key: 'state', label: '状态' },
   { key: 'objectVersion', label: '版本', mono: true },
   { key: 'createdAt', label: '创建时刻' },
 ];
@@ -102,7 +114,9 @@ export function PurchaseReturnsPage() {
       <Card>
         <CardHeader>
           <CardTitle>采购退货单</CardTitle>
-          <CardDescription>退货单按采购订单查询（open→revoked 可撤销）。</CardDescription>
+          <CardDescription>
+            退货单按采购订单查询；已登记的退货单可撤销。登记退货会把订单从「已收货」回退到「已下发」，之后可重新收货。
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <form className="flex flex-col gap-4 sm:flex-row sm:items-end" onSubmit={handleLoad}>
@@ -119,7 +133,13 @@ export function PurchaseReturnsPage() {
               isEmpty={returnsQuery.data !== undefined && returnsQuery.data.length === 0}
               empty="该订单尚无退货单"
             >
-              <ModuleTable columns={LIST_COLUMNS} rows={returnsQuery.data ?? []} />
+              <ModuleTable
+                columns={LIST_COLUMNS}
+                rows={(returnsQuery.data ?? []).map((row) => ({
+                  ...row,
+                  state: returnStateLabel(String(row['state'])),
+                }))}
+              />
             </QueryState>
           )}
           <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
@@ -146,12 +166,12 @@ export function PurchaseReturnsPage() {
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>新建退货单</CardTitle>
-          <CardDescription>purchase.return.create.v1：行号取采购订单行 lineNo（1 起）。</CardDescription>
+          <CardDescription>按行号×数量登记退货（行号取采购订单明细行，1 起；退货数量不得超过该行已收数量）。</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="ret-new-lineno">退货行号 lineNo</Label>
+              <Label htmlFor="ret-new-lineno">退货行号</Label>
               <Input id="ret-new-lineno" type="number" min="1" step="1" value={lineNo} onChange={(e) => setLineNo(e.target.value)} required />
             </div>
             <div className="flex flex-col gap-2">

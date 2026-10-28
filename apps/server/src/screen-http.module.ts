@@ -146,7 +146,7 @@ export class ScreenStreamController {
           message:
             denial === 403
               ? "大屏通道需要权限码 'report:read'（与快照端点同码；会话有效但无权限）"
-              : '大屏通道缺少有效会话（?token= 或 SMES_SCREEN_PUBLIC_STREAM=on）',
+              : '大屏流通道未开放或未授权（缺少有效会话令牌）',
         })}\n`,
       );
       return;

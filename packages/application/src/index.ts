@@ -2586,3 +2586,77 @@ export type {
   ColumnPreferenceStore,
 } from './column-preferences/column-preferences-stores.js';
 export { ColumnPreferenceController } from './column-preferences/column-preferences.controllers.js';
+
+// ---- ai-query：AI 问数首版（CONTRACT v1 · 2026-10-28：三域只读问数闭环） ----
+export {
+  AiQueryModule,
+  AI_QUERY_WORK_ORDER_STORE,
+  AI_QUERY_PROGRESS_FACTS,
+  AI_QUERY_GAP_CHECK_STORE,
+  AI_QUERY_PURCHASE_REQUEST_STORE,
+  AI_QUERY_PURCHASE_ORDER_STORE,
+  AI_QUERY_INSPECTION_ORDER_STORE,
+  AI_QUERY_NONCONFORM_STORE,
+  AI_QUERY_SESSION_STORE,
+  AI_QUERY_PERMISSION_RESOLVER,
+  AI_QUERY_INTENT_ROUTER,
+  AI_QUERY_SERVICE_OPTIONS,
+} from './ai-query/ai-query.module.js';
+export type { AiQueryModuleOptions } from './ai-query/ai-query.module.js';
+export { AiQueryService, AI_QUERY_CAPABILITY_HINTS } from './ai-query/ai-query.service.js';
+export type {
+  AiQueryServiceOptions,
+  AiQuerySessionDetail,
+} from './ai-query/ai-query.service.js';
+export { AiQueryController, AiQuerySessionsController } from './ai-query/ai-query.controllers.js';
+export {
+  AiQueryInputError,
+  AiQueryNotFoundError,
+  AiQueryConflictError,
+} from './ai-query/ai-query-errors.js';
+export {
+  AI_QUERY_CAPABILITIES,
+  AI_QUERY_TIME_CLARIFY_OPTIONS,
+  AI_QUERY_TIME_OPTION_RANGES,
+} from './ai-query/ai-query.capabilities.js';
+export type { AiQueryCapabilityId } from './ai-query/ai-query.capabilities.js';
+export { RuleIntentRouter } from './ai-query/rule-intent-router.js';
+export { InMemoryAiQuerySessionStore } from './ai-query/in-memory-ai-query-stores.js';
+export {
+  parseAskBody,
+  parseSessionLimit,
+  parseSessionIdParam,
+  AI_QUERY_SESSION_LIMIT_DEFAULT,
+  AI_QUERY_SESSION_LIMIT_MAX,
+} from './ai-query/ai-query-input.js';
+export type { AiQueryAskInput } from './ai-query/ai-query-input.js';
+export { resolveTimeWindow, SHANGHAI_UTC_OFFSET_MS } from './ai-query/ai-query-time.js';
+export type {
+  AiQuerySubjectKind,
+  AiQueryCapabilityInfo,
+  AiQueryFactCardSubject,
+  AiQueryMetric,
+  AiQueryFactCardRows,
+  AiQueryTimeBasis,
+  AiQuerySourceRef,
+  AiQueryCompleteness,
+  AiQueryFactCard,
+  AiQueryAnswer,
+  AiQueryClarify,
+  AiQueryClarifyOption,
+  AiQueryDenied,
+  AiQueryUnsupported,
+  AiQueryUnavailable,
+  AskResponse,
+  AiQueryTimeRange,
+  AiQueryTimeWindow,
+  AiQueryIntent,
+  IntentRouter,
+  AiQueryPermissionResolver,
+  AiQuerySessionTurn,
+  AiQueryPendingClarify,
+  AiQuerySession,
+  AiQuerySessionSummary,
+  AiQuerySessionStore,
+  AiQuerySourceStores,
+} from './ai-query/ai-query-ports.js';

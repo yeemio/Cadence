@@ -30,7 +30,7 @@
  * 存量后修正 ref 重报；reason 经 Error message 原样带回。
  */
 import { request } from './apiClient';
-import { fetchRawObject, fetchRows, postCommand, queryString, revisionOf } from './commandClient';
+import { ModuleApiError, fetchRawObject, fetchRows, postCommand, queryString, revisionOf } from './commandClient';
 import type { ReportDraftSubmission } from '@/pages/scan/reportDraft';
 
 export type { ReportDraftSubmission };
@@ -167,8 +167,27 @@ export async function getDrawingOperationProgress(drawingNo: string): Promise<re
   return fetchRows(`/reporting/drawings/${encodeURIComponent(drawingNo)}/operation-progress`, 'rows');
 }
 
-/** 产出趋势（缺省 12 日窗口；{trend} 数组行）。 */
+/**
+ * 产出趋势（缺省 12 日窗口）。UX-PRD-03：服务端实态 = { trend: { days, from, to,
+ * daily: [...], avgDoneQtyPerDay, avgLaborMinutesPerDay, peak } }（reporting.controllers.ts
+ * + reporting.service.ts outputTrend 实态）——trend 是对象不是数组，旧实现按
+ * fetchRows(…,'trend') 取数组必然坏形状抛错、把字段名与路径裸抛给用户；改为
+ * 解析 trend.daily 行（date/doneQty/laborMinutes），形状仍异常时抛不带路径/
+ * 字段名的人话错误（页面 QueryState 直显 message）。
+ */
 export async function getOutputTrend(days?: number | undefined): Promise<readonly Record<string, unknown>[]> {
   const suffix = days === undefined ? '' : `?days=${days}`;
-  return fetchRows(`/reporting/output-trend${suffix}`, 'trend');
+  const body: unknown = await request(`/reporting/output-trend${suffix}`);
+  const trend =
+    typeof body === 'object' && body !== null && !Array.isArray(body)
+      ? (body as Record<string, unknown>)['trend']
+      : undefined;
+  const daily =
+    typeof trend === 'object' && trend !== null && !Array.isArray(trend)
+      ? (trend as Record<string, unknown>)['daily']
+      : undefined;
+  if (!Array.isArray(daily)) {
+    throw new ModuleApiError(undefined, '产出趋势暂不可用（服务端未返回趋势明细数据）');
+  }
+  return daily as readonly Record<string, unknown>[];
 }

@@ -10,7 +10,7 @@
  *        只读引用 readReference）
  *   GET  /drawing/read-references/:token                  只读引用开门面（P1-e；
  *        token 即凭证，兑现仍必落查看留痕）
- *   GET  /drawing/notices/:drawingId?sinceVersion=       变更通知（游标读取）
+ *   GET  /drawing/notices/:drawingId?sinceVersion=&clearance=  变更通知（游标+保密过滤）
  *   GET  /drawing/work-orders/:workOrderId/drawings?clearance=  按工作令图纸清单（三态）
  *   GET  /drawing/view-audit?drawingId=&viewedBy=        查看留痕审计（drawing:audit-read）
  *   POST /drawing/revisions/commands                     drawing.publish.v1（信封）
@@ -203,14 +203,16 @@ export function asTableRows<T>(rows: readonly T[] | undefined): readonly Record<
   return (rows ?? []) as unknown as readonly Record<string, unknown>[];
 }
 
-/** 变更通知读取（sinceVersion 游标：只取 toVersion > 游标；缺省全量）。 */
+/** 变更通知读取（clearance 过滤：服务端只回有权通知；sinceVersion 游标缺省全量）。 */
 export function listDrawingNotices(
   drawingId: string,
+  clearance: ClearanceLevel,
   sinceVersion?: number,
 ): Promise<readonly DrawingChangeNoticeView[]> {
   return fetchBareArray(
     `/drawing/notices/${encodeURIComponent(drawingId)}${queryString([
       ['sinceVersion', sinceVersion === undefined ? undefined : String(sinceVersion)],
+      ['clearance', clearance],
     ])}`,
   );
 }

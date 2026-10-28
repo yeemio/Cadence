@@ -37,13 +37,26 @@ export function useMobileDataAccess(code: PermissionCode): boolean {
 }
 
 /**
- * 无权限终态（D-6）：与桌面 NoAccessHint 同形态的移动版（muted 行内文案，
- * 先例=本目录"当前身份无可用入口。"）。
+ * 无权限终态（D-6）：与桌面 NoAccessHint 同形态的移动版。UX-AP-02 收口：
+ * 不再向用户裸露权限码——文案给中文说明 + 指引（联系管理员开通）；权限码只
+ * 保留在 data-permission-code 属性里供排查（不出现在可见文案）。可选 subject
+ * 给出数据域中文名，让提示指名缺的是哪类数据的查看权限。
  */
-export function MobileNoAccessHint({ code }: { readonly code: PermissionCode }) {
+export function MobileNoAccessHint({
+  code,
+  subject,
+}: {
+  readonly code: PermissionCode;
+  /** 数据域中文名（可选；如「配件审批列表」）。 */
+  readonly subject?: string;
+}) {
+  const reason =
+    subject === undefined
+      ? '当前账号缺少查看此类数据的权限，内容无法加载。'
+      : `当前账号缺少查看「${subject}」数据的权限，内容无法加载。`;
   return (
-    <p className="text-sm text-muted-foreground">
-      当前身份无数据读取权限（{code}），不发起数据请求。
+    <p className="text-sm text-muted-foreground" data-permission-code={code}>
+      {reason}请联系管理员为账号开通相应权限，开通后刷新页面即可使用。
     </p>
   );
 }

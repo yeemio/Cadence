@@ -45,7 +45,17 @@ export class DomainErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof MasterdataConflictError
+        ? 'masterdata.conflict'
+        : exception instanceof MasterdataNotFoundError
+          ? 'masterdata.not_found'
+          : exception instanceof WorkbenchNotFoundError
+            ? 'workbench.not_found'
+            : exception instanceof MasterdataInputError
+              ? 'masterdata.invalid_input'
+              : 'workbench.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

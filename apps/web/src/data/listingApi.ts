@@ -22,6 +22,44 @@ export function importSkeleton(workOrderId: string) {
   return postCommand('/listing/imports', 'listing.import.v1', { source: 'workorder', workOrderId });
 }
 
+/** 清单行新增类型（四类清单 kind；词源 listing-config LISTING_KINDS）。 */
+export type ListingKindId = 'part' | 'standard' | 'electrical' | 'equipment';
+
+/**
+ * 手工新增清单行（复用行导入通道：单行结构化表——表头走后端既有别名集，
+ * 物料编码自动比对物料库；无该类目清单时自动创建）。
+ */
+export function addListingLine(input: {
+  readonly workOrderId: string;
+  readonly kind: ListingKindId;
+  readonly drawingNo?: string | undefined;
+  readonly code?: string | undefined;
+  readonly name?: string | undefined;
+  readonly spec?: string | undefined;
+  readonly requiredQty: number;
+  readonly neededBy?: string | undefined;
+}) {
+  const row = [
+    input.drawingNo?.trim() ?? '',
+    input.code?.trim() ?? '',
+    input.name?.trim() ?? '',
+    input.spec?.trim() ?? '',
+    String(input.requiredQty),
+    input.neededBy?.trim() ?? '',
+  ];
+  return postCommand('/listing/imports', 'listing.import.v1', {
+    source: 'excel',
+    workOrderId: input.workOrderId,
+    kind: input.kind,
+    excel: {
+      kind: 'json-tables',
+      sheets: [
+        { name: '手工录入', header: ['图号', '物料编码', '物料名称', '规格型号', '数量', '需求日期'], rows: [row] },
+      ],
+    },
+  });
+}
+
 /** 清单行修订（expectedRevision = 行 objectVersion）。 */
 export function updateListingLine(
   lineId: string,
@@ -41,9 +79,12 @@ export function runGapCheck(workOrderId: string) {
   return postCommand(`/listing/work-orders/${encodeURIComponent(workOrderId)}/gap-checks`, 'gap.check.v1', {});
 }
 
-/** 最新缺口核查结果（{gapCheck}）。 */
-export async function getLatestGapCheck(workOrderId: string): Promise<Record<string, unknown>> {
-  return fetchObject(`/listing/work-orders/${encodeURIComponent(workOrderId)}/gap-checks/latest`, 'gapCheck');
+/** 最新缺口核查结果（{gapCheck}；无核查记录时服务端回 gapCheck=null → 本函数返回 null）。 */
+export async function getLatestGapCheck(workOrderId: string): Promise<Record<string, unknown> | null> {
+  const body = await fetchRawObject(`/listing/work-orders/${encodeURIComponent(workOrderId)}/gap-checks/latest`);
+  const value = body['gapCheck'];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
 }
 
 // ---- 采购申请面 ----
@@ -80,7 +121,10 @@ export function createPurchaseRequest(input: {
     quantity: input.quantity,
     workOrderId: input.workOrderId ?? null,
     remark: input.remark ?? null,
-    source: { type: 'manual' },
+    // 服务端契约（UX-PUR-R2-06）：source 省略/null = 手工发起；显式对象仅接受
+    // 缺口一键发起锚点 {type:'gap', gapCheckId, listingLineId}。手工建单不得
+    // 传 {type:'manual'}（会被拒「source.type 非法：须为 'gap'」）。
+    source: null,
   });
 }
 

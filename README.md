@@ -1,10 +1,16 @@
-# Cadence —— S-mes 重构 monorepo
+# Cadence —— 自研机加工 MES 产品
 
-机加工 MES 清洁室重建（代号 Cadence）。战略、决策链与全部背景见唯一事实源：
+面向机加工与装配企业的制造执行系统，支持单租户私有化与多租户 SaaS 交付。当前产品管理入口：
+
+- [产品合同](architecture/PRODUCT_CONTRACT.md)：产品目标、完成条件、架构约束和责任。
+- [全生命周期地图](architecture/PRODUCT_LIFECYCLE_MAP.md)：当前阶段、证据、遗留与未验证边界。
+- [路线图与任务索引](architecture/ROADMAP.md#pm-current-tasks)：当前目标项、责任和下一动作。
+
+原始战略与技术决策来源保留如下，后续状态及 Owner 裁决按上述当前入口追溯：
 
 - **交接文档**：`/Users/yeemio/AI/project/S-mes/HANDOFF-重构交接V1.0.md`
 - **技术选型决策簿**：`/Users/yeemio/AI/project/S-mes/03-产品用/S-mes重构技术选型决策簿V1.0.xlsx`
-- **本仓宪法**：`architecture/decisions/`（ADR-0001 ~ 0008）+ `architecture/contracts/`
+- **本仓宪法**：[架构索引](architecture/README.md)、`architecture/decisions/`、`architecture/contracts/`
 
 ## 仓库骨架
 
@@ -47,7 +53,9 @@ pnpm verify          # typecheck + 边界铁律 + 铁律自检 + build + test
 
 ## 当前阶段
 
-M0 立桩（12 人日，2026-10-24 开始）。进度看 `architecture/status.md`。
+2026-10-27：**M1 已收版（`v1.0.0`），M2 售卖就绪进行中**。安全波 a 与多角色测试资产已有 ACCEPT，多语言改造在途；D-18 日统计数值仍待核对，真实客户试点未触发。进度与证据见[生命周期地图](architecture/PRODUCT_LIFECYCLE_MAP.md)和[执行状态](architecture/status.md)。
+
+以下 S3 记录保留为历史工程进展，不作为当前产品阶段或完成比例。
 
 S3-a（2026-10-25）：S1 backfill 端点接页面——主数据/审计/标准报表七页挂载
 （客户/供应商/计量单位挂基础数据组，机构/岗位/操作日志挂系统管理组，标准报表

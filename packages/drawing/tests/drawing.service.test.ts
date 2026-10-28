@@ -24,6 +24,7 @@ import {
   InMemoryDrawingRevisionStore,
   inMemoryDrawingStores,
   isDrawingConflict,
+  type DrawingChangeNoticePort,
   type DrawingCommandEnvelope,
   type DrawingRevisionRow,
   type DrawingViewer,
@@ -51,6 +52,8 @@ const lineViewer: DrawingViewer = { userId: LINE, clearance: 'public' };
 interface Harness {
   readonly service: DrawingService;
   readonly revisions: InMemoryDrawingRevisionStore;
+  /** 通知存储端口直通（防御性夹具：落孤儿通知证明 fail-closed）。 */
+  readonly noticeStore: DrawingChangeNoticePort;
   readonly allViews: () => Promise<readonly { id: string; drawingId: string; version: number; viewedBy: string; classification: string }[]>;
   readonly allNotices: () => Promise<{ notices: readonly { fromVersion: number; toVersion: number }[] }>;
 }
@@ -61,6 +64,7 @@ function makeHarness(): Harness {
   return {
     service,
     revisions: stores.revisions as InMemoryDrawingRevisionStore,
+    noticeStore: stores.notices,
     allViews: async () =>
       (await stores.views.list(TENANT)).map((row) => ({
         id: row.id,
@@ -343,11 +347,83 @@ describe('变更通知读取与按工作令图纸清单', () => {
     const h = makeHarness();
     await publishChain(h);
     const drawingId = DrawingId.create('dwg-001');
-    const all = await h.service.notices(TENANT, drawingId);
+    const all = await h.service.notices(TENANT, techViewer, drawingId); // restricted 许可=全量可见
     expect(all.map((n) => n.toVersion)).toEqual([1, 2, 3, 4]); // toVersion 升序
-    const since3 = await h.service.notices(TENANT, drawingId, 3);
+    const since3 = await h.service.notices(TENANT, techViewer, drawingId, 3);
     expect(since3.map((n) => `${n.fromVersion}->${n.toVersion}`)).toEqual(['3->4']);
-    expect(await h.service.notices(TENANT, drawingId, 4)).toEqual([]);
+    expect(await h.service.notices(TENANT, techViewer, drawingId, 4)).toEqual([]);
+  });
+
+  it('notices 按许可过滤（裁-12）：低许可不见受限通知与 changeNote；可见通知仍可读；游标与过滤交集', async () => {
+    const h = makeHarness();
+    await publishChain(h); // v1/v2 public → v3/v4 restricted
+    const drawingId = DrawingId.create('dwg-001');
+    // ③/① 普通可见通知（toVersion=1/2）对低许可（public）仍可读；受限通知（3/4）整行过滤
+    const forLine = await h.service.notices(TENANT, lineViewer, drawingId);
+    expect(forLine.map((n) => n.toVersion)).toEqual([1, 2]);
+    expect(forLine.map((n) => n.changeNote)).toEqual(['首发', '增加 M8 孔位']);
+    // 受限修订的 changeNote 不出现在任何返回行（不泄漏）
+    expect(forLine.some((n) => n.changeNote.includes('孔位公差收紧') || n.changeNote.includes('材料改'))).toBe(false);
+    // 游标与过滤交集：since 2 后 public 许可只剩受限通知 → 空集
+    expect(await h.service.notices(TENANT, lineViewer, drawingId, 2)).toEqual([]);
+    // ② 有权许可（restricted）看到应有通知（from→to 全集 + changeNote 原文）
+    const forTech = await h.service.notices(TENANT, techViewer, drawingId);
+    expect(forTech.map((n) => `${n.fromVersion}->${n.toVersion}:${n.changeNote}`)).toEqual([
+      '0->1:首发',
+      '1->2:增加 M8 孔位',
+      '2->3:孔位公差收紧',
+      '3->4:材料改 6061',
+    ]);
+  });
+
+  it('notices 孤儿通知 fail-closed：toVersion 无对应修订 → 有权许可也不可见', async () => {
+    const h = makeHarness();
+    await publish(h, { drawingId: 'dwg-001', fileRef: 'f://1', changeNote: '首发' });
+    // 防御性夹具（正常发布联动不会产生）：直接对存储层落 toVersion=99 的孤儿通知
+    await h.noticeStore.publish({
+      tenant: TENANT,
+      drawingId: DrawingId.create('dwg-001'),
+      fromVersion: 1,
+      toVersion: 99,
+      changeNote: '孤儿通知（链上无 v99）',
+      publishedAt: '2026-11-01T08:00:00.000Z',
+      objectVersion: 1,
+      auditStatus: 'published',
+    });
+    const forTech = await h.service.notices(TENANT, techViewer, DrawingId.create('dwg-001'));
+    expect(forTech.map((n) => n.toVersion)).toEqual([1]); // v99 链中不存在 → 不可见
+  });
+
+  it('notices 未知许可 fail-fast（DrawingInputError，不默认放行）', async () => {
+    const h = makeHarness();
+    await publish(h, { drawingId: 'dwg-001', fileRef: 'f://1', changeNote: '首发' });
+    await expect(
+      h.service.notices(TENANT, { userId: LINE, clearance: 'top-secret' }, DrawingId.create('dwg-001')),
+    ).rejects.toBeInstanceOf(DrawingInputError);
+  });
+
+  it('notices 租户收口：他租户同名图通知不串读（既有租户隔离不变）', async () => {
+    const h = makeHarness();
+    await publish(h, { drawingId: 'dwg-001', fileRef: 'f://1', changeNote: '本租户首发' });
+    opCounter += 1;
+    const other = makeCommandEnvelope({
+      tenantId: TenantId.create('t-drawing-other'),
+      issuedBy: TECH,
+      operationId: OperationId.create(`op-drawing-other-${String(opCounter).padStart(4, '0')}`),
+      expectedRevision: 'initial',
+      issuedAt: '2026-11-01T08:00:00.000Z',
+      command: {
+        kind: 'drawing.publish.v1' as const,
+        payload: { drawingId: 'dwg-001', fileRef: 'f://ot-1', changeNote: '他租户首发', classification: 'restricted' },
+      },
+    });
+    expect((await h.service.execute(TenantId.create('t-drawing-other'), other)).status).toBe('committed');
+    // 本租户读：只见本租户通知，他租户（含受限）不串入
+    const own = await h.service.notices(TENANT, techViewer, DrawingId.create('dwg-001'));
+    expect(own.map((n) => n.changeNote)).toEqual(['本租户首发']);
+    // 他租户内读他自己的：restricted 许可可见（隔离是双向收口不是全局隐藏）
+    const otherSide = await h.service.notices(TenantId.create('t-drawing-other'), techViewer, DrawingId.create('dwg-001'));
+    expect(otherSide.map((n) => n.changeNote)).toEqual(['他租户首发']);
   });
 
   it('drawingsForWorkOrder：ok+升级视图 / restricted / missing；升级只数许可内新版', async () => {

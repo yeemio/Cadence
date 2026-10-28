@@ -178,7 +178,8 @@ const FACTORY_ACCOUNTS = [
 /**
  * 岗位 → 权限码集（来源：architecture/ROLE-PACKS.md v1.0 §1，已按文档核对；
  * 全员基线两码 workbench:read + notification:read 含在各包；码数
- * 13/9/11/7/17/8，与文档 §1.0 总表一致——改码先改文档再同步此处）。
+ * 14/9/11/7/17/8——plan-role 相对文档 §1.0 的 13 码多 1 码 parts:approve，
+ * 依据见下方行内注（AP-SEED-01 修复；文档侧同步待 ROLE-PACKS 换版）。
  */
 const ROLE_PERMISSIONS = {
   'plan-role': [
@@ -195,6 +196,13 @@ const ROLE_PERMISSIONS = {
     { resource: 'item', action: 'read' },
     { resource: 'parts', action: 'read' },
     { resource: 'parts', action: 'request' },
+    // AP-SEED-01（Round-2 缺陷修复）：工厂夹具工作令 wo-seed-factory-01 的
+    // manager = plan01，而配件三级审批链一级审批人 = 工作令项目经理（空回落
+    // 销售；ROLE-PACKS §1.6「三级链实态」）——plan01 在本夹具中兼任该项目
+    // 经理即被派为一级审批人，无 parts:approve 则 UI 判可批而 API 403，阻断
+    // 多级链。此处补审批专码（与 appr-role §1.6 同码），文档 §1.0 计划包
+    // 13 码的换版同步归文档 Owner。
+    { resource: 'parts', action: 'approve' },
   ],
   'purch-role': [
     { resource: 'workbench', action: 'read' },

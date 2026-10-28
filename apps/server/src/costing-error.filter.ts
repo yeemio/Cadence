@@ -34,7 +34,13 @@ export class CostingErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof CostingConflictError
+        ? 'costing.conflict'
+        : exception instanceof CostingNotFoundError
+          ? 'costing.not_found'
+          : 'costing.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

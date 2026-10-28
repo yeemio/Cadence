@@ -54,7 +54,23 @@ export class CapabilityErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof MenuConfigConflictError
+        ? 'menu_config.conflict'
+        : exception instanceof ApprovalConfigConflictError
+          ? 'approval_config.conflict'
+          : exception instanceof MenuConfigNotFoundError
+            ? 'menu_config.not_found'
+            : exception instanceof NotificationNotFoundError
+              ? 'notification.not_found'
+              : exception instanceof ApprovalConfigNotFoundError
+                ? 'approval_config.not_found'
+                : exception instanceof MenuConfigInputError
+                  ? 'menu_config.invalid_input'
+                  : exception instanceof NotificationInputError
+                    ? 'notification.invalid_input'
+                    : 'approval_config.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

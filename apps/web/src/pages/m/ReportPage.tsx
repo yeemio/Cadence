@@ -1,5 +1,7 @@
 /**
  * 移动报工页（M5 首波，report:submit；预研 scan-report 页升级迁入移动组）。
+ * UX-VW-05：无 report:submit 权限的账号进页只呈现无权限终态，不渲染写入控件
+ * 与提交引导文案（门禁见 canSubmit 早返回）。
  *
  * 页面码三问记录（ADR-0010）：
  * 1. m.report 只在单一行业有意义吗？否——report 是 ADR-0010 内核白名单词
@@ -31,8 +33,10 @@ import {
   createOfflineQueue,
   hydrateOfflineQueue,
   offlineQueueStorageKey,
+  permissionCode,
 } from '@smes/product-ui';
 import type { NetworkStateModel, OfflineQueue } from '@smes/product-ui';
+import { useMobileDataAccess, MobileNoAccessHint } from './pageAccess';
 import { submitReportDraft } from '@/data/reportingApi';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,6 +47,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { shortId } from '@/lib/format';
 import { MAX_LABOR_MINUTES, buildReportDraftSubmission, isReportDraftSubmission } from '@/pages/scan/reportDraft';
 import type { ReportDraftSubmission } from '@/pages/scan/reportDraft';
 import { SCAN_TIER_LABELS, SCAN_VIDEO_ELEMENT_ID, useScanSession } from '@/pages/scan/useScanSession';
@@ -50,6 +55,9 @@ import { SCAN_TIER_LABELS, SCAN_VIDEO_ELEMENT_ID, useScanSession } from '@/pages
 /** 离线队列名（localStorage 键 cadence.offline-queue.v1.report-draft——预研同名沿用）。 */
 const QUEUE_NAME = 'report-draft';
 const QUEUE_STORAGE_KEY = offlineQueueStorageKey(QUEUE_NAME);
+
+/** 本页动作权限码（report:submit——与 mobile.ts 注册表 m.report 导航码同码；整页为写入面）。 */
+const REPORT_SUBMIT_CODE = permissionCode('report:submit');
 
 interface DraftFormState {
   readonly ref: string;
@@ -68,6 +76,9 @@ type SubmitState =
   | { readonly kind: 'invalid'; readonly message: string };
 
 export function MobileReportPage() {
+  // UX-VW-05：整页按动作权限投影门禁（report:submit）——无权限账号（如只读
+  // 访客）进入本页只呈现无权限终态，不渲染扫码/草稿表单/离线队列等写入面。
+  const canSubmit = useMobileDataAccess(REPORT_SUBMIT_CODE);
   // ---- 扫码段（复用装配，不复制） ----
   const { model, session, wedgeHint } = useScanSession();
 
@@ -206,6 +217,20 @@ export function MobileReportPage() {
   const active = session?.status === 'active';
   const currentTier = session?.currentTier ?? null;
 
+  // UX-VW-05 无权限终态：早于全部写入 UI 返回（所有 hook 已在上方无条件执行）。
+  if (!canSubmit) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>移动报工</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MobileNoAccessHint code={REPORT_SUBMIT_CODE} subject="报工提交" />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* 网络状态条（离线提示 + 队列计数 + 恢复提示重放） */}
@@ -235,11 +260,11 @@ export function MobileReportPage() {
       <Card>
         <CardHeader>
           <CardTitle>扫码定位派工单</CardTitle>
-          <CardDescription>扫派工单条码自动填入下方"对象引用"；档位按能力探测自动选择。</CardDescription>
+          <CardDescription>扫派工单条码自动填入下方"派工单号"；按设备能力自动选择扫码方式。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {model === null || session === null ? (
-            <p className="text-sm text-muted-foreground">无可用的扫码方式，可直接在下方手填对象引用。</p>
+            <p className="text-sm text-muted-foreground">无可用的扫码方式，可直接在下方手填派工单号。</p>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-3">
@@ -295,15 +320,15 @@ export function MobileReportPage() {
       <Card>
         <CardHeader>
           <CardTitle>报工草稿</CardTitle>
-          <CardDescription>对象引用（派工单）/ 数量 / 工时 / 备注；提交按网络状态分路。</CardDescription>
+          <CardDescription>填写派工单号、完成数量、工时与备注后提交；断网时自动暂存本机，联网后一键补送。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
-            对象引用（派工单）
+            派工单号
             <input
               className="h-11 rounded-lg border border-input bg-background px-3 text-sm"
               value={draft.ref}
-              placeholder="扫到的码或手填派工单 id"
+              placeholder="扫码或手填派工单编号"
               onChange={(event) => setDraft((prev) => ({ ...prev, ref: event.target.value }))}
             />
           </label>
@@ -353,7 +378,12 @@ export function MobileReportPage() {
           </Button>
 
           {submitState.kind === 'submitted' && (
-            <p className="text-xs text-emerald-700">已提交：<span className="font-mono">{submitState.ref}</span></p>
+            <p className="text-xs text-emerald-700">
+              报工已提交，派工单号{' '}
+              <span className="font-mono" title={submitState.ref}>
+                {shortId(submitState.ref)}
+              </span>
+            </p>
           )}
           {submitState.kind === 'queued' && (
             <p className="text-xs text-amber-700">已入离线队列，恢复网络后可在上方提示条重放。</p>

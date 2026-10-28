@@ -26,7 +26,7 @@
  * - 每次尝试（含 retry 重放）用唯一项目名（runSeed 后缀）——重放建新令，
  *   骨架导入/看板行/总览行定位不再歧义（首轮曾因 .first() 抓到旧令、骨架
  *   导入被"清单已齐"拒绝而红）。
- * - 表级 scope：工作令页两表（列表：列头"状态"；齐套看板：列头"齐套完成"）
+ * - 表级 scope：工作令页两表（列表：列头"状态"；齐套看板：列头"齐套结果"）
  *   同含项目名/工作令 id 文本——按列头过滤钉表，不做页面级 .first()。
  * - 幂等终态断言 + 动态语义：缺口快照自洽校验（gapQty = max(0, 需求-可用)，
  *   complete 与之互斥一致）；库存读数断言 delta（收货前 A → 收货后 A+10），
@@ -86,11 +86,11 @@ function workOrderListTable(page: Page) {
   return page.getByRole('table').filter({ has: page.getByRole('columnheader', { name: '状态' }) });
 }
 
-/** 工作令页"齐套看板"表（列头 齐套完成）。 */
+/** 工作令页"齐套看板"表（列头 齐套结果）。 */
 function kitBoardTable(page: Page) {
   return page
     .getByRole('table')
-    .filter({ has: page.getByRole('columnheader', { name: '齐套完成' }) });
+    .filter({ has: page.getByRole('columnheader', { name: '齐套结果' }) });
 }
 
 /** 实时库存页：按物料过滤读可用量（无行 = 0；列序 物料/仓库/在手/预占/可用）。 */
@@ -234,30 +234,36 @@ test('63 链路步骤3：清单骨架导入（UI）+ excel 行导入（API 预�
   expect(imported.status, `excel 行导入：${JSON.stringify(imported.body)}`).toBe(201);
 
   // 缺口核查（UI）：需 10 × 可用 S → 快照自洽校验（gapQty = max(0, 10-S)，
-  // complete 与缺口互斥一致）。新栈首轮 S=0 → 缺口 10 + complete=false
+  // 结论横幅与缺口明细互斥一致）。新栈首轮 S=0 → 缺口 10 + 未通过横幅
   // （module-chain 负行为1 的完整语义）；重放形态（前次尝试已入库 S≥10）→
-  // gapLines 空 + complete=true，同样自洽。
+  // 缺口明细无行 + 核查通过横幅，同样自洽。（GapCheckSnapshot 人话视图：
+  // 结论横幅 + 类目汇总/缺口明细两表——UX-PLAN-03/05 后无 dt/dd 裸字段。）
   await gotoViaMenu(page, '缺口核查', /\/listings\/gap-checks$/);
   await page.fill('#gap-wo', workOrderId);
   await page.getByRole('button', { name: '执行缺口核查' }).click();
 
   const main = page.getByRole('main');
-  await expect(main.getByText('最新核查快照', { exact: true })).toBeVisible({ timeout: 15_000 });
-  const ddOf = (key: string) =>
-    main.locator('dt', { hasText: new RegExp(`^${key}$`) }).locator('xpath=following-sibling::dd[1]');
-  const complete = (await ddOf('complete').innerText()).trim();
-  const gapLines = JSON.parse(await ddOf('gapLines').innerText()) as Array<{
-    requiredQty: number;
-    availableQty: number;
-    gapQty: number;
-  }>;
-  if (gapLines.length === 0) {
-    expect(complete, '重放形态（需求已满足）：complete=true 自洽').toBe('true');
+  await expect(main.getByText('最新核查结果', { exact: true })).toBeVisible({ timeout: 15_000 });
+  const banner = main.getByText(/^(核查通过|未通过)/);
+  await expect(banner).toBeVisible();
+  if ((await banner.innerText()).startsWith('核查通过')) {
+    // 重放形态（需求已满足）：缺口明细无行
+    await expect(main.getByText('无缺口行', { exact: true })).toBeVisible();
   } else {
-    const line = gapLines.find((entry) => entry.requiredQty === 10);
-    expect(line, `缺口行读回（需求 10）：${JSON.stringify(gapLines)}`).toBeTruthy();
-    expect(line!.gapQty).toBe(Math.max(0, 10 - line!.availableQty));
-    expect(complete).toBe(line!.gapQty === 0 ? 'true' : 'false');
+    // 首轮形态：横幅报缺口行数；缺口明细表（列头 缺口数量钉表）链路行自洽
+    expect(await banner.innerText(), '缺口形态横幅').toMatch(/未通过：存在缺口 \d+ 行/);
+    const gapTable = page
+      .getByRole('table')
+      .filter({ has: page.getByRole('columnheader', { name: '缺口数量' }) });
+    const gapRow = gapTable.getByRole('row', { name: new RegExp(DRAWING_NO) }).first();
+    await expect(gapRow, `缺口行读回（图号 ${DRAWING_NO}）`).toBeVisible();
+    const cells = gapRow.getByRole('cell');
+    // 列序：类目/图号/物料/需求数量/库存可用量/缺口数量/需求日期
+    const requiredQty = Number((await cells.nth(3).innerText()).trim());
+    const availableQty = Number((await cells.nth(4).innerText()).trim());
+    const gapQty = Number((await cells.nth(5).innerText()).trim());
+    expect(requiredQty).toBe(10);
+    expect(gapQty, '缺口行自洽：gapQty = max(0, 需求-可用)').toBe(Math.max(0, requiredQty - availableQty));
   }
   await shot(page, '06-gap-check');
 });
@@ -274,7 +280,7 @@ test('64 链路步骤4（UI）：生产入库 10 → 实时库存可用读数 +1
   await page.fill('#recv-wh', warehouseId);
   await page.fill('#recv-qty', '10');
   await page.getByRole('button', { name: '执行入库' }).click();
-  await expect(page.getByText('命令已提交（committed）。')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('操作已生效。')).toBeVisible({ timeout: 15_000 });
   await shot(page, '07-stock-received');
 
   // 读回（UI）：可用量 = 基线 + 10（delta 断言——重放叠加入库不破）
@@ -293,11 +299,12 @@ test('65 链路步骤5（UI）：刷新齐套检查 → 齐套看板 complete=tr
 
   await page.getByRole('button', { name: '刷新齐套检查' }).click();
 
-  // 齐套看板表（列头 齐套完成）：本工作令行 complete 列 true
+  // 齐套看板表（列头 齐套结果）：本工作令行结果列「齐套」
   // （入库后需求满足——首轮 = 缺口闭合证据；重放 = 维持满足）
   const boardRow = kitBoardTable(page).getByRole('row', { name: new RegExp(workOrderId) });
-  // 列序：工作令/项目名/齐套完成/刷新时刻/缺口行 —— complete 第 3 列
-  await expect(boardRow.getByRole('cell').nth(2)).toHaveText('true', { timeout: 15_000 });
+  // 列序：工作令/项目名/齐套结果/刷新时刻/缺口行 —— 结果第 3 列（complete
+  // 布尔已人话化：true→「齐套」/false→「缺口 N 行」）
+  await expect(boardRow.getByRole('cell').nth(2)).toHaveText('齐套', { timeout: 15_000 });
   await shot(page, '09-kit-board-complete');
 });
 
@@ -326,12 +333,22 @@ test('66 链路步骤6（UI）：运营总览读数——链路工作令计入�
 test('67 链路快照重读（UI）：缺口核查页最新快照可重读（结构自洽留档）', async ({ page }) => {
   // 不重跑核查（不追加新快照），只读最新——63 步落账的快照可持续读回。
   // 齐套刷新（65 步）翻的是 kit_checks 流，缺口快照流独立。
+  // GapCheckSnapshot 视图：结论横幅 + 缺口明细（与 63 步同一形态判定）。
   await gotoViaMenu(page, '缺口核查', /\/listings\/gap-checks$/);
   await page.fill('#gap-wo', workOrderId);
   await page.getByRole('button', { name: '读最新快照' }).click();
   const main = page.getByRole('main');
-  await expect(main.getByText('最新核查快照', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(main.locator('dt', { hasText: /^complete$/ })).toBeVisible();
-  await expect(main.locator('dt', { hasText: /^gapLines$/ })).toBeVisible();
+  await expect(main.getByText('最新核查结果', { exact: true })).toBeVisible({ timeout: 15_000 });
+  const banner = main.getByText(/^(核查通过|未通过)/);
+  await expect(banner).toBeVisible();
+  if ((await banner.innerText()).startsWith('核查通过')) {
+    await expect(main.getByText('无缺口行', { exact: true })).toBeVisible();
+  } else {
+    const gapTable = page
+      .getByRole('table')
+      .filter({ has: page.getByRole('columnheader', { name: '缺口数量' }) });
+    const rowCount = await gapTable.getByRole('row').count();
+    expect(rowCount, '缺口形态：缺口明细表至少 1 数据行（表头外）').toBeGreaterThan(1);
+  }
   await shot(page, '11-gap-snapshot-final');
 });

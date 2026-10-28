@@ -147,13 +147,13 @@ describe('查询端点钉形（drawing-http.module.ts 实态，裸数组响应�
     expect(calls[0]?.url).toBe('/drawing/revisions/DWG-A01/view?clearance=public');
   });
 
-  it('变更通知：GET /drawing/notices/:id?sinceVersion=（游标缺省全量）', async () => {
+  it('变更通知：GET /drawing/notices/:id?sinceVersion=&clearance=（clearance 过滤；游标缺省全量）', async () => {
     respond([]);
-    await drawingApi.listDrawingNotices('DWG-A01', 0);
-    expect(calls[0]?.url).toBe('/drawing/notices/DWG-A01?sinceVersion=0');
+    await drawingApi.listDrawingNotices('DWG-A01', 'restricted', 0);
+    expect(calls[0]?.url).toBe('/drawing/notices/DWG-A01?sinceVersion=0&clearance=restricted');
     respond([]);
-    await drawingApi.listDrawingNotices('DWG-A01');
-    expect(calls[1]?.url).toBe('/drawing/notices/DWG-A01');
+    await drawingApi.listDrawingNotices('DWG-A01', 'public');
+    expect(calls[1]?.url).toBe('/drawing/notices/DWG-A01?clearance=public');
   });
 
   it('按工作令清单：GET /drawing/work-orders/:id/drawings?clearance=（三态条目）', async () => {

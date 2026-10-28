@@ -189,6 +189,12 @@ export class PgObjectStorage implements ObjectStoragePort {
 export interface AttachmentObjectStorageOptions {
   /** 显式覆盖数据源（缺省读 DATABASE_URL 环境变量，Prisma 原生行为）。 */
   readonly datasourceUrl?: string;
+  /**
+   * 签发密钥透传（M2 安全前置批 SP-3）：main.ts 读 SMES_ATTACHMENT_REF_SECRET
+   * 注入——env 固化后引用跨重启/跨实例可用；缺省随机 32 字节（重启后旧引用
+   * 失效，与短时 TTL 语义一致——取舍同文件头注）。
+   */
+  readonly signingKey?: Uint8Array | undefined;
 }
 
 /** 组合根装配句柄：附件对象存储端口实现 + 优雅断连。 */
@@ -206,7 +212,9 @@ export function connectAttachmentObjectStorage(
     : new PrismaClient();
   const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
-    objectStorage: new PgObjectStorage(client),
+    // SP-3：signingKey 透传进 PgObjectStorage（此前构造未透传——env 固化形态
+    // 经组合根注入；undefined 同缺省 = 随机密钥，零 DB/未设 env 行为不变）。
+    objectStorage: new PgObjectStorage(client, { signingKey: options.signingKey }),
     async disconnect(): Promise<void> {
       await client.$disconnect();
     },

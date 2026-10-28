@@ -35,7 +35,13 @@ export class BaselineErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof BaselineConflictError
+        ? 'baseline.conflict'
+        : exception instanceof BaselineNotFoundError
+          ? 'baseline.not_found'
+          : 'baseline.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

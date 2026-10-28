@@ -77,6 +77,51 @@ export function recheckInspectionOrder(
   );
 }
 
+// ---- 特采（让步接收确认，RQ-035；既有命令通道 inspection.concession.v1） ----
+
+/** 特采视图（前置读：不合格/已特采/剩余可特采；直返对象）。 */
+export async function getConcessionView(id: string): Promise<Record<string, unknown>> {
+  return fetchRawObject(`/inspection/orders/${encodeURIComponent(id)}/concession`);
+}
+
+/**
+ * 特采确认（inspection.concession.v1）：仅非标件采购质检单的不合格量，
+ * 1 ≤ quantity ≤ 不合格 − 已特采（服务层校验拒绝并给中文 reason）。
+ */
+export function confirmConcession(
+  id: string,
+  row: Record<string, unknown>,
+  input: { readonly quantity: number },
+) {
+  return postCommand(
+    `/inspection/orders/${encodeURIComponent(id)}/concession`,
+    'inspection.concession.v1',
+    { quantity: input.quantity },
+    revisionOf(row, '质检单行'),
+  );
+}
+
+// ---- 判定撤销（RQ-037：passed/failed 单回退待检 + 不合格明细作废 + 特采清零） ----
+
+/**
+ * 判定撤销（inspection.revoke.v1）：仅已质检单（passed/failed）可撤；pending
+ * （未质检）/closed（闭环终态）由服务层拒绝并给中文 reason；三项跨域闸门
+ * （关联入库未完成/下道工序已报工/工时已审核）可能拦截。
+ * remark = 撤销原因（1..2000 可选留痕；null 时服务端用默认留痕口径）。
+ */
+export function revokeInspection(
+  id: string,
+  row: Record<string, unknown>,
+  input: { readonly remark: string | null },
+) {
+  return postCommand(
+    `/inspection/orders/${encodeURIComponent(id)}/revocation`,
+    'inspection.revoke.v1',
+    { remark: input.remark },
+    revisionOf(row, '质检单行'),
+  );
+}
+
 /** 闭环超时点名（IM 推送联动）。 */
 export function scanInspectionOverdue() {
   return postCommand('/inspection/overdue-scans', 'inspection.overdue.scan.v1', {});

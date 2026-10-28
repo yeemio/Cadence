@@ -34,7 +34,13 @@ export class HoursErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof HoursConflictError
+        ? 'hours.conflict'
+        : exception instanceof HoursNotFoundError
+          ? 'hours.not_found'
+          : 'hours.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

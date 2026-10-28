@@ -7,6 +7,7 @@
  * 端点/权限码全部按 packages/application/src 各控制器实态（不猜）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CommandOutcomeView } from '../src/data/commandClient.js';
 
 // ---- window / localStorage stub（apiClient 模块加载即读 window.localStorage） ----
 const storageBacking = new Map<string, string>();
@@ -35,6 +36,7 @@ const dispatchApi = await import('../src/data/dispatchApi.js');
 const reportingApi = await import('../src/data/reportingApi.js');
 const inspectionApi = await import('../src/data/inspectionApi.js');
 const inventoryApi = await import('../src/data/inventoryApi.js');
+const { businessIdsOfOutcome } = await import('../src/data/commandClient.js');
 const hoursApi = await import('../src/data/hoursApi.js');
 const costingApi = await import('../src/data/costingApi.js');
 const baselineApi = await import('../src/data/baselineApi.js');
@@ -42,6 +44,7 @@ const orgApi = await import('../src/data/orgApi.js');
 const masterdataApi = await import('../src/data/masterdataApi.js');
 const auditApi = await import('../src/data/auditApi.js');
 const standardReportsApi = await import('../src/data/standardReportsApi.js');
+const aiQueryApi = await import('../src/data/aiQueryApi.js');
 const { menuRoutes } = await import('../src/menu.js');
 const { MOBILE_PAGE_BY_CODE } = await import('../src/pages/assembly.js');
 const { mobileRoutes } = await import('../src/mobile.js');
@@ -324,6 +327,47 @@ describe('inspection 模块装配（#63-66）', () => {
     const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
     expect((body['command'] as { kind: string }).kind).toBe('inspection.judge.v1');
   });
+
+  // W7 UX-QC-03：特采确认走既有命令通道（inspection.controllers.ts 实态）。
+  it('特采确认：POST :id/concession，kind=inspection.concession.v1（quantity 载荷 + 乐观锁）', async () => {
+    respond({ status: 'committed' });
+    await inspectionApi.confirmConcession('insp-1', { objectVersion: 3 }, { quantity: 2 });
+    expect(calls[0]?.url).toBe('/inspection/orders/insp-1/concession');
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
+    expect(body['expectedRevision']).toBe(3);
+    const command = body['command'] as { kind: string; payload: Record<string, unknown> };
+    expect(command.kind).toBe('inspection.concession.v1');
+    expect(command.payload['quantity']).toBe(2);
+  });
+
+  it('特采视图：GET /inspection/orders/:id/concession（直返对象）', async () => {
+    respond({ inspectionId: 'insp-1', failedQty: 5, concessionQuantity: 0, remainingConcessionQty: 5 });
+    const view = await inspectionApi.getConcessionView('insp-1');
+    expect(calls[0]?.url).toBe('/inspection/orders/insp-1/concession');
+    expect(view['remainingConcessionQty']).toBe(5);
+  });
+
+  // M2 R1 岗位入口补齐：判定撤销走既有命令通道（inspection.controllers.ts 实态）。
+  it('判定撤销：POST :id/revocation，kind=inspection.revoke.v1（remark 载荷 + 乐观锁）', async () => {
+    respond({ status: 'committed' });
+    await inspectionApi.revokeInspection('insp-1', { objectVersion: 4 }, { remark: '判定录入错误' });
+    expect(calls[0]?.url).toBe('/inspection/orders/insp-1/revocation');
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
+    expect(body['expectedRevision']).toBe(4);
+    const command = body['command'] as { kind: string; payload: Record<string, unknown> };
+    expect(command.kind).toBe('inspection.revoke.v1');
+    expect(command.payload['remark']).toBe('判定录入错误');
+  });
+
+  it('判定撤销：remark 留空提交 null（服务端默认留痕口径）', async () => {
+    respond({ status: 'committed' });
+    await inspectionApi.revokeInspection('insp-1', { objectVersion: 4 }, { remark: null });
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
+    expect(body['expectedRevision']).toBe(4);
+    const command = body['command'] as { kind: string; payload: Record<string, unknown> };
+    expect(command.kind).toBe('inspection.revoke.v1');
+    expect(command.payload['remark']).toBeNull();
+  });
 });
 
 // ---- inventory ----
@@ -347,6 +391,26 @@ describe('inventory 模块装配（#14/71-72/77-83）', () => {
     expect(calls[0]?.url).toBe('/inventory/stock/receipts');
     const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
     expect((body['command'] as { kind: string }).kind).toBe('stock.receive.v1');
+  });
+
+  // W7 UX-WH-02：committed 回执携带聚合视图 → 业务单号回显抽取。
+  it('命令回执单号抽取：movement 单条 / movements 两腿（调拨）', async () => {
+    respond({ status: 'committed', movement: { id: 'mv-01a17b3f-a2a8-79df-9f43-0ab7c720735b' } });
+    const outcome = await inventoryApi.receiveStock({
+      kind: 'production',
+      itemId: 'item-1',
+      warehouseId: 'wh-1',
+      quantity: 5,
+    });
+    expect(outcome.committed).toBe(true);
+    expect(businessIdsOfOutcome(outcome)).toEqual(['mv-01a17b3f-a2a8-79df-9f43-0ab7c720735b']);
+    const transferOutcome: CommandOutcomeView = {
+      committed: true,
+      reason: null,
+      status: 'committed',
+      body: { status: 'committed', movements: [{ id: 'mv-out' }, { id: 'mv-in' }] },
+    };
+    expect(businessIdsOfOutcome(transferOutcome)).toEqual(['mv-out', 'mv-in']);
   });
 });
 
@@ -618,5 +682,62 @@ describe('标准报表装配（0920 #89/#91/#92/#96）', () => {
     });
     await standardReportsApi.queryStandardReport({ metricId: 'production-receipt-daily' });
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ metricId: 'production-receipt-daily' });
+  });
+});
+
+// ---- AI 问数（CONTRACT v1 · WP-C） ----
+
+describe('ai-query 模块装配（AI 问数页）', () => {
+  it('页面：AI 问数页挂接且路由存在（菜单码 ai-query）', () => {
+    expect(typeof PAGE_BY_CODE['ai-query']).toBe('function');
+    expect(menuRoutes.some((route) => route.code === 'ai-query')).toBe(true);
+  });
+
+  it('能力目录：GET /ai-query/capabilities（envelope=items）', async () => {
+    respond({ items: [{ capabilityId: 'workorder-progress', version: '1', status: 'ready' }] });
+    const items = await aiQueryApi.listCapabilities();
+    expect(calls[0]?.url).toBe('/ai-query/capabilities');
+    expect(items).toHaveLength(1);
+    expect(items[0]?.capabilityId).toBe('workorder-progress');
+  });
+
+  it('问数：POST /ai-query/ask 直连体（无命令信封），恒 200 五态 kind 透传', async () => {
+    respond({ kind: 'clarify', sessionId: 'sess-1', prompt: '请选择时间范围', options: [{ id: 'today', label: '今日', description: '' }] });
+    const clarify = await aiQueryApi.ask({ question: '最近的返工情况' });
+    expect(calls[0]?.url).toBe('/ai-query/ask');
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ question: '最近的返工情况' });
+    expect(clarify.kind).toBe('clarify');
+
+    respond({ kind: 'denied', sessionId: 'sess-1', reason: 'no_permission', missingPermissions: ['listing:read'], hint: '' });
+    const denied = await aiQueryApi.ask({ sessionId: 'sess-1', question: 'WO-1 缺料吗', selectedOptionId: 'opt-2' });
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+      sessionId: 'sess-1',
+      question: 'WO-1 缺料吗',
+      selectedOptionId: 'opt-2',
+    });
+    expect(denied.kind).toBe('denied');
+  });
+
+  it('会话：GET /ai-query/sessions（envelope=items）与 /sessions/:id（turns 线程）', async () => {
+    respond({ items: [{ sessionId: 'sess-1', lastActivityAt: '2026-10-28T02:00:00.000Z', turnCount: 2 }] });
+    const sessions = await aiQueryApi.listSessions();
+    expect(calls[0]?.url).toBe('/ai-query/sessions');
+    expect(sessions[0]?.turnCount).toBe(2);
+
+    respond({ items: [{ sessionId: 'sess-9', turnCount: 1 }] });
+    await aiQueryApi.listSessions(10);
+    expect(calls[1]?.url).toBe('/ai-query/sessions?limit=10');
+
+    respond({
+      sessionId: 'sess-1',
+      createdAt: '2026-10-28T01:00:00.000Z',
+      lastActivityAt: '2026-10-28T02:00:00.000Z',
+      turns: [{ question: 'WO-1 缺料吗', kind: 'answer', response: { kind: 'answer', sessionId: 'sess-1' } }],
+    });
+    const detail = await aiQueryApi.getSession('sess-1');
+    expect(calls[2]?.url).toBe('/ai-query/sessions/sess-1');
+    expect(detail.sessionId).toBe('sess-1');
+    expect(detail.turns[0]?.kind).toBe('answer');
   });
 });

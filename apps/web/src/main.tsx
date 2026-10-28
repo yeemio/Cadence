@@ -8,6 +8,9 @@
  *
  * S2 批次：页面装配表（PAGE_BY_CODE/MOBILE_PAGE_BY_CODE）抽提至
  * pages/assembly.ts（装配测试直接对注册表断言，本文件只消费）。
+ *
+ * i18n 波 1（ADR-0012）：主壳入口挂 common+menu 两 namespace（页面模块
+ * namespace 波 2 再挂）；init 完成后再渲染（内联资源就绪，无 key 闪烁）。
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -31,7 +34,20 @@ import { ModulePagePlaceholder } from './pages/ModulePagePlaceholder';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ShellLayout } from './shell/ShellLayout';
 import { MobileLayout } from './shell/MobileLayout';
+import { initI18n } from './i18n';
 import './index.css';
+
+// i18n：主壳装 common+menu+波 2 五个高频模块 namespace（页面 namespace 波 2 挂载，
+// proposal §8；登录入口仍只装 login+common——见 login/main.tsx）。
+await initI18n([
+  'common',
+  'menu',
+  'workorder',
+  'dispatch',
+  'inspection',
+  'inventory',
+  'reporting',
+]);
 
 const authProvider = createAuthProvider();
 

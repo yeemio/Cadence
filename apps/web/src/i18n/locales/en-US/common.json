@@ -1,0 +1,64 @@
+{
+  "brand": {
+    "subtitle": "Discrete Manufacturing Operations",
+    "subtitleFull": "Discrete Manufacturing Operations · Demo",
+    "mobile": "Cadence Shop Floor"
+  },
+  "action": {
+    "signOut": "Sign out",
+    "signOutAria": "Sign out",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
+  },
+  "state": {
+    "sessionChecking": "Checking session…"
+  },
+  "user": {
+    "fallbackName": "Signed-in user",
+    "fallbackTenant": "Unnamed tenant"
+  },
+  "notification": {
+    "center": "Notifications",
+    "unreadAria": "Notifications ({{n}} unread)"
+  },
+  "nav": {
+    "mobilePrimary": "Primary mobile navigation"
+  },
+  "error": {
+    "requestFailed": "Request failed{{status}}: {{message}}",
+    "forbidden403": "Server rejected (403): the current session identity is not authorized — an administrator must grant it a policy on the server. {{message}}",
+    "codes": {
+      "auth.invalid_input": "Invalid sign-in request payload",
+      "auth.invalid_credentials": "Incorrect username or password",
+      "auth.rate_limited": "Too many attempts, please retry later",
+      "dispatch.invalid_input": "Invalid dispatch order payload",
+      "dispatch.not_found": "Dispatch order not found",
+      "dispatch.conflict": "Dispatch order revision conflict, refresh and retry",
+      "dispatch.state_conflict": "Dispatch order state does not allow this operation",
+      "workorder.not_found": "Work order not found",
+      "workorder.state_conflict": "Work order state does not allow this operation",
+      "report.not_found": "Work report not found",
+      "report.state_conflict": "Work report state does not allow this operation",
+      "inspection.not_found": "Inspection sheet not found",
+      "inspection.state_conflict": "Inspection state does not allow this operation",
+      "inventory.not_found": "Inventory record not found",
+      "inventory.state_conflict": "Inventory state does not allow this operation"
+    }
+  },
+  "language": {
+    "label": "Language",
+    "zh-CN": "中文",
+    "en-US": "English"
+  },
+  "query": {
+    "loading": "Loading…",
+    "empty-default": "No data",
+    "request-failed": "Request failed: {{message}}"
+  },
+  "outcome": {
+    "committed": "Operation applied.",
+    "indeterminate": "Outcome unconfirmed",
+    "error": "Operation failed",
+    "rejected": "Operation not applied"
+  }
+}

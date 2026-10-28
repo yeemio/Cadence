@@ -31,7 +31,13 @@ export class AuthErrorFilter implements ExceptionFilter {
           ? HttpStatus.UNAUTHORIZED
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof AuthRateLimitError
+        ? 'auth.rate_limited'
+        : exception instanceof AuthCredentialsError
+          ? 'auth.invalid_credentials'
+          : 'auth.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

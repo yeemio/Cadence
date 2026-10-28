@@ -102,6 +102,12 @@ describe('应用注册表（ADR-0004 feature flag 装配）', () => {
     ]);
   });
 
+  it('AI 问数首版：ai-query 已注册但不进默认清单（激活价语义，CONTRACT v1 opt-in）', () => {
+    expect(Object.hasOwn(MODULE_DEFINITIONS, 'ai-query')).toBe(true);
+    expect(parseModulesEnabled(undefined)).not.toContain('ai-query');
+    expect(parseModulesEnabled('core,ai-query')).toEqual(['core', 'ai-query']);
+  });
+
   it('S1 backfill：操作日志写拦截器随 audit 模块条件装配（未启用零开销，同 HoursIngestLinkInterceptor 先例）', async () => {
     const { APP_INTERCEPTOR } = await import('@nestjs/core');
     const { AuditWriteInterceptor } = await import('@smes/application');

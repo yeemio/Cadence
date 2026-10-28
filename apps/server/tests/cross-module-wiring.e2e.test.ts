@@ -923,11 +923,17 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
       expect(forLine[0]!.status).toBe('ok');
       expect(forLine[0]!.hasUpdate).toBe(false);
 
-      // ---- 通知读取（sinceVersion 游标）+ 400 映射（未知许可词 fail-fast）----
-      const notices = (await getJson(baseUrl, '/drawing/notices/DWG-E2E-1?sinceVersion=1')) as unknown as {
+      // ---- 通知读取（sinceVersion 游标 + clearance 过滤）+ 400 映射（未知许可词 fail-fast）----
+      const notices = (await getJson(baseUrl, '/drawing/notices/DWG-E2E-1?sinceVersion=1&clearance=restricted')) as unknown as {
         toVersion: number;
       }[];
       expect(notices.map((row) => row.toVersion)).toEqual([2]);
+      // v2=restricted：public 许可读不到该通知（服务端过滤——受限 changeNote 不泄漏）
+      const noticesForLine = (await getJson(baseUrl, '/drawing/notices/DWG-E2E-1?sinceVersion=1&clearance=public')) as unknown as {
+        toVersion: number;
+        changeNote: string;
+      }[];
+      expect(noticesForLine).toEqual([]);
       const badClearance = await fetch(`${baseUrl}/drawing/revisions/DWG-E2E-1?clearance=secret`, { headers: HEADERS });
       expect(badClearance.status).toBe(400);
     },

@@ -658,6 +658,23 @@ describe('workorder.kit.refresh（齐套编排）', () => {
     expect((await h.kitChecks.latestPerTenant(t1)).length).toBe(1); // 旧快照仍保留（不可变）
   });
 
+  it('空清单刷新不判齐套（Round-2 裁决：与 listing 缺口核查同构，防 vacuous true；不催办）', async () => {
+    const h = newHarness();
+    const order = await createOrder(h.service, { projectName: '空清单' });
+    const result = mustCommit(
+      await h.service.execute(envelope('workorder.kit.refresh.v1', {}, { expectedRevision: 1 }), order.id),
+    );
+    const snapshot = result.kitCheck;
+    expect(snapshot?.complete).toBe(false); // 空清单整单不 vacuous 判齐
+    expect(snapshot?.gapLines).toEqual([]);
+    expect(snapshot?.kinds.map((kind) => [kind.kind, kind.lineCount, kind.complete])).toEqual([
+      ['part', 0, false],
+      ['standard', 0, false],
+      ['electrical', 0, false],
+    ]);
+    expect(result.todosCreated.length).toBe(0); // 空清单不是缺口，不催办
+  });
+
   it('register 注入面（S3-e 接线 #25/#26 锚点）：listingPort/inventoryPort 经模块装配到达服务，真实缺口数据驱动快照翻转', async () => {
     // 组合根（app-registry + cross-module-wiring）喂的就是 register 的这两个
     // 选项——零框架直连解析 providers 工厂，证明选项真正传入服务并被齐套

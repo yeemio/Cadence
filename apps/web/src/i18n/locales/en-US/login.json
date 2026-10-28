@@ -1,0 +1,19 @@
+{
+  "form": {
+    "title": "Sign in",
+    "description": "Use an account to enter the app",
+    "username": "Username",
+    "password": "Password"
+  },
+  "action": {
+    "signIn": "Sign in",
+    "signingIn": "Signing in…"
+  },
+  "error": {
+    "fallback": "Sign-in failed. Please try again later."
+  },
+  "demo": {
+    "notice": "Demo accounts: {{accounts}}, default password {{password}} (seeded demo environment, not production credentials).",
+    "accounts": "admin (Administrator) / demo-admin (Demo admin) / approver (Approver) / viewer (Read-only visitor); the factory seed also provides six role accounts: plan01 (Planning) / purch01 (Purchasing) / prod01 (Production) / qc01 (Quality) / wh01 (Warehouse) / appr01 (Approval)"
+  }
+}

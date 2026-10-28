@@ -1,0 +1,211 @@
+{
+  "orders": {
+    "title": "Inspection orders",
+    "description": "Four source kinds (final-operation reporting / outsourcing return auto-create + manual); release feeds stock-in.",
+    "columns": {
+      "id": "id",
+      "kind": "Kind",
+      "state": "State",
+      "source": "Source",
+      "item": "Item",
+      "drawing-no": "Drawing no.",
+      "quantity": "Submitted quantity",
+      "version": "Version"
+    },
+    "filter": {
+      "kind-label": "Kind filter",
+      "all-kinds": "All kinds",
+      "state-label": "State filter",
+      "all-states": "All states"
+    },
+    "empty": "No inspection orders under the current filter"
+  },
+  "summary": {
+    "title": "Inspection summary",
+    "description": "Pending / pass rate / not closed (inspection.summary, same source as the workbench KPI).",
+    "scan-overdue": "Flag overdue-for-close (IM push)",
+    "fields": {
+      "pending": "Pending",
+      "passed": "Passed",
+      "failed": "Failed",
+      "closed": "Closed",
+      "pass-rate": "Pass rate",
+      "nonconform-open": "Open nonconformity lines",
+      "overdue": "Overdue for close, unflagged"
+    }
+  },
+  "detail": {
+    "title": "Inspection order details and judgment",
+    "description": "Judgment (passed/failed quantities); failed results auto-create disposal orders; recheck can re-judge.",
+    "fields": {
+      "id": "Inspection order no.",
+      "kind": "Kind",
+      "state": "State",
+      "source": "Source",
+      "source-ref": "Source object",
+      "item": "Item",
+      "drawing-no": "Drawing no.",
+      "quantity": "Submitted quantity",
+      "passed-qty": "Passed qty",
+      "failed-qty": "Failed qty",
+      "judge-remark": "Judgment remark",
+      "judged-by": "Judged by",
+      "judged-at": "Judged at",
+      "close-due-at": "Close due at",
+      "created-at": "Created at"
+    },
+    "judge": {
+      "passed-qty": "Passed qty",
+      "failed-qty": "Failed qty",
+      "remark": "Remark (optional)",
+      "judge": "Judge",
+      "recheck": "Recheck"
+    },
+    "concession": {
+      "quantity-label": "Concession qty (accepted on deviation)",
+      "submit": "Confirm concession",
+      "kind-not-allowed": "Current inspection order is {{kind}}; concession not applicable (concession applies only to the failed quantity of non-standard purchase inspection orders)",
+      "loading": "Loading concession quota…",
+      "unavailable": "Concession quota unavailable",
+      "summary": "Failed {{failed}} · Conceded {{granted}} · Remaining concessionable {{remaining}}"
+    },
+    "revoke": {
+      "remark-label": "Revocation reason (optional, for the record)",
+      "no-permission": "The current account lacks permission to revoke judgments; the operation is disabled. Contact an administrator to grant the permission, then refresh the page to use it.",
+      "pending-state": "This inspection order has not been judged yet; there is no judgment to revoke.",
+      "closed-state": "This inspection order is closed (terminal state); the judgment cannot be revoked.",
+      "effect": "After revocation: the judgment returns to pending; passed/failed quantities and judge fields are cleared; nonconformity lines are voided (disposed ones kept); the conceded quantity is reset to zero.",
+      "not-supported": "The current state does not support judgment revocation.",
+      "confirm-text": "Revoke this order's judgment? The order returns to pending and the previous judgment fields are cleared; the nonconformity lines of the failed judgment are voided with it (disposed ones unaffected); the conceded quantity is reset to zero and the linked release is withdrawn.",
+      "confirm": "Confirm revocation",
+      "cancel": "Cancel",
+      "submit": "Revoke judgment",
+      "retry-hint": "Refresh the list to verify this order's current state and version before retrying; do not resubmit blindly."
+    },
+    "nonconforms": {
+      "heading": "Nonconformity disposal lines",
+      "columns": {
+        "id": "Disposal order no.",
+        "state": "State",
+        "quantity": "Quantity",
+        "disposal": "Disposal",
+        "reason": "Reason",
+        "disposed-at": "Disposed at"
+      }
+    },
+    "milestones": {
+      "heading": "Transition log",
+      "entry": "{{from}} → {{to}} ({{event}})",
+      "operator": "Operator"
+    }
+  },
+  "create": {
+    "title": "Create inspection order manually",
+    "description": "Source type and source object must be paired (report/dispatch/receipt; default = manual creation). Work-order linkage is established indirectly via the source object (work report / outsourcing / receipt); direct attachment to a work order is not yet available.",
+    "kind-label": "Inspection kind",
+    "quantity-label": "Submitted quantity",
+    "source-type-label": "Source type (optional)",
+    "source-option": {
+      "report": "Final work report (report)",
+      "dispatch": "Outsourcing return (dispatch)",
+      "receipt": "Purchase receipt (receipt)"
+    },
+    "source-ref-label": "Source object id (paired with source type)",
+    "item-label": "Item id (optional)",
+    "drawing-label": "Drawing no. (optional)",
+    "submit": "Create inspection order"
+  },
+  "kind": {
+    "self-outsourced": "In-house / outsourced",
+    "nonstandard-purchase": "Non-standard purchase",
+    "standard-purchase": "Standard parts purchase",
+    "equipment-purchase": "Equipment purchase"
+  },
+  "state": {
+    "pending": "Pending",
+    "passed": "Passed",
+    "failed": "Failed",
+    "closed": "Closed"
+  },
+  "source": {
+    "report": "Final work report",
+    "dispatch": "Outsourcing return",
+    "receipt": "Purchase receipt",
+    "manual": "Manual creation"
+  },
+  "event": {
+    "pass": "Pass judgment",
+    "fail": "Fail judgment",
+    "recheck-pass": "Recheck passed",
+    "close": "Close",
+    "revoke": "Revoke inspection"
+  },
+  "nonconform-state": {
+    "open": "Pending disposal",
+    "disposed": "Disposed",
+    "closed": "Closed",
+    "voided": "Voided"
+  },
+  "disposal": {
+    "rework": "Rework",
+    "concession": "Concession",
+    "scrap": "Scrap"
+  },
+  "nonconform-event": {
+    "dispose": "Dispose",
+    "close": "Close",
+    "void": "Void"
+  },
+  "nonconformities": {
+    "title": "Nonconformity disposal",
+    "description": "Failed judgments auto-create disposal orders (open→disposed→closed).",
+    "columns": {
+      "id": "id",
+      "inspection": "Inspection order",
+      "state": "State",
+      "quantity": "Quantity",
+      "version": "Version",
+      "created-at": "Created at"
+    },
+    "filter": {
+      "state-label": "State filter",
+      "all-states": "All states",
+      "inspection-label": "Inspection order filter (optional)"
+    },
+    "empty": "No nonconformity disposal orders under the current filter",
+    "disposal-card": {
+      "title": "Disposal order details and actions",
+      "description": "Dispose (rework / concession / scrap + required reason) → close.",
+      "disposal-label": "Disposal",
+      "reason-label": "Nonconformity reason (required)",
+      "remark-label": "Remark (optional)",
+      "submit-dispose": "Dispose",
+      "submit-close": "Close"
+    },
+    "detail": {
+      "fields": {
+        "id": "Disposal order no.",
+        "inspection-id": "Inspection order no.",
+        "state": "State",
+        "item": "Item",
+        "quantity": "Failed qty",
+        "reason": "Nonconformity reason",
+        "disposal": "Disposal",
+        "dispose-remark": "Disposal remark",
+        "disposed-by": "Disposed by",
+        "disposed-at": "Disposed at",
+        "close-remark": "Close remark",
+        "closed-by": "Closed by",
+        "closed-at": "Closed at",
+        "created-at": "Created at",
+        "updated-at": "Updated at",
+        "inspection-state": "Linked inspection order state"
+      },
+      "milestones": {
+        "heading": "Transition log",
+        "entry": "{{from}} → {{to}} ({{event}})",
+        "operator": "Operator"
+      }
+    }
+  }
+}

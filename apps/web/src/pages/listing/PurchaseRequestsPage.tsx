@@ -1,6 +1,8 @@
 /**
  * 采购申请页（S2 批次）：三类申请（非标件/标准配件/设备）列表 + 手工发起表单。
  * 覆盖矩阵 #54-56。
+ * UX-PUR-R2-06：状态/类别读面与筛选中文化（词源 listing-config
+ * PURCHASE_REQUEST_STATES：草稿/已批准/已转单），可见文案不露命令名/状态码。
  */
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,12 +20,27 @@ const REQUEST_KINDS = [
   { value: 'equipment', label: '设备' },
 ] as const;
 
+/** 状态 id → 中文（词源 listing-config PURCHASE_REQUEST_STATES，不自造词）。 */
+const REQUEST_STATE_LABELS: Readonly<Record<string, string>> = {
+  draft: '草稿',
+  approved: '已批准',
+  converted: '已转单',
+};
+
+function requestStateLabel(state: string): string {
+  return REQUEST_STATE_LABELS[state] ?? state;
+}
+
+function requestKindLabel(kind: string): string {
+  return REQUEST_KINDS.find((entry) => entry.value === kind)?.label ?? kind;
+}
+
 const LIST_COLUMNS = [
   { key: 'id', label: 'id', mono: true },
-  { key: 'kind', label: '类别', mono: true },
+  { key: 'kind', label: '类别' },
   { key: 'itemId', label: '物料', mono: true },
   { key: 'quantity', label: '数量' },
-  { key: 'state', label: '状态', mono: true },
+  { key: 'state', label: '状态' },
   { key: 'workOrderId', label: '工作令', mono: true },
   { key: 'createdAt', label: '创建时刻' },
 ];
@@ -79,7 +96,7 @@ export function PurchaseRequestsPage() {
       <Card>
         <CardHeader>
           <CardTitle>采购申请列表</CardTitle>
-          <CardDescription>缺口一键发起与手工发起共用此台账（state: draft/approved/converted）。</CardDescription>
+          <CardDescription>缺口一键发起与手工发起共用此台账（草稿 → 已批准 → 已转单）。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:max-w-xl">
@@ -87,9 +104,9 @@ export function PurchaseRequestsPage() {
               <Label htmlFor="pr-state-filter">状态过滤</Label>
               <Select id="pr-state-filter" value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
                 <option value="">全部状态</option>
-                <option value="draft">draft</option>
-                <option value="approved">approved</option>
-                <option value="converted">converted</option>
+                {Object.entries(REQUEST_STATE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </Select>
             </div>
             <div className="flex flex-col gap-2">
@@ -103,7 +120,14 @@ export function PurchaseRequestsPage() {
             isEmpty={requestsQuery.data !== undefined && requestsQuery.data.length === 0}
             empty="当前过滤条件下无采购申请"
           >
-            <ModuleTable columns={LIST_COLUMNS} rows={requestsQuery.data ?? []} />
+            <ModuleTable
+              columns={LIST_COLUMNS}
+              rows={(requestsQuery.data ?? []).map((row) => ({
+                ...row,
+                kind: requestKindLabel(String(row['kind'])),
+                state: requestStateLabel(String(row['state'])),
+              }))}
+            />
           </QueryState>
         </CardContent>
       </Card>
@@ -111,7 +135,7 @@ export function PurchaseRequestsPage() {
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>手工发起采购申请</CardTitle>
-          <CardDescription>purchase.request.create.v1（source=manual；缺口一键发起走核查页联动）。</CardDescription>
+          <CardDescription>按物料与数量登记采购需求；来源为手工发起，无需缺口核查锚点（缺口一键发起由核查结果联动产生）。</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>

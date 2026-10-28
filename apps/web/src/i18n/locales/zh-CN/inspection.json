@@ -1,0 +1,211 @@
+{
+  "orders": {
+    "title": "质检队列",
+    "description": "四类来源（reporting 末道/dispatch 外协回厂自动建单 + 手工）；放行→入库咬合。",
+    "columns": {
+      "id": "id",
+      "kind": "类别",
+      "state": "状态",
+      "source": "来源",
+      "item": "物料",
+      "drawing-no": "图号",
+      "quantity": "送检数量",
+      "version": "版本"
+    },
+    "filter": {
+      "kind-label": "类别过滤",
+      "all-kinds": "全部类别",
+      "state-label": "状态过滤",
+      "all-states": "全部状态"
+    },
+    "empty": "当前过滤条件下无质检单"
+  },
+  "summary": {
+    "title": "质检汇总",
+    "description": "待检/合格率/未闭环（inspection.summary，工作台 KPI 同源）。",
+    "scan-overdue": "闭环超时点名（IM 推送）",
+    "fields": {
+      "pending": "待检",
+      "passed": "合格",
+      "failed": "不合格",
+      "closed": "已闭环",
+      "pass-rate": "合格率",
+      "nonconform-open": "未闭环不合格明细",
+      "overdue": "闭环超时未点名"
+    }
+  },
+  "detail": {
+    "title": "质检单详情与判定",
+    "description": "判定（合格/不合格数量）；不合格自动生成处置单；复检可重判。",
+    "fields": {
+      "id": "质检单号",
+      "kind": "类别",
+      "state": "状态",
+      "source": "来源",
+      "source-ref": "来源对象",
+      "item": "物料",
+      "drawing-no": "图号",
+      "quantity": "送检数量",
+      "passed-qty": "合格数量",
+      "failed-qty": "不合格数量",
+      "judge-remark": "判定备注",
+      "judged-by": "判定人",
+      "judged-at": "判定时刻",
+      "close-due-at": "闭环时限",
+      "created-at": "创建时刻"
+    },
+    "judge": {
+      "passed-qty": "合格数量",
+      "failed-qty": "不合格数量",
+      "remark": "备注（可选）",
+      "judge": "判定",
+      "recheck": "复检"
+    },
+    "concession": {
+      "quantity-label": "特采数量（让步接收）",
+      "submit": "特采确认",
+      "kind-not-allowed": "当前质检单为{{kind}}，特采不适用（特采仅适用于非标件采购质检单的不合格量）",
+      "loading": "特采额度读取中…",
+      "unavailable": "特采额度不可用",
+      "summary": "不合格 {{failed}} · 已特采 {{granted}} · 剩余可特采 {{remaining}}"
+    },
+    "revoke": {
+      "remark-label": "撤销原因（可选留痕）",
+      "no-permission": "当前账号没有撤销判定的权限，操作已停用。请联系管理员开通相应权限，开通后刷新页面即可使用。",
+      "pending-state": "该质检单尚未质检，没有可撤销的判定。",
+      "closed-state": "该质检单已闭环（终态），判定不可撤销。",
+      "effect": "撤销后：判定回退为待检，合格/不合格与判定人等字段清空；不合格明细作废（已结案的保留）；已特采累计清零。",
+      "not-supported": "当前状态不支持撤销判定。",
+      "confirm-text": "确认撤销本单判定吗？撤销后本单回退为待检，原判定字段清空；不合格单的不合格明细随判定作废（已结案的不受影响）；已特采累计清零，关联放行同时收回。",
+      "confirm": "确认撤销",
+      "cancel": "取消",
+      "submit": "判定撤销",
+      "retry-hint": "请刷新列表核对本单当前状态与版本后再试；请勿盲目重复提交。"
+    },
+    "nonconforms": {
+      "heading": "不合格处置明细",
+      "columns": {
+        "id": "处置单号",
+        "state": "状态",
+        "quantity": "数量",
+        "disposal": "处置方式",
+        "reason": "原因",
+        "disposed-at": "处置时刻"
+      }
+    },
+    "milestones": {
+      "heading": "流转记录",
+      "entry": "{{from}} → {{to}}（{{event}}）",
+      "operator": "操作人"
+    }
+  },
+  "create": {
+    "title": "手工建质检单",
+    "description": "来源类型与来源对象须成对（report/dispatch/receipt；缺省=手工建单）。与工作令的关联经来源对象间接建立（报工/外协/收货单）；直接挂工作令暂未开放。",
+    "kind-label": "质检类别",
+    "quantity-label": "送检数量",
+    "source-type-label": "来源类型（可选）",
+    "source-option": {
+      "report": "末道报工（report）",
+      "dispatch": "外协回厂（dispatch）",
+      "receipt": "采购收货（receipt）"
+    },
+    "source-ref-label": "来源对象 id（与来源类型成对）",
+    "item-label": "物料 id（可选）",
+    "drawing-label": "图号（可选）",
+    "submit": "建质检单"
+  },
+  "kind": {
+    "self-outsourced": "自制外协",
+    "nonstandard-purchase": "非标件采购",
+    "standard-purchase": "标准配件采购",
+    "equipment-purchase": "设备采购"
+  },
+  "state": {
+    "pending": "待检",
+    "passed": "合格",
+    "failed": "不合格",
+    "closed": "已闭环"
+  },
+  "source": {
+    "report": "末道报工",
+    "dispatch": "外协回厂",
+    "receipt": "采购收货",
+    "manual": "手工建单"
+  },
+  "event": {
+    "pass": "判定合格",
+    "fail": "判定不合格",
+    "recheck-pass": "复检合格",
+    "close": "闭环",
+    "revoke": "撤销质检"
+  },
+  "nonconform-state": {
+    "open": "待处置",
+    "disposed": "已处置",
+    "closed": "已闭环",
+    "voided": "已作废"
+  },
+  "disposal": {
+    "rework": "返工",
+    "concession": "让步",
+    "scrap": "报废"
+  },
+  "nonconform-event": {
+    "dispose": "执行处置",
+    "close": "闭环",
+    "void": "作废"
+  },
+  "nonconformities": {
+    "title": "不合格处置",
+    "description": "判定不合格自动生成处置单（open→disposed→closed）。",
+    "columns": {
+      "id": "id",
+      "inspection": "质检单",
+      "state": "状态",
+      "quantity": "数量",
+      "version": "版本",
+      "created-at": "创建时刻"
+    },
+    "filter": {
+      "state-label": "状态过滤",
+      "all-states": "全部状态",
+      "inspection-label": "质检单过滤（可选）"
+    },
+    "empty": "当前过滤条件下无不合格处置单",
+    "disposal-card": {
+      "title": "处置单详情与操作",
+      "description": "处置（返工/让步/报废 + 原因必填留痕）→ 闭环。",
+      "disposal-label": "处置方式",
+      "reason-label": "不合格原因（必填）",
+      "remark-label": "备注（可选）",
+      "submit-dispose": "执行处置",
+      "submit-close": "闭环"
+    },
+    "detail": {
+      "fields": {
+        "id": "处置单号",
+        "inspection-id": "质检单号",
+        "state": "状态",
+        "item": "物料",
+        "quantity": "不合格数量",
+        "reason": "不合格原因",
+        "disposal": "处置方式",
+        "dispose-remark": "处置备注",
+        "disposed-by": "处置人",
+        "disposed-at": "处置时刻",
+        "close-remark": "闭环备注",
+        "closed-by": "闭环人",
+        "closed-at": "闭环时刻",
+        "created-at": "创建时刻",
+        "updated-at": "更新时刻",
+        "inspection-state": "关联质检单状态"
+      },
+      "milestones": {
+        "heading": "流转记录",
+        "entry": "{{from}} → {{to}}（{{event}}）",
+        "operator": "操作人"
+      }
+    }
+  }
+}

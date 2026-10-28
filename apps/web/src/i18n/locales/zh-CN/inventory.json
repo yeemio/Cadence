@@ -1,0 +1,149 @@
+{
+  "levels": {
+    "title": "实时库存",
+    "description": "可用量口径（availableQty = 在手 − 预占，机器计算非存储列）；移动端库存查询逻辑面同径。",
+    "filter": {
+      "warehouse-label": "仓库过滤（可选）",
+      "item-label": "物料过滤（可选）",
+      "apply": "应用过滤"
+    },
+    "empty": "当前过滤条件下无库存行",
+    "columns": {
+      "item": "物料",
+      "warehouse": "仓库",
+      "on-hand": "在手",
+      "reserved": "预占",
+      "available": "可用"
+    }
+  },
+  "balances": {
+    "title": "库位分布",
+    "empty": "无库位余额行",
+    "columns": {
+      "item": "物料",
+      "warehouse": "仓库",
+      "location": "库位",
+      "quantity": "数量"
+    }
+  },
+  "movements": {
+    "title": "出入库流水",
+    "description": "流水号呈短码，点行内「复制」取完整单号；时刻悬停为原始 ISO。",
+    "empty": "无流水记录",
+    "columns": {
+      "id": "流水号",
+      "kind": "类型",
+      "item": "物料",
+      "quantity": "数量",
+      "occurred-at": "时刻"
+    },
+    "copy": "复制",
+    "copied": "已复制",
+    "copy-aria": "复制流水号完整值 {{id}}"
+  },
+  "movement-kind": {
+    "purchase-in": "采购入库",
+    "inspection-in": "质检放行入库",
+    "production-in": "完工入库",
+    "issue-out": "出库",
+    "shipping-out": "发货出库",
+    "transfer-out": "调拨出",
+    "transfer-in": "调拨入",
+    "stocktake-gain": "盘盈",
+    "stocktake-loss": "盘亏"
+  },
+  "operations": {
+    "success": {
+      "committed": "操作已生效。",
+      "movement-ids": "流水号 {{ids}}"
+    },
+    "receive": {
+      "title": "入库",
+      "description": "三源入库：inspection=质检放行（须带质检单）；purchase=采购收货（须带 receiptKey 幂等键）；production=完工入库。",
+      "kind-label": "入库来源",
+      "kind": {
+        "production": "完工入库",
+        "inspection": "质检放行",
+        "purchase": "采购收货"
+      },
+      "item-label": "物料 id",
+      "warehouse-label": "仓库 id",
+      "quantity-label": "数量",
+      "inspection-label": "质检单 id（inspection 必填）",
+      "receipt-key-label": "收货幂等键 receiptKey（purchase 必填）",
+      "wo-label": "工作令（可选）",
+      "remark-label": "备注（可选）",
+      "submit": "执行入库"
+    },
+    "issue": {
+      "title": "出库",
+      "description": "直扣可用量或预占核销（reservationKey）；配件发货经配件申请「发货」联动走同命令。",
+      "item-label": "物料 id",
+      "warehouse-label": "仓库 id",
+      "quantity-label": "数量",
+      "purpose-label": "出库目的",
+      "purpose": {
+        "production": "生产",
+        "parts": "配件",
+        "manual": "手工"
+      },
+      "wo-label": "工作令（可选）",
+      "reservation-label": "预占键（可选=直扣）",
+      "remark-label": "备注（可选）",
+      "submit": "执行出库"
+    },
+    "transfer": {
+      "title": "调拨 / 移库",
+      "description": "跨仓调拨（两仓不同）或仓内移库（同仓两库位不同）。",
+      "item-label": "物料 id",
+      "quantity-label": "数量",
+      "from-warehouse-label": "源仓库",
+      "to-warehouse-label": "目的仓库",
+      "from-location-label": "源库位（可选）",
+      "to-location-label": "目的库位（可选）",
+      "remark-label": "备注（可选）",
+      "submit": "执行调拨"
+    }
+  },
+  "warehouses": {
+    "title": "仓库列表",
+    "description": "点行选中查看仓库详情（含库位，库位 code 升序）。",
+    "empty": "暂无仓库（先在下方建仓）",
+    "columns": {
+      "id": "id",
+      "code": "编码",
+      "name": "名称"
+    }
+  },
+  "warehouse-detail": {
+    "title": "仓库详情（含库位）",
+    "fields": {
+      "code": "仓库编码",
+      "name": "名称",
+      "id": "仓库 id",
+      "default-location": "默认库位",
+      "location-count": "库位数",
+      "created-at": "创建时刻",
+      "updated-at": "更新时刻"
+    },
+    "locations-heading": "库位",
+    "location-columns": {
+      "code": "库位编码",
+      "name": "库位名称",
+      "id": "库位 id",
+      "created-at": "创建时刻"
+    }
+  },
+  "define": {
+    "title": "建仓库",
+    "description": "库位集至少 1 个，第一个为默认库位（单库位起步，多库位扩展留后续）。",
+    "code-label": "仓库编码",
+    "code-placeholder": "WH-01",
+    "name-label": "仓库名称",
+    "name-placeholder": "主料仓",
+    "location-code-label": "库位编码（默认库位）",
+    "location-code-placeholder": "LOC-01",
+    "location-name-label": "库位名称（可选）",
+    "submit": "建仓库"
+  }
+}

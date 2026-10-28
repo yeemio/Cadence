@@ -1,0 +1,145 @@
+{
+  "list": {
+    "title": "Dispatch Orders",
+    "description": "Five-state lifecycle (draft → assigned → executing → done, plus the cancelled terminal state); select a row to operate (assembly/electrical dispatch is hard-blocked by kit completeness).",
+    "kind-filter": "Kind filter",
+    "kind-all": "All kinds",
+    "state-filter": "State filter",
+    "state-all": "All states",
+    "wo-filter": "Work order (optional)",
+    "assignee-filter": "Assignee (optional)",
+    "empty": "No dispatch orders under the current filters"
+  },
+  "column": {
+    "id": "Order No",
+    "kind": "Kind",
+    "state": "State",
+    "work-order": "Work Order",
+    "drawing-number": "Drawing Number",
+    "operation": "Operation",
+    "assignee": "Assignee",
+    "quantity": "Qty",
+    "version": "Version",
+    "select": "Select",
+    "batch-eligibility": "Batch Eligibility",
+    "dispatch-order": "Dispatch Order"
+  },
+  "kind": {
+    "part": "Part",
+    "outsourcing": "Outsourcing",
+    "assembly": "Assembly",
+    "electrical": "Electrical",
+    "aftermarket": "Aftermarket",
+    "oddjob": "Odd Job"
+  },
+  "state": {
+    "draft": "Draft (pending release)",
+    "assigned": "Assigned",
+    "executing": "Executing",
+    "done": "Done",
+    "cancelled": "Cancelled"
+  },
+  "event": {
+    "assign": "Assign",
+    "start": "Start",
+    "complete": "Complete",
+    "cancel": "Cancel"
+  },
+  "stats": {
+    "title": "State Statistics",
+    "description": "Counts follow the current search scope (state dimension excluded); display only, not clickable filters."
+  },
+  "batch": {
+    "title": "List Batch Operations",
+    "description": "Batch assign & release (every selected order must be pending release; the whole batch is assigned to one assignee); batch delete only for pending-release part/outsourcing orders (assembly/electrical/odd job/aftermarket exempt).",
+    "eligibility": {
+      "not-draft": "Not pending release (disabled)",
+      "deletable": "Batch delete allowed",
+      "exempt": "Exempt from batch delete"
+    },
+    "select-aria": "Select dispatch order {{id}}",
+    "assignee-label": "Batch release assignee (selected orders are assigned to)",
+    "assignee-placeholder": "Select or enter an assignee",
+    "assign-button": "Batch Assign & Release",
+    "delete-button": "Batch Delete (Cancel)",
+    "assign-done": "Batch assign & release completed: {{ok}}/{{total}} order(s) succeeded",
+    "assign-rejected": "Batch assign & release rejected as a whole: {{reason}}",
+    "assign-failed": "Batch assign & release failed: {{message}}",
+    "delete-done": "Batch delete completed: {{ok}}/{{total}} order(s) succeeded",
+    "delete-rejected": "Batch delete rejected as a whole: {{reason}}",
+    "delete-failed": "Batch delete failed: {{message}}",
+    "unknown-reason": "Unknown reason"
+  },
+  "detail": {
+    "title": "Dispatch Order Detail & Operations",
+    "description": "Outsourcing completion triggers a linked inspection on return; assembly/electrical completion rolls progress up to the work order.",
+    "field": {
+      "id": "Dispatch Order No",
+      "kind": "Kind",
+      "state": "State",
+      "work-order": "Work Order",
+      "title": "Title",
+      "drawing-number": "Drawing Number",
+      "operation": "Operation",
+      "assignee": "Assignee",
+      "quantity": "Qty",
+      "done-qty": "Done Qty",
+      "remark": "Remark",
+      "created-at": "Created At",
+      "updated-at": "Updated At"
+    },
+    "outsourcing-title": "Outsourcing Lines",
+    "line": {
+      "line-no": "Line No",
+      "operation": "Operation",
+      "supplier": "Supplier",
+      "quantity": "Qty",
+      "state": "Line State"
+    },
+    "milestones-title": "State Transitions",
+    "milestone-line": "{{from}} → {{to}} ({{event}})",
+    "milestone-actor": "Operator {{actor}}",
+    "assignee-label": "Dispatch assignee",
+    "assignee-placeholder": "Select or enter an assignee",
+    "remark-label": "Remark (optional)",
+    "qty-label": "Done Qty (optional; whole order by default)",
+    "assign-button": "Assign",
+    "start-button": "Start",
+    "complete-button": "Complete",
+    "cancel-button": "Cancel (draft/assigned)",
+    "transfer-assignee-label": "Transfer new assignee (at least one of new assignee / new operation)",
+    "transfer-op-label": "Transfer new operation",
+    "transfer-op-placeholder": "Operation code",
+    "transfer-button": "Transfer (executing only)"
+  },
+  "create": {
+    "title": "Create Dispatch Order",
+    "description": "Six kinds: part requires drawing number + operation; outsourcing requires detail lines (supplier + operation + qty); assembly/electrical require an operation; aftermarket/odd job require a title or an operation.",
+    "no-permission": "The current account does not have permission to create dispatch orders; the form is disabled. Please contact an administrator to grant the permission, then refresh the page to use it.",
+    "kind-label": "Dispatch kind",
+    "qty-label": "Qty",
+    "wo-label": "Work order (optional)",
+    "title-label": "Title (aftermarket/odd job)",
+    "drawing-label": "Drawing number (required for part)",
+    "op-label": "Operation (required for most kinds; outsourcing line = operation code)",
+    "assignee-label": "Assignee (optional)",
+    "supplier-label": "Supplier (required for outsourcing)",
+    "remark-label": "Remark (optional, stored with the order)",
+    "remark-placeholder": "Machining requirements, cautions, etc.",
+    "submit": "Create Dispatch Order",
+    "failed": "Create dispatch order failed: {{message}}",
+    "created-id": "New dispatch order no"
+  },
+  "tasks": {
+    "title": "Task Views",
+    "description": "Query tasks by assignee (required) or by work order (two views).",
+    "assignee-label": "Assignee",
+    "assignee-placeholder": "Select or enter an assignee",
+    "by-assignee": "Query by Assignee",
+    "empty-assignee": "No tasks for this assignee",
+    "wo-label": "Work order",
+    "wo-placeholder": "Select or enter a work order",
+    "by-wo": "Query by Work Order",
+    "empty-wo": "No tasks for this work order"
+  }
+}

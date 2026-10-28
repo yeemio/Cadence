@@ -172,7 +172,7 @@ describe('大屏 HTTP/SSE 组合态（零 DB，core+screen）', () => {
     expect(anonymous.headers.get('content-type')).toContain('application/json');
     const anonymousBody = (await anonymous.json()) as { statusCode: number; message: string };
     expect(anonymousBody.statusCode).toBe(401);
-    expect(anonymousBody.message).toContain('大屏通道缺少有效会话');
+    expect(anonymousBody.message).toContain('大屏流通道未开放或未授权');
 
     const badToken = await fetch(`${baseUrl}/screen/digital-operation/stream?token=not-a-session`);
     expect(badToken.status).toBe(401);

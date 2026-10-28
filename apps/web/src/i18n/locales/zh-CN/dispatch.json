@@ -1,0 +1,145 @@
+{
+  "list": {
+    "title": "派工单列表",
+    "description": "全程五态（草稿→已派工→执行中→完工，另有撤销终态）；点行选中后操作（装配/电气派工受齐套硬拦截）。",
+    "kind-filter": "类别过滤",
+    "kind-all": "全部类别",
+    "state-filter": "状态过滤",
+    "state-all": "全部状态",
+    "wo-filter": "工作令（可选）",
+    "assignee-filter": "执行人（可选）",
+    "empty": "当前过滤条件下无派工单"
+  },
+  "column": {
+    "id": "单号",
+    "kind": "类别",
+    "state": "状态",
+    "work-order": "工作令",
+    "drawing-number": "图号",
+    "operation": "工序",
+    "assignee": "执行人",
+    "quantity": "数量",
+    "version": "版本",
+    "select": "选",
+    "batch-eligibility": "批操作资格",
+    "dispatch-order": "派工单"
+  },
+  "kind": {
+    "part": "零件",
+    "outsourcing": "外协",
+    "assembly": "装配",
+    "electrical": "电气",
+    "aftermarket": "售后",
+    "oddjob": "零工"
+  },
+  "state": {
+    "draft": "草稿（待下发）",
+    "assigned": "已派工",
+    "executing": "执行中",
+    "done": "完工",
+    "cancelled": "已撤销"
+  },
+  "event": {
+    "assign": "派工到人",
+    "start": "开工",
+    "complete": "完工",
+    "cancel": "撤销"
+  },
+  "stats": {
+    "title": "状态统计",
+    "description": "计数随当前搜索口径（不含状态维）；仅展示，不可点击筛选。"
+  },
+  "batch": {
+    "title": "列表批操作",
+    "description": "批量派工下发（勾选均须待下发，整批统一派到同一执行人）；批量删除仅待下发且零件/外协（装配/电气/零工/售后豁免）。",
+    "eligibility": {
+      "not-draft": "非待下发（置灰）",
+      "deletable": "可批量删除",
+      "exempt": "豁免批量删除"
+    },
+    "select-aria": "选择派工单 {{id}}",
+    "assignee-label": "批量派发执行人（勾选单统一派到）",
+    "assignee-placeholder": "选择或输入执行人",
+    "assign-button": "批量派工下发",
+    "delete-button": "批量删除（撤销）",
+    "assign-done": "批量派工下发完成：{{ok}}/{{total}} 张成功",
+    "assign-rejected": "批量派工下发整批拒绝：{{reason}}",
+    "assign-failed": "批量派工下发失败：{{message}}",
+    "delete-done": "批量删除完成：{{ok}}/{{total}} 张成功",
+    "delete-rejected": "批量删除整批拒绝：{{reason}}",
+    "delete-failed": "批量删除失败：{{message}}",
+    "unknown-reason": "未知原因"
+  },
+  "detail": {
+    "title": "派工单详情与操作",
+    "description": "外协单完工回厂联动质检触发；装配/电气完工进度上卷工作令。",
+    "field": {
+      "id": "派工单号",
+      "kind": "类别",
+      "state": "状态",
+      "work-order": "工作令",
+      "title": "标题",
+      "drawing-number": "图号",
+      "operation": "工序",
+      "assignee": "执行人",
+      "quantity": "数量",
+      "done-qty": "完工数量",
+      "remark": "备注",
+      "created-at": "创建时刻",
+      "updated-at": "更新时刻"
+    },
+    "outsourcing-title": "外协加工明细",
+    "line": {
+      "line-no": "行号",
+      "operation": "工序",
+      "supplier": "供应商",
+      "quantity": "数量",
+      "state": "行状态"
+    },
+    "milestones-title": "流转记录",
+    "milestone-line": "{{from}} → {{to}}（{{event}}）",
+    "milestone-actor": "操作人 {{actor}}",
+    "assignee-label": "派工执行人",
+    "assignee-placeholder": "选择或输入执行人",
+    "remark-label": "备注（可选）",
+    "qty-label": "完工数量（可选，缺省整单）",
+    "assign-button": "派工到人",
+    "start-button": "开工",
+    "complete-button": "完工",
+    "cancel-button": "撤销（草稿/已派工）",
+    "transfer-assignee-label": "转单新执行人（至少与转单新工序携其一）",
+    "transfer-op-label": "转单新工序",
+    "transfer-op-placeholder": "工序码",
+    "transfer-button": "转单（仅执行中）"
+  },
+  "create": {
+    "title": "创建派工单",
+    "description": "六类判别：零件需图号+工序；外协需明细行（供应商+工序+数量）；装配/电气需工序；售后/零工需标题或工序。",
+    "no-permission": "当前账号没有创建派工单的权限，表单已停用。请联系管理员为账号开通相应权限，开通后刷新页面即可使用。",
+    "kind-label": "派工类别",
+    "qty-label": "数量",
+    "wo-label": "工作令（可选）",
+    "title-label": "标题（售后/零工可用）",
+    "drawing-label": "图号（零件必填）",
+    "op-label": "工序（多类必填；外协行=工序码）",
+    "assignee-label": "执行人（可选）",
+    "supplier-label": "供应商（外协单必填）",
+    "remark-label": "备注（可选，随单保存）",
+    "remark-placeholder": "加工要求、注意事项等",
+    "submit": "创建派工单",
+    "failed": "建单失败：{{message}}",
+    "created-id": "新建派工单号"
+  },
+  "tasks": {
+    "title": "任务视图",
+    "description": "按执行人（必填）或按工作令查询任务（两种视图）。",
+    "assignee-label": "执行人",
+    "assignee-placeholder": "选择或输入执行人",
+    "by-assignee": "按人查询",
+    "empty-assignee": "该执行人当前无任务",
+    "wo-label": "工作令",
+    "wo-placeholder": "选择或输入工作令",
+    "by-wo": "按工作令查询",
+    "empty-wo": "该工作令当前无任务"
+  }
+}

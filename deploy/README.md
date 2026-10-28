@@ -15,6 +15,121 @@ M4 正式线已接通：RLS session 变量接线（org / masterdata / workbench 
 > **不防持有 app_user 凭据者**——其可自行 `SET app.current_tenant` 选任意租户。
 > 凭据保管与网络边界是部署层责任。
 
+---
+
+# 部署操作手册（安装者视角）
+
+本节面向未参与开发的安装/运维人员，事实快照日 **2026-10-27**，与下方历史实现注记独立维护；两者冲突时以 compose/代码实态为准。安装验收是独立环节，本节**如实给步骤与已知的坑**，不预称「一键安装成功」。配套材料：用户手册入口 `docs/user-manual/README.md`、演示交接 `docs/user-manual/demo-handover.md`。
+
+## D1. 版本与依赖要求
+
+| 项 | 要求 | 来源 |
+| --- | --- | --- |
+| 宿主 Node（宿主直跑脚本/造厂时才需要） | ≥ 22（engines 字段） | `package.json` `engines.node` |
+| pnpm（同上） | 11.x（锁定 `pnpm@11.28.5`） | `package.json` `packageManager` |
+| Docker / compose | v2 语法（`docker compose` 子命令）；镜像构建依赖 BuildKit 语义（per-Dockerfile `.dockerignore`） | `deploy/compose.yaml`、`apps/server/Dockerfile.dockerignore` 头注 |
+| 数据库 | 镜像 `postgres:16`（compose 拉起，无需宿主安装） | `deploy/compose.yaml` pg 服务 |
+| 服务器/容器基线 | `node:24-slim`（构建与运行镜像）；镜像内需安装 `openssl`（prisma 引擎检测，Dockerfile 已含） | `apps/server/Dockerfile` |
+
+## D2. 标准安装步骤
+
+**单机（买断/私有化）**：
+
+```bash
+cd deploy
+MODULES_ENABLED="core,org,masterdata,workbench,approval,baseline,workorder,listing,inspection,inventory,dispatch,reporting,hours,costing,payroll,maintenance,drawing,metric-pack,audit,standardreports,menu-config,approval-config,notifications,issue,attachment,aftercare-claim,ai-query,demo" \
+  docker compose up -d --build
+```
+
+`MODULES_ENABLED` 缺省只起基础六模块（core,org,masterdata,workbench,approval,demo）——全功能部署须显式传全清单（键名见 `packages/application` 注册表 `MODULE_DEFINITIONS`，core 恒必装）。服务顺序 pg → migrate（迁移+种子）→ server → web，healthcheck 门控。
+
+**SaaS（订阅/托管）**：在单机基础上叠加租户解析 env 与 saas profile（`SMES_TENANT_MODE=saas SMES_DOMAIN=<基域> SMES_TENANTS=<逗号分隔租户清单> docker compose --profile saas up -d --build`）。机制、fail-closed 行为与验证口径见下方「SaaS profile 起栈」节。**注意：SaaS 目前只有 default 租户有种子数据；非默认租户的开通/种子流程未实现**（SMES_TENANTS 是静态清单，新租户内登录 401 属预期）——见本 README「未竟」段。
+
+**公网部署前必改**：compose 缺省口令是开发值（`POSTGRES_PASSWORD` 缺省 `cadenceSingleNodeDev`、`POSTGRES_APP_PASSWORD` 缺省 `app_user_dev_change_me`），公网/客户环境必须显式覆盖——建议在 `deploy/.env` 文件中配置（compose 自动读取；`.env` 已被镜像构建裁剪，口令不进镜像）。
+
+## D3. 环境变量清单（server/compose 消费面）
+
+| 变量 | 缺省 | 说明 |
+| --- | --- | --- |
+| `POSTGRES_PASSWORD` | `cadenceSingleNodeDev` | PG superuser 口令（开发缺省值，生产必改） |
+| `POSTGRES_APP_PASSWORD` | `app_user_dev_change_me` | 受限 app_user 口令（生产必改） |
+| `PG_PORT` | `55432` | 宿主侧 PG 端口（仅绑 127.0.0.1，迁移排障/psql 用） |
+| `SERVER_PORT` / `WEB_PORT` / `PROXY_PORT` | `3000` / `8080` / `80` | 三类入口端口 |
+| `MODULES_ENABLED` | 基础六模块 | 模块启停清单（逗号分隔） |
+| `SMES_TENANT_MODE` | `single-node` | `saas` 时启用 hostBased 租户解析（fail-fast） |
+| `SMES_DOMAIN` | 空 | SaaS 基域；saas 模式缺省即拒启动 |
+| `SMES_TENANTS` | 空 | 已知租户静态清单（逗号分隔）；同时透传 migrate 服务供种子按租户建 MAIN 仓 |
+| `SMES_RLS_SESSION` | compose 固定 `"on"` | RLS 会话接线开关（`DATABASE_URL` 恒用受限 app_user；一般不改） |
+| `SMES_DEFAULT_WAREHOUSE_CODE` | `MAIN` | 收货未显式指定仓库时的落位仓（按租户按 code 解析；空串=无默认仓） |
+| `SMES_PARTS_APPROVAL_LEVELS` | 空（=1 单级） | 配件审批链级数 1\|2\|3；>1 须配 LEVEL2_ROLE（=3 另须 LEVEL3_ROLE，org 角色码单段小写），配错启动即炸 |
+| `SMES_LOGIN_MAX_FAILURES` / `SMES_LOGIN_WINDOW_SECONDS` / `SMES_LOGIN_LOCK_SECONDS` | `5` / `900` / `900` | 登录限流参数（来源：`apps/server/src/main.ts` L117-119；`packages/application/src/auth/login-attempt-stores.ts` L49-51；演示需短窗时调小） |
+| `SMES_PASSWORD_MIN_LENGTH` | `8` | 口令最小长度（仅建号/重置两端点校验） |
+| `SMES_PASSWORD_REQUIRE_CLASSES` | `off` | 口令字符类要求开关（`on`\|`off`，其他值拒启动） |
+| `SMES_ATTACHMENT_REF_SECRET` / `SMES_DRAWING_REF_SECRET` | 空 | 附件/图纸两域签名密钥（base64/hex、解码恰 32 字节）。**多实例/跨重启部署必须设置**；未设 = 实例内随机 + 启动 warn（重启后旧引用失效属设计内）；格式非法拒启动。机制详见下方「两域签名密钥 env（M2 安全批 SP-3）」条目 |
+
+**登记说明（2026-10-27）**：SP-3 两密钥与 CM-1 安全响应头均已随**本轮未提交增量**在工作区落盘并随当前交付候选分发——**仅 clone 旧 HEAD 不含这两项**，安装前确认取得含本轮增量的工作区/候选。CM-1 双拓扑已覆盖：web nginx 是静态/HTML 承载层的权威层（`apps/web/nginx.conf` CM-1 段），server 直连拓扑（SaaS 子域 / `IP:3000`）由 `apps/server/src/main.ts` 全局中间件同值补头。三条运维注意（来源：`apps/web/nginx.conf` CM-1 注释）：① API 改跨源（`VITE_API_BASE_URL` 指向他源）须同步扩 nginx CSP `connect-src`，否则浏览器拦截 API 请求；② 升级 vite-plugin-pwa 或改 SW 路径/scope 须重算 CSP 内联脚本哈希，失配症状 = SW 注册被拦截（控制台报错，应用功能不受影响）；③ `X-Frame-Options: DENY`——页面不能被 iframe 内嵌。另：`deploy/.env.example` 模板被仓内 `.gitignore`（`.env.*`）忽略、不随 clone 分发——安装者按本表自建 `deploy/.env` 即可（compose 自动读取同目录 `.env`）。
+
+## D4. 初始化与岗位开通
+
+初始化随 `up` 自动完成：migrate 一次性服务以 superuser 跑 `prisma migrate deploy` + 基础种子（`db:seed`）+ 迁移台账对 app_user 只读收口。基础种子提供账号 `admin`（种子管理员）/ `demo-admin` / `approver` / `viewer`，并按 `SMES_TENANTS` 每租户幂等建 code=`MAIN` 默认仓（来源：`deploy/compose.yaml` migrate 服务段；`packages/business-store/prisma/seed.mjs`）。
+
+岗位开通两条路径：
+
+1. **页面开通（正式环境）**：以 admin 登录 →「系统管理 → 角色与授权」（`/system/roles`）按目标岗位权限码期望态一次建角色（服务端 diff 自动增授/回收）→「用户与角色」（`/system/users`）建用户并绑角色。七岗位标准码集见 `architecture/ROLE-PACKS.md` §1；操作说明见 `docs/user-manual/roles/admin.md`。
+2. **工厂种子（演示/测试环境）**：显式运行 `SMES_FACTORY_SEED=on` 的 `db:seed-factory`（compose migrate 服务**不会**自动跑它），一键得到六岗账号（plan01/purch01/prod01/qc01/wh01/appr01，口令统一 `demo-password`）+ 主数据 + 五张在制单。两条运行方式与造厂产物清单见 `docs/user-manual/demo-handover.md` §3。
+
+## D5. 健康检查
+
+| 对象 | 方式 | 预期 |
+| --- | --- | --- |
+| server | `curl http://localhost:3000/health` | 200 `{"status":"ok","tenant":"default"}` |
+| 模块面 | `curl http://localhost:3000/modules` | 已启用模块清单（全清单 28 个） |
+| web | `curl http://localhost:8080/` | HTML 200（nginx 静态入口自证；compose 级 healthcheck 同此） |
+| pg | compose healthcheck `pg_isready` | healthy |
+| SaaS 探针 Host 取舍 | 镜像级 server healthcheck 在 saas 形态用「首个已知租户+SMES_DOMAIN」作 Host（租户解析 fail-closed 不参与 liveness）；单机回落 127.0.0.1 | 见下方「生产要素初版」段与 `apps/server/src/healthcheck-probe.ts` |
+
+web 容器 `depends_on` server 镜像级 healthcheck 门控：server 未健康 web 不起。
+
+## D6. 日志定位
+
+```bash
+cd deploy
+docker compose logs -f server        # 应用日志（业务错误/租户解析/启动 fail-fast 原因）
+docker compose logs migrate          # 一次性服务：迁移+种子输出（up 时刷出；完成后容器退出属正常）
+docker compose logs pg web proxy     # 其余服务
+```
+
+- 启动失败先看 server 日志的 fail-fast 行（如 saas 缺 `SMES_DOMAIN`、配件审批链配错角色码、口令策略 env 拼写错误——均拒绝启动并给原因）。
+- 数据库直连排障：`psql` 走宿主映射 `127.0.0.1:55432`（`PG_PORT` 可改）；凭据为上文两个口令变量。
+- 客户侧报障请附：页面、账号、时间、完整报错文案（含错误体 `code` 字段，如 `auth.rate_limited`）。
+
+## D7. 更新路径
+
+```bash
+# 获取新版本源码后（工作区/仓库以交付基线为准）：
+cd deploy
+docker compose up -d --build     # 全量重建：server/web 镜像 + migrate 一次性镜像
+```
+
+- 迁移自动推进：migrate 服务每次 up 重跑 `prisma migrate deploy`（幂等）；种子幂等重跑零新增。
+- **已知的坑**：不要只重建 server 镜像而跳过 migrate 服务镜像——迁移/种子会跑旧版代码（历史收口坑登记，见 `architecture/status.md` D-20 段）。用 `docker compose up -d --build` 全量重建即可同时覆盖。
+- **无自动降级路径**：`prisma migrate deploy` 只进不退；回滚 = 恢复更新前的数据备份 + 回退到旧版本源码（见 D8）。更新前先备份。
+
+## D8. 数据保留与备份
+
+- 全部业务数据在具名卷 `pg-data`（`deploy/compose.yaml` volumes 段）。`docker compose down` **保留**数据；`down -v` **删除**数据——演示环境可随意 `down -v` 重置，客户环境禁用。
+- 备份建议：`pg_dump` 经宿主映射 `127.0.0.1:55432` 导出（更新前、定期）；恢复用对应 `pg_restore`/`psql` 导回同名库。
+- 证据面说明：命令幂等账本、域事件与 outbox 双写落库（PG 适配同事务双写），是业务可追溯性的一部分——备份须整库一致时点快照，不要只挑表。
+- 自动清理/归档策略当前未实现（以系统实态为准）；数据保留周期、完整备份恢复运营演练属 M3/M4 后续范围，本版本不含。
+
+## D9. 公网部署建议（登记条目）
+
+- **IP 维度限流**：应用内登录限流按 (租户，用户名) 计数；IP 维度限流按安全合同登记归部署层反向代理实现——公网部署建议在反代层为登录端点配 IP 速率限制（来源：`architecture/contracts/m2-security/CONTRACT.md` SP-1「不做（登记）」段）。
+- **TLS 与 DNS**：SaaS 形态的子域名路由在本栈以 Host 头透传验证；真实 DNS 解析与 TLS 证书属部署期事项，不在本栈验证面（来源：下方「SaaS profile 起栈」验证口径段）。
+- **凭据**：见 D2「公网部署前必改」；数据库端口映射仅绑 127.0.0.1，如需放开由部署方自担网络边界责任（威胁模型限定见本文件顶部）。
+
+---
+
 ## 双形态差异表
 
 | 维度 | 单机（默认形态） | SaaS（saas profile 叠加） |
@@ -124,6 +239,16 @@ docker compose -f deploy/compose.yaml down -v --remove-orphans
   =1 单级零回归）透传 server → `definePartsApprovalChain` 构造 workorder
   `partsApprovalChain`；>1 须配 `SMES_PARTS_LEVEL2_ROLE`（levels=3 另须
   `SMES_PARTS_LEVEL3_ROLE`，org 角色码单段小写）——配错启动即炸不静默回落。
+- **两域签名密钥 env（M2 安全批 SP-3）**：`SMES_ATTACHMENT_REF_SECRET` /
+  `SMES_DRAWING_REF_SECRET`（base64 或 hex 编码、解码后恰 32 字节，直接作
+  HMAC-SHA256 key；生成 `openssl rand -hex 32` 或 `openssl rand -base64 32`）
+  透传 server——附件下载引用/图纸只读引用的签发密钥。**多实例/跨重启部署必须
+  设置**：设了 → 重启后既有引用仍可兑现；未设/留空 → 实例内随机（单机演示
+  可用，重启后旧引用失效属设计内，启动日志有 warn 一行）；格式非法 → 拒绝
+  启动（fail-fast）。两域各用独立值。不改 TTL（附件 60s 级/图纸 ≤600s）与
+  「token 即唯一凭证」语义；真实对象存储接入后由 SDK 预签名取代（INT-007）。
+  冒烟脚本：`node deploy/scripts/sp3-signing-key-smoke.mjs`（需 docker，一次性
+  PG 容器自管自清）。
 - **PG 端口**（低危清偿）：`127.0.0.1:${PG_PORT:-55432}:5432`——栈内走 compose
   内网，宿主仅本机可达（迁移排障/psql 连查）；不选纯 `expose`：单机买断形态
   运维需要本机直连。

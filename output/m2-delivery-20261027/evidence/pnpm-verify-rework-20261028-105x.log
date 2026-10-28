@@ -1,0 +1,306 @@
+$ pnpm build && pnpm typecheck && pnpm boundary && pnpm boundary:selftest && pnpm test
+$ pnpm -r --if-present run build
+Scope: 17 of 18 workspace projects
+packages/business-core build$ tsc -p tsconfig.build.json
+packages/business-core build: Done
+packages/drawing build$ tsc -p tsconfig.build.json
+packages/engine-flow build$ tsc -p tsconfig.build.json
+packages/integration-im build$ tsc -p tsconfig.build.json
+packages/engine-reporting build$ tsc -p tsconfig.build.json
+packages/integration-im build: Done
+packages/integration-scan build$ tsc -p tsconfig.build.json
+packages/engine-reporting build: Done
+packages/payroll build$ tsc -p tsconfig.build.json
+packages/drawing build: Done
+packages/metric-pack build$ tsc -p tsconfig.build.json
+packages/engine-flow build: Done
+packages/application build$ tsc -p tsconfig.build.json
+packages/integration-scan build: Done
+packages/maintenance build$ tsc -p tsconfig.build.json
+packages/payroll build: Done
+apps/web build$ vite build
+packages/metric-pack build: Done
+apps/web build: vite v7.3.7 building client environment for production...
+apps/web build: transforming...
+packages/maintenance build: Done
+packages/application build: Done
+packages/integration-print build$ tsc -p tsconfig.build.json
+packages/business-store build$ prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json
+apps/web build: ✓ 2561 modules transformed.
+packages/integration-print build: Done
+apps/web build: rendering chunks...
+apps/web build: computing gzip size...
+apps/web build: dist/manifest.webmanifest                   0.70 kB
+apps/web build: dist/index.html                             0.93 kB │ gzip:   0.50 kB
+apps/web build: dist/login.html                             1.05 kB │ gzip:   0.64 kB
+apps/web build: dist/assets/index-CSIv-3yx.css             50.10 kB │ gzip:   9.25 kB
+apps/web build: dist/assets/login-QXNQjfHK.js               0.68 kB │ gzip:   0.50 kB
+apps/web build: dist/assets/login-DKtIKOAw.js               0.72 kB │ gzip:   0.43 kB
+apps/web build: dist/assets/_commonjsHelpers-DsqdWQfm.js    0.75 kB │ gzip:   0.40 kB
+apps/web build: dist/assets/common-Chhh-hHv.js              2.00 kB │ gzip:   1.13 kB
+apps/web build: dist/assets/reporting-CKx2C3Yo.js           2.05 kB │ gzip:   1.12 kB
+apps/web build: dist/assets/common-Dbrmn8jy.js              2.12 kB │ gzip:   0.95 kB
+apps/web build: dist/assets/reporting-aRXbkkV7.js           2.29 kB │ gzip:   1.00 kB
+apps/web build: dist/assets/menu-DOxjDaKH.js                2.31 kB │ gzip:   1.28 kB
+apps/web build: dist/assets/menu-D5unlyMg.js                2.42 kB │ gzip:   1.03 kB
+apps/web build: dist/assets/login-pO1OEXqh.js               2.53 kB │ gzip:   1.10 kB
+apps/web build: dist/assets/inventory-CY1hncgj.js           3.85 kB │ gzip:   1.72 kB
+apps/web build: dist/assets/inventory-JyC8BqyS.js           4.31 kB │ gzip:   1.51 kB
+apps/web build: dist/assets/dispatch-D_eWtjU4.js            4.76 kB │ gzip:   2.07 kB
+apps/web build: dist/assets/dispatch-DID8vaWR.js            5.27 kB │ gzip:   1.89 kB
+apps/web build: dist/assets/inspection-BSr3mreX.js          5.85 kB │ gzip:   2.46 kB
+apps/web build: dist/assets/inspection-CFlpL9Gm.js          6.43 kB │ gzip:   2.26 kB
+apps/web build: dist/assets/workorder-B3y5Ao5I.js           6.98 kB │ gzip:   2.81 kB
+apps/web build: dist/assets/workorder-CaU6qejd.js           7.65 kB │ gzip:   2.45 kB
+apps/web build: dist/assets/index-D6d57bIF.js             265.86 kB │ gzip:  87.75 kB
+apps/web build: dist/assets/index-BY9hJiZ6.js             375.15 kB │ gzip: 110.57 kB
+apps/web build: dist/assets/main-DgxBg5t6.js              674.14 kB │ gzip: 173.72 kB
+apps/web build: ✓ built in 2.10s
+apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+apps/web build: - Using dynamic import() to code-split the application
+apps/web build: - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+packages/business-store build: Prisma schema loaded from prisma/schema.prisma
+packages/business-store build: ✔ Generated Prisma Client (v6.19.3) to ./../../node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 171ms
+packages/business-store build: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+packages/business-store build: Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+apps/web build: PWA v2.0.0
+apps/web build: mode      generateSW
+apps/web build: precache  32 entries (1399.30 KiB)
+apps/web build: files generated
+apps/web build:   dist/sw.js
+apps/web build:   dist/workbox-17dc2a4e.js
+apps/web build: Done
+packages/business-store build: Done
+packages/testkit build$ tsc -p tsconfig.build.json
+apps/server build$ tsc -p tsconfig.build.json
+packages/testkit build: Done
+apps/server build: Done
+$ pnpm -r --if-present run typecheck
+Scope: 17 of 18 workspace projects
+packages/business-core typecheck$ tsc -p tsconfig.json
+packages/business-core typecheck: Done
+packages/engine-reporting typecheck$ tsc -p tsconfig.json
+packages/drawing typecheck$ tsc -p tsconfig.json
+packages/engine-flow typecheck$ tsc -p tsconfig.json
+packages/integration-im typecheck$ tsc -p tsconfig.json
+packages/integration-im typecheck: Done
+packages/integration-scan typecheck$ tsc -p tsconfig.json
+packages/engine-reporting typecheck: Done
+packages/payroll typecheck$ tsc -p tsconfig.json
+packages/drawing typecheck: Done
+packages/product-ui typecheck$ tsc -p tsconfig.json
+packages/engine-flow typecheck: Done
+packages/metric-pack typecheck$ tsc -p tsconfig.json
+packages/integration-scan typecheck: Done
+packages/application typecheck$ tsc -p tsconfig.json
+packages/payroll typecheck: Done
+packages/maintenance typecheck$ tsc -p tsconfig.json
+packages/metric-pack typecheck: Done
+packages/product-ui typecheck: Done
+apps/web typecheck$ tsc -p tsconfig.json
+packages/maintenance typecheck: Done
+packages/application typecheck: Done
+packages/business-store typecheck$ prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json
+packages/integration-print typecheck$ tsc -p tsconfig.json
+packages/business-store typecheck: Prisma schema loaded from prisma/schema.prisma
+packages/integration-print typecheck: Done
+packages/business-store typecheck: ┌─────────────────────────────────────────────────────────┐
+packages/business-store typecheck: │  Update available 6.19.3 -> 8.0.0-rc.28                 │
+packages/business-store typecheck: │                                                         │
+packages/business-store typecheck: │  This is a major update - please follow the guide at    │
+packages/business-store typecheck: │  https://pris.ly/d/major-version-upgrade                │
+packages/business-store typecheck: │                                                         │
+packages/business-store typecheck: │  Run the following to update                            │
+packages/business-store typecheck: │    npm i --save-dev prisma@latest                       │
+packages/business-store typecheck: │    npm i @prisma/client@latest                          │
+packages/business-store typecheck: └─────────────────────────────────────────────────────────┘
+packages/business-store typecheck: ✔ Generated Prisma Client (v6.19.3) to ./../../node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 177ms
+packages/business-store typecheck: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+packages/business-store typecheck: Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+apps/web typecheck: Done
+packages/business-store typecheck: Done
+apps/server typecheck$ tsc -p tsconfig.json
+packages/testkit typecheck$ tsc -p tsconfig.json
+packages/testkit typecheck: Done
+apps/server typecheck: Done
+$ depcruise packages apps --config .dep-cruiser.cjs
+
+✔ no dependency violations found (1523 modules, 5255 dependencies cruised)
+
+$ node scripts/boundary-selftest.mjs
+boundary selftest OK: packages/business-core/tests/boundary-fixtures 被拦下（core-no-internal-deps）
+boundary selftest OK: packages/payroll/tests/boundary-fixtures 被拦下（pro-pack-tier-edges）
+boundary selftest OK: packages/maintenance/tests/boundary-fixtures 被拦下（pro-pack-tier-edges）
+boundary selftest OK: packages/drawing/tests/boundary-fixtures 被拦下（pro-pack-tier-edges）
+boundary selftest OK: packages/metric-pack/tests/boundary-fixtures 被拦下（pro-pack-tier-edges）
+boundary selftest OK: packages/engine-reporting/tests/boundary-fixtures 被拦下（engine-tier-edges）
+$ pnpm -r --if-present run test
+Scope: 17 of 18 workspace projects
+packages/business-core test$ vitest run --reporter=dot
+packages/business-core test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/business-core
+packages/business-core test: ·······························
+packages/business-core test:  Test Files  4 passed (4)
+packages/business-core test:       Tests  31 passed (31)
+packages/business-core test:    Start at  11:18:02
+packages/business-core test:    Duration  221ms (transform 88ms, setup 0ms, collect 166ms, tests 8ms, environment 0ms, prepare 159ms)
+packages/business-core test: Done
+packages/integration-im test$ vitest run --reporter=dot
+packages/drawing test$ vitest run --reporter=dot
+packages/engine-flow test$ vitest run --reporter=dot
+packages/engine-reporting test$ vitest run --reporter=dot
+packages/drawing test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/drawing
+packages/integration-im test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/integration-im
+packages/engine-flow test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/engine-flow
+packages/engine-reporting test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/engine-reporting
+packages/engine-reporting test: ·····················································
+packages/engine-reporting test:  Test Files  6 passed (6)
+packages/engine-reporting test:       Tests  53 passed (53)
+packages/engine-reporting test:    Start at  11:18:02
+packages/engine-reporting test:    Duration  746ms (transform 156ms, setup 0ms, collect 565ms, tests 19ms, environment 0ms, prepare 1.11s)
+packages/engine-flow test: ···························································
+packages/engine-flow test:  Test Files  7 passed (7)
+packages/engine-flow test:       Tests  59 passed (59)
+packages/engine-flow test:    Start at  11:18:02
+packages/engine-flow test:    Duration  786ms (transform 276ms, setup 0ms, collect 832ms, tests 50ms, environment 1ms, prepare 944ms)
+packages/drawing test: ······································
+packages/drawing test:  Test Files  3 passed (3)
+packages/drawing test:       Tests  38 passed (38)
+packages/drawing test:    Start at  11:18:02
+packages/drawing test:    Duration  834ms (transform 159ms, setup 0ms, collect 493ms, tests 35ms, environment 0ms, prepare 458ms)
+packages/integration-im test: ································
+packages/integration-im test:  Test Files  7 passed (7)
+packages/integration-im test:       Tests  32 passed (32)
+packages/integration-im test:    Start at  11:18:02
+packages/integration-im test:    Duration  902ms (transform 259ms, setup 0ms, collect 1.01s, tests 27ms, environment 1ms, prepare 1.20s)
+packages/engine-reporting test: Done
+packages/integration-scan test$ vitest run --reporter=dot
+packages/engine-flow test: Done
+packages/payroll test$ vitest run --reporter=dot
+packages/integration-im test: Done
+packages/product-ui test$ vitest run --reporter=dot
+packages/drawing test: Done
+packages/metric-pack test$ vitest run --reporter=dot
+packages/integration-scan test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/integration-scan
+packages/payroll test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/payroll
+packages/metric-pack test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/metric-pack
+packages/product-ui test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/product-ui
+packages/integration-scan test: ····························································
+packages/integration-scan test:  Test Files  6 passed (6)
+packages/integration-scan test:       Tests  60 passed (60)
+packages/integration-scan test:    Start at  11:18:03
+packages/integration-scan test:    Duration  744ms (transform 161ms, setup 0ms, collect 607ms, tests 74ms, environment 0ms, prepare 1.06s)
+packages/payroll test: ······················
+packages/payroll test:  Test Files  2 passed (2)
+packages/payroll test:       Tests  22 passed (22)
+packages/payroll test:    Start at  11:18:03
+packages/payroll test:    Duration  776ms (transform 171ms, setup 0ms, collect 335ms, tests 25ms, environment 0ms, prepare 331ms)
+packages/integration-scan test: Done
+packages/application test$ vitest run --reporter=dot
+packages/metric-pack test: ·····························
+packages/metric-pack test:  Test Files  2 passed (2)
+packages/metric-pack test:       Tests  29 passed (29)
+packages/metric-pack test:    Start at  11:18:03
+packages/metric-pack test:    Duration  824ms (transform 225ms, setup 0ms, collect 376ms, tests 21ms, environment 0ms, prepare 204ms)
+packages/product-ui test: ··································································································································
+packages/product-ui test:  Test Files  18 passed (18)
+packages/product-ui test:       Tests  130 passed (130)
+packages/product-ui test:    Start at  11:18:03
+packages/product-ui test:    Duration  866ms (transform 636ms, setup 0ms, collect 3.73s, tests 63ms, environment 1ms, prepare 1.73s)
+packages/payroll test: Done
+packages/maintenance test$ vitest run --reporter=dot
+packages/metric-pack test: Done
+packages/product-ui test: Done
+apps/web test$ vitest run --reporter=dot
+packages/application test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/application
+packages/maintenance test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/maintenance
+apps/web test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/apps/web
+packages/maintenance test: ····················
+packages/maintenance test:  Test Files  2 passed (2)
+packages/maintenance test:       Tests  20 passed (20)
+packages/maintenance test:    Start at  11:18:05
+packages/maintenance test:    Duration  639ms (transform 260ms, setup 0ms, collect 609ms, tests 26ms, environment 0ms, prepare 125ms)
+packages/maintenance test: Done
+apps/web test: stderr | tests/i18n.test.ts > 回落链：en-US 缺 key → zh-CN → key 本身（proposal §3） > 双语全缺 → 返回 key 本身（链末端不空串）
+apps/web test: [i18n] missing key: common:no-such-key-xyz
+packages/application test: stderr | tests/listing/listing.test.ts > 采购订单五态全链（提交-审核-下发-收货） > 全链 submit→approve→issue→receive：版本 2→5，申请 draft→approved→converted，里程碑
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d7f1-75a5-a63e-17fdd82b3503' 行 2：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > 采购订单五态全链（提交-审核-下发-收货） > receive 守门：入库拒绝 → rejected 不落账；超收 / 伪行号 / 重复行号 rejected
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d7fa-7ca5-a330-ca3121f44f8c' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > D-15 收货仓三态（payload.warehouseId 透传 + inventory 默认仓回落） > 显式仓：payload 指定 warehouseId → 落指定仓（inventory 未配默认仓亦可收）
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d7fe-7658-b9e4-1239e87945b7' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > D-15 收货仓三态（payload.warehouseId 透传 + inventory 默认仓回落） > 默认仓回落：payload 省略 warehouseId → inventory 服务选项 defaultWarehouseCode 按租户解析落位（D-16）
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d800-7809-9215-ae0b86d1e4f0' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.return（退货单 + 订单退货回退） > 建退货单：open@v1 + 订单回退 received→issued@v6 + PurchaseReturned；可重收
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d801-7785-ae04-f45f96f7fe6d' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.return（退货单 + 订单退货回退） > 建退货单：open@v1 + 订单回退 received→issued@v6 + PurchaseReturned；可重收
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d801-7785-ae04-f45f96f7fe6d' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.return（退货单 + 订单退货回退） > 守门：非 received 态退货 rejected；超收货数量 rejected；撤销 → revoked@v2
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d804-7ac7-baff-f76ef89ef303' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.overdue（逾期事实：交期对比） > 扫描：仅 未收货∧交期已过 的订单出 PurchaseOverdue + 催货待办；重复扫描不重复派待办
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d806-7963-845a-3cbd35c78846' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/listing.test.ts > purchase.overdue（逾期事实：交期对比） > 收货消催货：receive 完成 buyer 名下该订单催货待办
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d807-79d2-876e-e4c540ca4b1d' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/overdue-lines.test.ts > U8 逾期未交明细行 · service > 一行一明细行：未收齐行纳入（含已收货态部分收货）、已收齐行退出、未到期剔除、手工行 null 组、交期升序稳定序
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d839-7231-82da-9bee6c2c3161' 行 1：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+packages/application test: stderr | tests/listing/overdue-lines.test.ts > U8 逾期未交明细行 · service > 一行一明细行：未收齐行纳入（含已收货态部分收货）、已收齐行退出、未到期剔除、手工行 null 组、交期升序稳定序
+packages/application test: [smes] 收货行质检投递跳过（订单 'po-01a18083-d839-7231-82da-9bee6c2c3161' 行 2：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）
+apps/web test: ····················································································································--------------···················································································································
+apps/web test:  Test Files  23 passed | 2 skipped (25)
+apps/web test:       Tests  231 passed | 14 skipped (245)
+apps/web test:    Start at  11:18:05
+apps/web test:    Duration  2.06s (transform 2.32s, setup 0ms, collect 12.81s, tests 125ms, environment 2ms, prepare 1.54s)
+apps/web test: Done
+packages/application test: ·························································································································································································································································································································································································································································································································································································································································································································································
+packages/application test:  Test Files  48 passed (48)
+packages/application test:       Tests  729 passed (729)
+packages/application test:    Start at  11:18:05
+packages/application test:    Duration  4.76s (transform 6.56s, setup 0ms, collect 30.60s, tests 6.48s, environment 5ms, prepare 3.78s)
+packages/application test: Done
+packages/business-store test$ vitest run --reporter=dot
+packages/integration-print test$ vitest run --reporter=dot
+packages/integration-print test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/integration-print
+packages/business-store test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/business-store
+packages/integration-print test: ···············································
+packages/integration-print test:  Test Files  7 passed (7)
+packages/integration-print test:       Tests  47 passed (47)
+packages/integration-print test:    Start at  11:18:10
+packages/integration-print test:    Duration  700ms (transform 132ms, setup 0ms, collect 580ms, tests 250ms, environment 1ms, prepare 729ms)
+packages/integration-print test: Done
+packages/business-store test: ·····························································································································································································································
+packages/business-store test:  Test Files  26 passed (26)
+packages/business-store test:       Tests  221 passed (221)
+packages/business-store test:    Start at  11:18:10
+packages/business-store test:    Duration  2.94s (transform 1.71s, setup 0ms, collect 13.55s, tests 5.65s, environment 3ms, prepare 2.09s)
+packages/business-store test: Done
+apps/server test$ vitest run --reporter=dot
+packages/testkit test$ vitest run --reporter=dot --exclude 'e2e/**'
+packages/testkit test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/packages/testkit
+apps/server test:  RUN  v3.2.7 /Users/yeemio/AI/gitrep/Cadence/apps/server
+packages/testkit test: stderr | tests/run.test.ts > reconcile CLI：--filter 空命中防护 > main 空命中退出码非零（走夹具加载失败通道，返回 2）
+packages/testkit test: 夹具加载失败（fail-fast）：/var/folders/rf/5yxxrmg96g366djlhy23bh840000gn/T/testkit-run-Bpddxy: filter 'no-such-scenario' 未命中任何场景
+packages/testkit test: ·············································································
+packages/testkit test:  Test Files  5 passed (5)
+packages/testkit test:       Tests  77 passed (77)
+packages/testkit test:    Start at  11:18:13
+packages/testkit test:    Duration  385ms (transform 265ms, setup 0ms, collect 650ms, tests 63ms, environment 8ms, prepare 300ms)
+packages/testkit test: Done
+apps/server test: stderr | tests/u-wave-wiring.test.ts > U6 #29：dispatch→issue 派工生成钩子（store 装饰） > assembly advance→assigned 触发归拢同步；electrical/非 assigned 不触发；同步异常不回滚派工
+apps/server test: [smes] 派工→发料任务同步失败（通知式合同，不回滚派工；POST /issue/tasks/sync 可补触发）: issue 服务不可用（模拟）
+apps/server test: ······················································································stdout | tests/boot.e2e.test.ts > boot smoke（真实 HTTP 起停，零 DB 装配）
+apps/server test: [boot.e2e] 5 个应用起停（listen(0) 随机端口），套件耗时 346ms
+apps/server test: stderr | tests/integration-edge-adapters.test.ts > integration-im 渠道装配（#18） > wecom 配置不全 → undefined（部署错误降级可见，不抛出）
+apps/server test: [smes] SMES_IM_PLATFORM=wecom 但凭据不全（CORP_ID/AGENT_ID/CORP_SECRET/CALLBACK_TOKEN），IM 降级 console 日志
+apps/server test: stderr | tests/integration-edge-adapters.test.ts > integration-im 渠道装配（#18） > 未识别平台值 → undefined（降级）
+apps/server test: [smes] SMES_IM_PLATFORM 未识别（sms，须为 wecom/feishu），IM 降级 console 日志
+apps/server test: stderr | tests/integration-edge-adapters.test.ts > IM sink 渠道适配（卡片消息形状映射） > 卡片字段映射 + 换行压空格（可逆 codec 约束）；ok:false 透传
+apps/server test: [smes] IM 渠道投递失败（wecom.transport-error）：unreachable
+apps/server test: ···············stdout | tests/cross-module-wiring.e2e.test.ts > 跨模块端口接线组合态（九模块零 DB 全装配） > 故障联动 #22：baseline 上报→组合根建议→触发建维修任务（faultRef 挂接）→重触发幂等零重建
+apps/server test: {"channel":"smes-im-wiring","kind":"card","to":"smes-ops","title":"设备故障派修","fields":[{"name":"正文","value":"设备 EQ-LATHE-02 故障已派给维修人员：主轴异响，需停机检查"},{"name":"租户","value":"default"},{"name":"业务类型","value":"baseline-fault-report"},{"name":"业务单据","value":"fr-01a18083-fe0f-710a-a8d6-ca28b3b04467"}]}
+apps/server test: ···································································································································
+apps/server test:  Test Files  25 passed (25)
+apps/server test:       Tests  232 passed (232)
+apps/server test:    Start at  11:18:13
+apps/server test:    Duration  5.23s (transform 3.90s, setup 0ms, collect 38.18s, tests 7.31s, environment 2ms, prepare 2.58s)
+apps/server test: Done
+EXIT=0

@@ -1,0 +1,69 @@
+{
+  "list": {
+    "title": "报工单列表",
+    "description": "五类报工（工艺属性随单快照、业务时间补录）；内容校验不通过的报工会被拒绝并说明原因，修正后可重报；点行选中后核查/修正/撤销。",
+    "kind-filter": "类别过滤",
+    "kind-all": "全部类别",
+    "state-filter": "状态过滤",
+    "state-all": "全部状态",
+    "drawing-filter": "图号过滤（可选）",
+    "empty": "当前过滤条件下无报工单"
+  },
+  "kind": {
+    "part": "零件",
+    "assembly": "装配",
+    "electrical": "电气",
+    "aftermarket": "售后",
+    "oddjob": "零工"
+  },
+  "state": {
+    "pending": "待报",
+    "reported": "已报",
+    "verified": "已核查",
+    "revoked": "已撤销"
+  },
+  "column": {
+    "id": "id",
+    "kind": "类别",
+    "state": "状态",
+    "dispatch-order": "派工单",
+    "done-qty": "完工数量",
+    "labor-minutes": "工时（分钟）",
+    "reporter": "申报人",
+    "version": "版本",
+    "business-time": "业务时间",
+    "date": "日期",
+    "output-qty": "产出数量",
+    "drawing-number": "图号",
+    "operation": "工序"
+  },
+  "detail": {
+    "title": "报工单详情与核查操作",
+    "description": "核查→ReportVerified（载荷=hours 消费合同）；修正=修正版+原因（不改原单）；撤销=冲销。",
+    "remark-label": "核查备注（可选）",
+    "reason-label": "修正原因（修正必填）",
+    "qty-label": "修正数量（可选）",
+    "minutes-label": "修正工时分钟（可选）",
+    "verify-button": "核查通过",
+    "audit-button": "提交修正版",
+    "revoke-button": "撤销冲销"
+  },
+  "progress": {
+    "title": "图号 × 工序进度",
+    "drawing-label": "图号",
+    "query-button": "查询进度",
+    "empty": "该图号暂无工序进度事实"
+  },
+  "trend": {
+    "title": "产出趋势（12 日窗口）",
+    "empty": "暂无产出事实"
+  },
+  "verify": {
+    "title": "待核查队列",
+    "description": "GET /reports/pending-verification；核查通过即计入工时账（hours 消费合同）；点行选中后操作。",
+    "empty": "当前无待核查报工单",
+    "remark-label": "核查备注（可选；撤销时作原因）",
+    "verify-button": "核查通过",
+    "revoke-button": "撤销冲销"
+  }
+}

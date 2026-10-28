@@ -41,7 +41,15 @@ export class InspectionErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof InspectionConflictError
+        ? 'inspection.conflict'
+        : exception instanceof InspectionStateError
+          ? 'inspection.state_conflict'
+          : exception instanceof InspectionNotFoundError
+            ? 'inspection.not_found'
+            : 'inspection.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

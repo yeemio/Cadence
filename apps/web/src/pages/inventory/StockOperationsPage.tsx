@@ -2,17 +2,52 @@
  * 出入库操作页（S2 批次）：三类入库（质检放行/采购收货/完工入库）+ 出库 +
  * 调拨/移库三组命令表单。覆盖矩阵 #77-80（三源入库 + 标准配件出库）、
  * #82 调拨和移库。
+ *
+ * W7 UX 缺陷批：成功提示回显流水号（UX-WH-02——committed 回执携带 movement/
+ * movements 聚合视图，shortId 短码化显示）；提交后数量保留用户上次输入
+ * （UX-WH-06——批量同类收发场景不重置）；三表单补备注字段（UX-WH-07——
+ * 载荷后端 stock.receive/issue/transfer.v1 原生支持 remark）。
+ *
+ * W10b Round-2 缺陷批：成功条流水号补 title 悬停全文（UX-WH-R2-01——短码
+ * 之外悬停可读完整单号；页内本地成功条组件，基线文案「操作已生效。」原样
+ * 保留为 e2e 断言锚点）。
  */
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+// i18n 波 2：inventory namespace 绑定（zh-CN 权威源=原页面文案；业务数据与
+// 服务端 message 不翻译；namespace 注册与 shell init 由总控统一接线）。
+import { useTranslation } from 'react-i18next';
 import { issueStock, receiveStock, transferStock } from '../../data/inventoryApi';
-import type { CommandOutcomeView } from '../../data/commandClient';
+import { businessIdsOfOutcome, type CommandOutcomeView } from '../../data/commandClient';
 import { CommandOutcomeHint } from '../../components/ModuleTable';
+import { shortId } from '../../lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+
+/**
+ * 本地成功条（UX-WH-R2-01）：committed 且回执带流水号时自绘成功行——短码 +
+ * title 悬停完整单号；其余形态（rejected/indeterminate/无流水号回执）走共享
+ * CommandOutcomeHint（基线文案「操作已生效。」与未生效文案经 t() 取
+ * inventory namespace，zh-CN 原样保留为 e2e 断言锚点）。
+ */
+function MovementOutcomeHint({ outcome }: { readonly outcome: CommandOutcomeView }) {
+  const { t } = useTranslation('inventory');
+  const ids = businessIdsOfOutcome(outcome);
+  if (outcome.committed && ids.length > 0) {
+    return (
+      <p className="text-sm text-emerald-600 dark:text-emerald-400">
+        {t('operations.success.committed')}
+        <span className="text-muted-foreground" title={ids.join('、')}>
+          {t('operations.success.movement-ids', { ids: ids.map((id) => shortId(id)).join('、') })}
+        </span>
+      </p>
+    );
+  }
+  return <CommandOutcomeHint outcome={outcome} />;
+}
 
 export function StockOperationsPage() {
   return (
@@ -26,6 +61,7 @@ export function StockOperationsPage() {
 
 function ReceiveCard() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation('inventory');
   const [kind, setKind] = useState<'inspection' | 'purchase' | 'production'>('production');
   const [itemId, setItemId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
@@ -33,6 +69,7 @@ function ReceiveCard() {
   const [inspectionId, setInspectionId] = useState('');
   const [receiptKey, setReceiptKey] = useState('');
   const [workOrderId, setWorkOrderId] = useState('');
+  const [remark, setRemark] = useState('');
   const [outcome, setOutcome] = useState<CommandOutcomeView | null>(null);
 
   const mutation = useMutation({
@@ -45,13 +82,12 @@ function ReceiveCard() {
         ...(kind === 'inspection' && inspectionId.trim().length > 0 ? { inspectionId: inspectionId.trim() } : {}),
         ...(kind === 'purchase' && receiptKey.trim().length > 0 ? { receiptKey: receiptKey.trim() } : {}),
         ...(workOrderId.trim().length > 0 ? { workOrderId: workOrderId.trim() } : {}),
+        ...(remark.trim().length > 0 ? { remark: remark.trim() } : {}),
       }),
     onSuccess: (result) => {
       setOutcome(result);
-      if (result.committed) {
-        queryClient.invalidateQueries({ queryKey: ['inventory'] });
-        setQuantity('1');
-      }
+      // UX-WH-06：数量与各项输入保留上次值（连续同类收发不重置），仅结果提示刷新。
+      if (result.committed) queryClient.invalidateQueries({ queryKey: ['inventory'] });
     },
     onError: (error) =>
       setOutcome({
@@ -69,50 +105,56 @@ function ReceiveCard() {
   return (
     <Card className="max-w-3xl">
       <CardHeader>
-        <CardTitle>入库</CardTitle>
-        <CardDescription>
-          三源入库：inspection=质检放行（须带质检单）；purchase=采购收货（须带 receiptKey 幂等键）；production=完工入库。
-        </CardDescription>
+        <CardTitle>{t('operations.receive.title')}</CardTitle>
+        <CardDescription>{t('operations.receive.description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="recv-kind">入库来源</Label>
+            <Label htmlFor="recv-kind">{t('operations.receive.kind-label')}</Label>
             <Select id="recv-kind" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-              <option value="production">完工入库</option>
-              <option value="inspection">质检放行</option>
-              <option value="purchase">采购收货</option>
+              <option value="production">{t('operations.receive.kind.production')}</option>
+              <option value="inspection">{t('operations.receive.kind.inspection')}</option>
+              <option value="purchase">{t('operations.receive.kind.purchase')}</option>
             </Select>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="recv-item">物料 id</Label>
+            <Label htmlFor="recv-item">{t('operations.receive.item-label')}</Label>
             <Input id="recv-item" value={itemId} onChange={(e) => setItemId(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="recv-wh">仓库 id</Label>
+            <Label htmlFor="recv-wh">{t('operations.receive.warehouse-label')}</Label>
             <Input id="recv-wh" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="recv-qty">数量</Label>
+            <Label htmlFor="recv-qty">{t('operations.receive.quantity-label')}</Label>
             <Input id="recv-qty" type="number" min="0.000001" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
           </div>
           {kind === 'inspection' && (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="recv-inspection">质检单 id（inspection 必填）</Label>
+              <Label htmlFor="recv-inspection">{t('operations.receive.inspection-label')}</Label>
               <Input id="recv-inspection" value={inspectionId} onChange={(e) => setInspectionId(e.target.value)} required />
             </div>
           )}
           {kind === 'purchase' && (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="recv-receipt-key">收货幂等键 receiptKey（purchase 必填）</Label>
+              <Label htmlFor="recv-receipt-key">{t('operations.receive.receipt-key-label')}</Label>
               <Input id="recv-receipt-key" value={receiptKey} onChange={(e) => setReceiptKey(e.target.value)} required />
             </div>
           )}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="recv-wo">工作令（可选）</Label>
+            <Label htmlFor="recv-wo">{t('operations.receive.wo-label')}</Label>
             <Input id="recv-wo" value={workOrderId} onChange={(e) => setWorkOrderId(e.target.value)} />
           </div>
-          {outcome !== null && <div className="sm:col-span-2"><CommandOutcomeHint outcome={outcome} /></div>}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="recv-remark">{t('operations.receive.remark-label')}</Label>
+            <Input id="recv-remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
+          </div>
+          {outcome !== null && (
+            <div className="sm:col-span-2">
+              <MovementOutcomeHint outcome={outcome} />
+            </div>
+          )}
           <div className="sm:col-span-2">
             <Button
               type="submit"
@@ -125,7 +167,7 @@ function ReceiveCard() {
                 (kind === 'purchase' && receiptKey.trim().length === 0)
               }
             >
-              执行入库
+              {t('operations.receive.submit')}
             </Button>
           </div>
         </form>
@@ -136,12 +178,14 @@ function ReceiveCard() {
 
 function IssueCard() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation('inventory');
   const [itemId, setItemId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [purpose, setPurpose] = useState<'production' | 'parts' | 'manual'>('production');
   const [workOrderId, setWorkOrderId] = useState('');
   const [reservationKey, setReservationKey] = useState('');
+  const [remark, setRemark] = useState('');
   const [outcome, setOutcome] = useState<CommandOutcomeView | null>(null);
 
   const mutation = useMutation({
@@ -153,13 +197,12 @@ function IssueCard() {
         purpose,
         ...(workOrderId.trim().length > 0 ? { workOrderId: workOrderId.trim() } : {}),
         ...(reservationKey.trim().length > 0 ? { reservationKey: reservationKey.trim() } : {}),
+        ...(remark.trim().length > 0 ? { remark: remark.trim() } : {}),
       }),
     onSuccess: (result) => {
       setOutcome(result);
-      if (result.committed) {
-        queryClient.invalidateQueries({ queryKey: ['inventory'] });
-        setQuantity('1');
-      }
+      // UX-WH-06：数量与各项输入保留上次值，仅结果提示刷新。
+      if (result.committed) queryClient.invalidateQueries({ queryKey: ['inventory'] });
     },
     onError: (error) =>
       setOutcome({
@@ -177,48 +220,53 @@ function IssueCard() {
   return (
     <Card className="max-w-3xl">
       <CardHeader>
-        <CardTitle>出库</CardTitle>
-        <CardDescription>
-          直扣可用量或预占核销（reservationKey）；配件发货经配件申请「发货」联动走同命令。
-        </CardDescription>
+        <CardTitle>{t('operations.issue.title')}</CardTitle>
+        <CardDescription>{t('operations.issue.description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="issue-item">物料 id</Label>
+            <Label htmlFor="issue-item">{t('operations.issue.item-label')}</Label>
             <Input id="issue-item" value={itemId} onChange={(e) => setItemId(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="issue-wh">仓库 id</Label>
+            <Label htmlFor="issue-wh">{t('operations.issue.warehouse-label')}</Label>
             <Input id="issue-wh" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="issue-qty">数量</Label>
+            <Label htmlFor="issue-qty">{t('operations.issue.quantity-label')}</Label>
             <Input id="issue-qty" type="number" min="0.000001" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="issue-purpose">出库目的</Label>
+            <Label htmlFor="issue-purpose">{t('operations.issue.purpose-label')}</Label>
             <Select id="issue-purpose" value={purpose} onChange={(e) => setPurpose(e.target.value as typeof purpose)}>
-              <option value="production">生产</option>
-              <option value="parts">配件</option>
-              <option value="manual">手工</option>
+              <option value="production">{t('operations.issue.purpose.production')}</option>
+              <option value="parts">{t('operations.issue.purpose.parts')}</option>
+              <option value="manual">{t('operations.issue.purpose.manual')}</option>
             </Select>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="issue-wo">工作令（可选）</Label>
+            <Label htmlFor="issue-wo">{t('operations.issue.wo-label')}</Label>
             <Input id="issue-wo" value={workOrderId} onChange={(e) => setWorkOrderId(e.target.value)} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="issue-reservation">预占键（可选=直扣）</Label>
+            <Label htmlFor="issue-reservation">{t('operations.issue.reservation-label')}</Label>
             <Input id="issue-reservation" value={reservationKey} onChange={(e) => setReservationKey(e.target.value)} />
           </div>
-          {outcome !== null && <div className="sm:col-span-2"><CommandOutcomeHint outcome={outcome} /></div>}
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="issue-remark">{t('operations.issue.remark-label')}</Label>
+            <Input id="issue-remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
+          </div>
+          {outcome !== null && (
+            <div className="sm:col-span-2">
+              <MovementOutcomeHint outcome={outcome} />
+            </div>
+          )}
           <div className="sm:col-span-2">
             <Button
-              type="submit"
               disabled={mutation.isPending || itemId.trim().length === 0 || warehouseId.trim().length === 0 || Number(quantity) <= 0}
             >
-              执行出库
+              {t('operations.issue.submit')}
             </Button>
           </div>
         </form>
@@ -229,12 +277,14 @@ function IssueCard() {
 
 function TransferCard() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation('inventory');
   const [itemId, setItemId] = useState('');
   const [fromWarehouseId, setFromWarehouseId] = useState('');
   const [toWarehouseId, setToWarehouseId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [fromLocationId, setFromLocationId] = useState('');
   const [toLocationId, setToLocationId] = useState('');
+  const [remark, setRemark] = useState('');
   const [outcome, setOutcome] = useState<CommandOutcomeView | null>(null);
 
   const mutation = useMutation({
@@ -246,6 +296,7 @@ function TransferCard() {
         quantity: Number(quantity),
         ...(fromLocationId.trim().length > 0 ? { fromLocationId: fromLocationId.trim() } : {}),
         ...(toLocationId.trim().length > 0 ? { toLocationId: toLocationId.trim() } : {}),
+        ...(remark.trim().length > 0 ? { remark: remark.trim() } : {}),
       }),
     onSuccess: (result) => {
       setOutcome(result);
@@ -267,36 +318,44 @@ function TransferCard() {
   return (
     <Card className="max-w-3xl">
       <CardHeader>
-        <CardTitle>调拨 / 移库</CardTitle>
-        <CardDescription>跨仓调拨（两仓不同）或仓内移库（同仓两库位不同）。</CardDescription>
+        <CardTitle>{t('operations.transfer.title')}</CardTitle>
+        <CardDescription>{t('operations.transfer.description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="tr-item">物料 id</Label>
+            <Label htmlFor="tr-item">{t('operations.transfer.item-label')}</Label>
             <Input id="tr-item" value={itemId} onChange={(e) => setItemId(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="tr-qty">数量</Label>
+            <Label htmlFor="tr-qty">{t('operations.transfer.quantity-label')}</Label>
             <Input id="tr-qty" type="number" min="0.000001" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="tr-from-wh">源仓库</Label>
+            <Label htmlFor="tr-from-wh">{t('operations.transfer.from-warehouse-label')}</Label>
             <Input id="tr-from-wh" value={fromWarehouseId} onChange={(e) => setFromWarehouseId(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="tr-to-wh">目的仓库</Label>
+            <Label htmlFor="tr-to-wh">{t('operations.transfer.to-warehouse-label')}</Label>
             <Input id="tr-to-wh" value={toWarehouseId} onChange={(e) => setToWarehouseId(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="tr-from-loc">源库位（可选）</Label>
+            <Label htmlFor="tr-from-loc">{t('operations.transfer.from-location-label')}</Label>
             <Input id="tr-from-loc" value={fromLocationId} onChange={(e) => setFromLocationId(e.target.value)} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="tr-to-loc">目的库位（可选）</Label>
+            <Label htmlFor="tr-to-loc">{t('operations.transfer.to-location-label')}</Label>
             <Input id="tr-to-loc" value={toLocationId} onChange={(e) => setToLocationId(e.target.value)} />
           </div>
-          {outcome !== null && <div className="sm:col-span-2"><CommandOutcomeHint outcome={outcome} /></div>}
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="tr-remark">{t('operations.transfer.remark-label')}</Label>
+            <Input id="tr-remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
+          </div>
+          {outcome !== null && (
+            <div className="sm:col-span-2">
+              <MovementOutcomeHint outcome={outcome} />
+            </div>
+          )}
           <div className="sm:col-span-2">
             <Button
               type="submit"
@@ -308,7 +367,7 @@ function TransferCard() {
                 Number(quantity) <= 0
               }
             >
-              执行调拨
+              {t('operations.transfer.submit')}
             </Button>
           </div>
         </form>

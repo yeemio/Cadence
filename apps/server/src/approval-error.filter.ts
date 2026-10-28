@@ -42,7 +42,15 @@ export class ApprovalErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof ApprovalConflictError
+        ? 'approval.conflict'
+        : exception instanceof ApprovalStateError
+          ? 'approval.state_conflict'
+          : exception instanceof ApprovalNotFoundError
+            ? 'approval.not_found'
+            : 'approval.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

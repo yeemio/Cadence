@@ -1,0 +1,23 @@
+裁-12 API 读回（候选=重建后容器栈·全模块·修正信封 expectedRevision=initial 2026-10-27 23:15:29）；靶图纸 DW-CRI12-F231529
+== 发布 v1（public）==
+v1_http=201
+== 发布 v2（restricted，changeNote=受限修订说明-X9）==
+v2_http=201
+== ①低许可（clearance=public）读 notices：预期只见 0->1，不见受限修订说明-X9 ==
+[{"noticeId":"dnc-01a17dee-45e3-772d-bb2b-9f94956d6e51","tenant":"default","drawingId":"DW-CRI12-F231529","fromVersion":0,"toVersion":1,"changeNote":"公开首发","publishedAt":"2026-10-27T15:15:29.889Z","objectVersion":1,"auditStatus":"published","provenance":{"contract":"smes.command.v1","issuedBy":"user-demo-admin","commandKind":"drawing.publish.v1","operationId":"cri12-DW-CRI12-F231529-v1"},"businessTime":"2026-10-27T15:15:29.885Z","createdAt":"2026-10-27T15:15:29.892Z"}]
+== ②有权（clearance=restricted）读 notices：预期 0->1 与 1->2 都在 ==
+[{"noticeId":"dnc-01a17dee-45e3-772d-bb2b-9f94956d6e51","tenant":"default","drawingId":"DW-CRI12-F231529","fromVersion":0,"toVersion":1,"changeNote":"公开首发","publishedAt":"2026-10-27T15:15:29.889Z","objectVersion":1,"auditStatus":"published","provenance":{"contract":"smes.command.v1","issuedBy":"user-demo-admin","commandKind":"drawing.publish.v1","operationId":"cri12-DW-CRI12-F231529-v1"},"businessTime":"2026-10-27T15:15:29.885Z","createdAt":"2026-10-27T15:15:29.892Z"},{"noticeId":"dnc-01a17dee-4622-7326-b051-0e4dae62f3e4","tenant":"default","drawingId":"DW-CRI12-F231529","fromVersion":1,"toVersion":2,"changeNote":"受限修订说明-X9","publishedAt":"2026-10-27T15:15:29.951Z","objectVersion":1,"auditStatus":"published","provenance":{"contract":"smes.command.v1","issuedBy":"user-demo-admin","commandKind":"drawing.publish.v1","operationId":"cri12-DW-CRI12-F231529-v2"},"businessTime":"2026-10-27T15:15:29.947Z","createdAt":"2026-10-27T15:15:29.955Z"}]
+== ③普通通知对照（全 public 图纸，低许可可读）==
+n_http=201
+[{"noticeId":"dnc-01a17dee-4659-73e2-90d8-86d2cb2d9997","tenant":"default","drawingId":"DW-CRI12-F231529-N","fromVersion":0,"toVersion":1,"changeNote":"普通通知说明","publishedAt":"2026-10-27T15:15:30.006Z","objectVersion":1,"auditStatus":"published","provenance":{"contract":"smes.command.v1","issuedBy":"user-demo-admin","commandKind":"drawing.publish.v1","operationId":"cri12-DW-CRI12-F231529-N-v1"},"businessTime":"2026-10-27T15:15:30.001Z","createdAt":"2026-10-27T15:15:30.010Z"}]
+== 泄露核对：低许可响应含『受限修订说明-X9』次数（预期 0）==
+       0
+== 未知 clearance（预期 400）==
+bad_clearance_http=400
+== 未登录（预期 401）==
+noauth_http=401
+== 无 drawing:read 权限账号对照（qc01，预期 403）==
+qc01_http=401
+
+== 补：有身份但无 drawing:read 的 403 对照（qc01，[REDACTED-TOKEN] 长度=43）==
+qc01_notices=403

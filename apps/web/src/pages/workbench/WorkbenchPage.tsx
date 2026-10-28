@@ -16,6 +16,8 @@ import { CheckCircle2, LoaderCircle } from 'lucide-react';
 import { permissionCode, sessionHasPermission, toPermissionCodes } from '@smes/product-ui';
 import { ApiErrorHint } from '../../components/ApiErrorHint';
 import { completeTodo, fetchWorkbenchSummary, listMyTodos } from '../../data/workbenchApi';
+// UX-PLAN-11：指向列长 id 截断显示（P2 横切批共享出口复用）。
+import { shortId } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -38,11 +40,34 @@ export function canAccessWorkbench(permissionData: unknown): boolean {
   return permissionData !== undefined && sessionHasPermission(toPermissionCodes(permissionData), WORKBENCH_READ);
 }
 
-/** 无权限终态（D-6）：与页内既有空态同形态（muted 行内文案，先例=移动页"当前身份无可用入口。"）。 */
+/**
+ * 待办指向对象类型 → 中文名（UX-PLAN-11：方向列不摆技术串）。词源 =
+ * 服务端各服务写入待办的 refType 实态（workorder/dispatch/inspection/listing/
+ * baseline 各 aggregate type 常量）；未知类型回落原文不臆造。
+ */
+const TODO_REF_LABELS: Readonly<Record<string, string>> = {
+  'work-order': '工作令',
+  'parts-request': '配件申请',
+  'dispatch-order': '派工单',
+  'inspection-order': '质检单',
+  'purchase-order': '采购订单',
+  'baseline-fault-report': '故障报修',
+  'approval-case': '审批案件',
+};
+
+/** 指向单元格人话文本：中文名 + 截断 id（title 悬停保留完整技术串供排查）。 */
+function todoRefText(refType: string, refId: string | null): string {
+  const label = TODO_REF_LABELS[refType] ?? refType;
+  const id = refId === null || refId.length === 0 ? '' : ` ${shortId(refId)}`;
+  return `${label}${id}`;
+}
+
+/** 无权限终态（D-6）：与页内既有空态同形态（muted 行内文案）。UX-VW-02/AP-08：
+ * 人话说明 + 指引，不向用户裸露权限码（排查用码保留在 data 属性）。 */
 function NoAccessHint() {
   return (
-    <p className="text-sm text-muted-foreground">
-      当前身份无工作台读取权限（workbench:read），不发起数据请求。
+    <p className="text-sm text-muted-foreground" data-permission-code="workbench:read">
+      当前账号没有查看工作台的权限，待办内容无法加载。请联系管理员为账号开通相应权限，开通后刷新页面即可使用。
     </p>
   );
 }
@@ -162,8 +187,14 @@ export function WorkbenchPage() {
                     </td>
                     <td className="py-2 pr-4">{todo.title}</td>
                     <td className="py-2 pr-4 font-mono text-xs">{todo.source}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">
-                      {todo.refType === null ? '—' : `${todo.refType}:${todo.refId ?? ''}`}
+                    <td className="py-2 pr-4 text-xs">
+                      {todo.refType === null ? (
+                        '—'
+                      ) : (
+                        <span title={`${todo.refType}:${todo.refId ?? ''}`}>
+                          {todoRefText(todo.refType, todo.refId)}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 pr-4 text-xs">
                       {todo.dueAt === null ? '—' : todo.dueAt.slice(0, 10)}

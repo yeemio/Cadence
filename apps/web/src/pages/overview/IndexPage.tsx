@@ -9,9 +9,10 @@
  * fix-wave-2 D-12：四源数据请求按 session 权限投影（菜单可见性 = 接口可达性
  * 纪律对齐到首页数据请求，数据源与侧栏投影同款 usePermissions +
  * toPermissionCodes）。页面是四码一体的全量聚合（部分渲染易误导，取舍见
- * overviewApi）——任一源缺权限即整页不发起请求，显式列出缺失源与权限码；
- * 全部具备才放行 fetchOverviewView。已放行而失败（含 403 残留路径）仍走
- * 既有 ApiErrorHint 显式报错，不停在"正在加载…"（D-6 同纪律）。
+ * overviewApi）——任一源缺权限即整页不发起请求，显式列出缺失板块（UX-AP-04：
+ * 人话文案，权限码只在 data 属性不进可见文案）；全部具备才放行 fetchOverviewView。
+ * 已放行而失败（含 403 残留路径）仍走既有 ApiErrorHint 显式报错，不停在
+ * "正在加载…"（D-6 同纪律）。
  */
 import { useQuery } from '@tanstack/react-query';
 import { usePermissions } from '@refinedev/core';
@@ -123,10 +124,15 @@ export function OverviewIndexPage() {
         </CardHeader>
         <CardContent>
           {deniedSources !== null && deniedSources.length > 0 ? (
-            <p className="text-sm text-muted-foreground">
-              当前身份缺少运营总览数据源权限，不发起数据请求：
-              {deniedSources.map((source) => `${source.label}（${source.permission}）`).join('、')}
-              。需管理员在服务端授予对应策略后刷新。
+            // UX-AP-04：缺权提示人话化——只列数据板块中文名与指引，不摆权限码
+            // 运维日志腔（码保留在 data 属性供排查）。
+            <p
+              className="text-sm text-muted-foreground"
+              data-permission-code={deniedSources.map((source) => source.permission).join(',')}
+            >
+              运营总览需要以下数据板块的查看权限，当前账号尚未开通：
+              {deniedSources.map((source) => source.label).join('、')}
+              。请联系管理员为账号开通后刷新页面，即可看到完整总览。
             </p>
           ) : (
             <>

@@ -8,15 +8,22 @@
  * product-ui filterMenuByPermissions（精确码匹配 + admin bypass）——权限不足
  * 的标签不进导航（页面级守卫与桌面同语义：数据边界由服务端 403 兜底）。
  * 图标为菜单代码 → lucide 图标的装配层视觉映射（与 MenuNav 同体例）。
+ * i18n 波 1（ADR-0012）：chrome 文案走 common t()；标签标题经 menuNodeTitle
+ * （key→t() 优先，回落 title 原文）。
  */
 import { Authenticated, useGetIdentity, useLogout, usePermissions } from '@refinedev/core';
+import { useTranslation } from 'react-i18next';
 import { Outlet } from 'react-router';
 import { NavLink } from 'react-router';
 import { AudioWaveform, Boxes, Circle, ClipboardPen, Clock3, LayoutGrid, LoaderCircle, LogOut } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { filterMenuByPermissions, toPermissionCodes } from '@smes/product-ui';
-import { MOBILE_MENU } from '../mobile';
+import { MOBILE_MENU, MOBILE_TITLE_KEYS } from '../mobile';
 import { useMergedMenu } from './useMenuConfig';
+import { menuNodeTitle } from './menuTitle';
+// UX-PLAN-13/AP-06/VW-02：移动顶栏显示名同桌面壳走 presentDisplayName 呈现净化
+// （剥夹具括注/权限码拼接、「种子」→「演示」；见 shell/displayName.ts）。
+import { presentDisplayName } from './displayName';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -37,10 +44,11 @@ export function MobileLayout() {
 }
 
 function MobileLoading() {
+  const { t } = useTranslation();
   return (
     <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-muted/40 text-sm text-muted-foreground">
       <LoaderCircle className="size-5 animate-spin" />
-      正在检查会话…
+      {t('common:state.sessionChecking')}
     </div>
   );
 }
@@ -50,6 +58,7 @@ interface MobileIdentity {
 }
 
 function MobileBody() {
+  const { t } = useTranslation();
   const { data: permissionData } = usePermissions({});
   // T1 #99：移动菜单配置（code='mobile'）启动合并——fail-open（取舍同桌面
   // 侧栏，见 shell/useMenuConfig.ts）。配置树未含的标签隐藏（移动导航可配）。
@@ -63,8 +72,8 @@ function MobileBody() {
       : null;
   const displayName =
     typeof identity?.displayName === 'string' && identity.displayName.length > 0
-      ? identity.displayName
-      : '已登录用户';
+      ? presentDisplayName(identity.displayName)
+      : t('common:user.fallbackName');
 
   const { mutate: logout } = useLogout();
 
@@ -75,11 +84,11 @@ function MobileBody() {
           <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <AudioWaveform className="size-4" />
           </div>
-          <span className="text-sm font-semibold tracking-tight">Cadence 车间</span>
+          <span className="text-sm font-semibold tracking-tight">{t('common:brand.mobile')}</span>
         </div>
         <div className="flex items-center gap-1">
           <span className="max-w-32 truncate text-sm text-muted-foreground">{displayName}</span>
-          <Button variant="ghost" size="icon" className="size-11" aria-label="退出登录" onClick={() => logout({})}>
+          <Button variant="ghost" size="icon" className="size-11" aria-label={t('common:action.signOutAria')} onClick={() => logout({})}>
             <LogOut className="size-4" />
           </Button>
         </div>
@@ -91,7 +100,7 @@ function MobileBody() {
         </div>
       </main>
       <nav
-        aria-label="移动端主导航"
+        aria-label={t('common:nav.mobilePrimary')}
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
         <div className="mx-auto flex max-w-2xl">
@@ -112,7 +121,7 @@ function MobileBody() {
                 }
               >
                 <Icon className="size-5 shrink-0" />
-                {tab.title}
+                {menuNodeTitle(tab, MOBILE_TITLE_KEYS, t)}
               </NavLink>
             );
           })}

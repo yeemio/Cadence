@@ -113,7 +113,7 @@ export function DrawingLibraryPage() {
             currentVersion={currentVersion}
             onViewed={() => queryClient.invalidateQueries({ queryKey: ['drawing'] })}
           />
-          <NoticesCard drawingId={activeDrawingId} />
+          <NoticesCard drawingId={activeDrawingId} clearance={clearance} />
           <PublishCard
             defaultDrawingId={activeDrawingId}
             currentVersion={currentVersion}
@@ -501,14 +501,18 @@ function RevisionViewPanel({ view }: { readonly view: DrawingRevisionView }) {
   );
 }
 
-/** 变更通知卡片（sinceVersion 游标——"我引用的 vN 是否已有更新"对账入口）。 */
-function NoticesCard({ drawingId }: { readonly drawingId: string }) {
+/**
+ * 变更通知卡片（sinceVersion 游标——"我引用的 vN 是否已有更新"对账入口；
+ * clearance 过滤：服务端只回查看者许可内修订的通知——受限修订的变更说明
+ * 对低许可不可读，前端只传参对齐，不承担过滤本体）。
+ */
+function NoticesCard({ drawingId, clearance }: { readonly drawingId: string; readonly clearance: ClearanceLevel }) {
   const [sinceInput, setSinceInput] = useState('');
   const [sinceVersion, setSinceVersion] = useState<number | undefined>(undefined);
 
   const noticesQuery = useQuery({
-    queryKey: ['drawing', 'notices', drawingId, sinceVersion],
-    queryFn: () => listDrawingNotices(drawingId, sinceVersion),
+    queryKey: ['drawing', 'notices', drawingId, clearance, sinceVersion],
+    queryFn: () => listDrawingNotices(drawingId, clearance, sinceVersion),
   });
 
   function handleApply(event: FormEvent<HTMLFormElement>) {

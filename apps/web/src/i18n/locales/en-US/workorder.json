@@ -1,0 +1,224 @@
+{
+  "orders": {
+    "title": "Work orders",
+    "description": "Browse work orders by state; select a row to inspect details and run state transitions below.",
+    "columns": {
+      "id": "ID",
+      "project-name": "Project name",
+      "state": "State",
+      "customer-reference": "Customer reference",
+      "planned-delivery": "Planned delivery",
+      "version": "Version",
+      "created-at": "Created at"
+    },
+    "filter": {
+      "label": "State filter",
+      "all-states": "All states"
+    },
+    "empty": "No work orders under the current filter"
+  },
+  "state": {
+    "not-started": "Not started",
+    "in-progress": "In progress",
+    "ready-to-ship": "Ready to ship",
+    "shipped": "Shipped",
+    "in-acceptance": "In acceptance",
+    "in-maintenance": "In maintenance",
+    "in-aftermarket": "In aftermarket",
+    "completed": "Completed",
+    "closed": "Closed"
+  },
+  "progress-status": {
+    "pending": "Not started",
+    "in-progress": "In progress",
+    "done": "Done"
+  },
+  "create": {
+    "title": "Create work order",
+    "description": "Project name is required; project manager / sales rep can be picked from candidates (display names) or pasted as user ids (the project manager is the first-level approver of parts requests; if both are left empty, parts approvals will be unhandled).",
+    "project-name": "Project name",
+    "project-name-placeholder": "Proj-2026-01",
+    "customer-reference": "Customer reference (optional)",
+    "customer-reference-placeholder": "CUST-01",
+    "manager": "Project manager (optional, pick from candidates or paste user id)",
+    "sales-rep": "Sales rep (optional, pick from candidates or paste user id)",
+    "candidate-placeholder": "Pick from candidates, or paste a user id",
+    "planned-delivery": "Planned delivery date (optional)",
+    "planned-delivery-placeholder": "2026-12-01",
+    "submit": "Create work order",
+    "failed": "Failed to create work order: {{message}}"
+  },
+  "detail": {
+    "title": "Work order details and actions",
+    "description": "Inspect the main document and progress; run state transitions, close, attachment linking and kit readiness refresh.",
+    "fields": {
+      "project-name": "Project name",
+      "customer": "Customer",
+      "manager": "Project manager",
+      "sales-rep": "Sales rep",
+      "current-state": "Current state",
+      "planned-delivery": "Planned delivery",
+      "packaging-arrival": "Packaging arrival",
+      "created-at": "Created at"
+    },
+    "warning": {
+      "both-missing": "No project manager and sales rep set: first-level approval of parts requests will be unhandled; complete the owners when creating the work order.",
+      "manager-missing": "No project manager set: first-level approval of parts requests falls to the sales rep.",
+      "sales-missing": "No sales rep set."
+    },
+    "attachments": {
+      "heading": "Attachments ({{n}})",
+      "empty": "No attachments yet",
+      "attached-at": "(attached at {{time}})"
+    },
+    "kit-check": {
+      "heading": "Latest kit readiness check",
+      "empty": "No kit readiness check yet (run \"Refresh kit readiness check\" below)",
+      "complete": "Kit readiness complete, no gaps",
+      "gaps": "{{n}} gap lines found",
+      "refreshed-at": "(refreshed at {{time}})"
+    },
+    "transitions-log": {
+      "heading": "State transition history",
+      "empty": "No transition records yet",
+      "entry-meta": "({{time}}, by {{actor}})"
+    },
+    "no-data": "No details available",
+    "transition": {
+      "target-state": "Transition target state",
+      "target-state-placeholder": "Choose a target state…",
+      "remark": "Transition remark (optional)",
+      "remark-placeholder": "Remark for the record",
+      "submit": "Run transition"
+    },
+    "actions": {
+      "close": "Close work order",
+      "attach-drawing": "Attach drawing (sample)",
+      "refresh-kit-check": "Refresh kit readiness check",
+      "listing": "Listings",
+      "gap-check": "Gap checks"
+    },
+    "action-failed": "Operation failed: {{message}}"
+  },
+  "progress": {
+    "project-heading": "Project progress (planned vs actual)",
+    "fields": {
+      "project-name": "Project name",
+      "current-state": "Current state",
+      "planned-delivery": "Planned delivery",
+      "packaging-arrival": "Packaging arrival",
+      "days-to-delivery": "Days to planned delivery"
+    },
+    "days": "{{days}} days",
+    "overdue": "(overdue)",
+    "machining-heading": "Machining progress (drawing no. × operation)",
+    "machining-empty": "No machining progress data",
+    "assembly-heading": "Assembly and commissioning progress (operations)",
+    "assembly-empty": "No assembly and commissioning progress data",
+    "columns": {
+      "drawing-no": "Drawing no.",
+      "operation": "Operation",
+      "done-quantity": "Done quantity",
+      "planned-quantity": "Planned quantity",
+      "status": "Progress"
+    }
+  },
+  "kit-board": {
+    "title": "Kit readiness board",
+    "description": "Latest kit readiness snapshot per work order: listing demand vs available stock; assembly/electrical dispatches with gaps are blocked.",
+    "empty": "No kit readiness snapshots yet (generated after running \"Refresh kit readiness check\" on a selected work order)",
+    "columns": {
+      "work-order": "Work order",
+      "project-name": "Project name",
+      "result": "Kit readiness result",
+      "refreshed-at": "Refreshed at",
+      "gap-lines": "Gap lines"
+    },
+    "complete": "Kit ready",
+    "gaps": "{{n}} gap lines"
+  },
+  "parts-state": {
+    "draft": "Draft",
+    "submitted": "In approval (level 1)",
+    "level2-review": "In approval (level 2)",
+    "level3-review": "In approval (level 3)",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "shipped": "Shipped",
+    "received": "Received"
+  },
+  "parts-flow": {
+    "draft": "Draft",
+    "submitted": "Level 1 approval",
+    "level2-review": "Level 2 approval",
+    "level3-review": "Level 3 approval",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "shipped": "Shipped",
+    "received": "Received"
+  },
+  "parts": {
+    "title": "Parts requests",
+    "description": "Parts requests enter approval after submission and can ship once approved (linked stock issue); select a row to inspect the approval progress below.",
+    "columns": {
+      "id": "ID",
+      "work-order": "Work order",
+      "item": "Item",
+      "quantity": "Quantity",
+      "state": "State",
+      "requester": "Requester",
+      "shipment-ref": "Shipment ref",
+      "version": "Version"
+    },
+    "filter": {
+      "state-label": "State filter",
+      "all-states": "All states",
+      "wo-label": "Work order filter (optional)",
+      "wo-placeholder": "Work order id"
+    },
+    "empty": "No parts requests under the current filter",
+    "role-note": "Actions are role-gated: approve / reject require the parts approval permission (approver role); shipping (linked stock issue) requires the shipping permission. Without the matching permission, the operation is rejected and has no effect.",
+    "action": {
+      "target-id": "Target request id (from the table above)",
+      "target-id-placeholder": "Paste an id from the table above",
+      "decision-remark": "Decision remark (required for approval)",
+      "decision-remark-placeholder": "Decision remark",
+      "approve": "Approve",
+      "reject": "Reject",
+      "ship": "Ship (linked stock issue)"
+    },
+    "errors": {
+      "target-not-in-list": "Target request id is not in the current list",
+      "action-failed": "Operation failed: {{message}}",
+      "create-failed": "Failed to submit parts request: {{message}}"
+    },
+    "create": {
+      "title": "New parts request",
+      "description": "Requests enter approval immediately; the first-level approver is the work order's project manager (falling back to the sales rep if unset). Pick an item from candidates (code and name shown; the item id is submitted) or paste an item id.",
+      "wo-label": "Work order id",
+      "item-label": "Item (pick from candidates or paste item id)",
+      "quantity-label": "Quantity (positive)",
+      "remark-label": "Remark (optional)",
+      "submit": "Submit parts request"
+    },
+    "approval": {
+      "title": "Parts request details and approval progress",
+      "description": "Current approval level and approvers resolved live; the first-level approver = the work order's project manager (falling back to the sales rep if unset).",
+      "fields": {
+        "id": "ID",
+        "work-order": "Work order",
+        "item": "Item",
+        "quantity": "Quantity",
+        "requester": "Requester",
+        "current-state": "Current state"
+      },
+      "current-level": "Current approval level: level {{level}}",
+      "approvers": "Approvers at this level: {{names}}",
+      "no-approver": "No approver at this level: {{note}} — approval cannot proceed; complete the work order owners or approval role configuration first.",
+      "no-pending": "No pending approval stage (approved requests can be shipped).",
+      "flow-heading": "Approval state transitions",
+      "flow-empty": "No transition records yet",
+      "flow-entry-meta": "({{time}}, by {{actor}})"
+    }
+  }
+}

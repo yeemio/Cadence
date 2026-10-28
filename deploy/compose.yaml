@@ -116,6 +116,11 @@ services:
       # 模块启停透传（缺省=注册表 DEFAULT_MODULES_ENABLED 基础六模块；全量演示
       # 用 MODULES_ENABLED 显式传全清单——注册表 MODULE_DEFINITIONS 键，core 恒必装）。
       MODULES_ENABLED: ${MODULES_ENABLED:-core,org,masterdata,workbench,approval,demo}
+      # M2 安全批 SP-3：附件/图纸两域签名密钥（base64/hex 解码后恰 32 字节；
+      # 留空 = 实例内随机，重启后既有引用失效——单机演示可用，多实例必须设；
+      # 格式非法启动即炸 fail-fast。见 deploy/.env.example 与 README SP-3 节）。
+      SMES_ATTACHMENT_REF_SECRET: ${SMES_ATTACHMENT_REF_SECRET:-}
+      SMES_DRAWING_REF_SECRET: ${SMES_DRAWING_REF_SECRET:-}
     ports:
       - "${SERVER_PORT:-3000}:3000"
     restart: unless-stopped

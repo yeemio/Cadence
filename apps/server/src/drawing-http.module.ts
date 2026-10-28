@@ -198,15 +198,18 @@ export class DrawingQueriesController {
     );
   }
 
-  /** 变更通知读取（sinceVersion 游标——消费方轮询/对账"我引用的 vN 是否已更新"）。 */
+  /** 变更通知读取（sinceVersion 游标；clearance 过滤：通知指向的修订超许可即不可见）。 */
   @Get('notices/:drawingId')
   @RequirePermission('drawing:read')
   async notices(
+    @Req() request: AuthenticatedRequest,
     @Param('drawingId') drawingId: string,
     @Query('sinceVersion') sinceVersion?: string,
+    @Query('clearance') clearance?: string,
   ): Promise<unknown> {
     return this.drawing.notices(
       this.tenantContext.current(),
+      this.viewerOf(request, clearance),
       parseDrawingIdParam(drawingId, 'drawingId'),
       parseSinceVersionParam(sinceVersion),
     );

@@ -4,6 +4,7 @@
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { listPendingVerification, revokeReport, verifyReport } from '../../data/reportingApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState } from '../../components/ModuleTable';
@@ -12,18 +13,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-const QUEUE_COLUMNS = [
-  { key: 'id', label: 'id', mono: true },
-  { key: 'kind', label: '类别', mono: true },
-  { key: 'dispatchId', label: '派工单', mono: true },
-  { key: 'doneQty', label: '完工数量' },
-  { key: 'laborMinutes', label: '工时（分钟）' },
-  { key: 'reporter', label: '申报人', mono: true },
-  { key: 'businessTime', label: '业务时间' },
-  { key: 'objectVersion', label: '版本', mono: true },
-];
+function queueColumns(t: ReturnType<typeof useTranslation>['t']): readonly {
+  key: string;
+  label: string;
+  mono?: boolean;
+}[] {
+  return [
+    { key: 'id', label: 'id', mono: true },
+    { key: 'kind', label: t('column.kind'), mono: true },
+    { key: 'dispatchId', label: t('column.dispatch-order'), mono: true },
+    { key: 'doneQty', label: t('column.done-qty') },
+    { key: 'laborMinutes', label: t('column.labor-minutes') },
+    { key: 'reporter', label: t('column.reporter'), mono: true },
+    { key: 'businessTime', label: t('column.business-time') },
+    { key: 'objectVersion', label: t('column.version'), mono: true },
+  ];
+}
 
 export function ReportVerifyPage() {
+  const { t } = useTranslation('reporting');
   const queryClient = useQueryClient();
   const queueQuery = useQuery({ queryKey: ['reports', 'pending-verification'], queryFn: listPendingVerification });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -52,20 +60,18 @@ export function ReportVerifyPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>待核查队列</CardTitle>
-        <CardDescription>
-          GET /reports/pending-verification；核查通过即计入工时账（hours 消费合同）；点行选中后操作。
-        </CardDescription>
+        <CardTitle>{t('verify.title')}</CardTitle>
+        <CardDescription>{t('verify.description')}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <QueryState
           isPending={queueQuery.isPending}
           error={queueQuery.error}
           isEmpty={queueQuery.data !== undefined && queueQuery.data.length === 0}
-          empty="当前无待核查报工单"
+          empty={t('verify.empty')}
         >
           <ModuleTable
-            columns={QUEUE_COLUMNS}
+            columns={queueColumns(t)}
             rows={queueQuery.data ?? []}
             selectedId={selectedId}
             onSelect={(row) => setSelectedId(String(row['id']))}
@@ -73,7 +79,7 @@ export function ReportVerifyPage() {
         </QueryState>
         <div className="grid gap-4 sm:grid-cols-[1fr_auto_auto] sm:items-end">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="verify-remark">核查备注（可选；撤销时作原因）</Label>
+            <Label htmlFor="verify-remark">{t('verify.remark-label')}</Label>
             <Input id="verify-remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
           </div>
           <Button
@@ -85,7 +91,7 @@ export function ReportVerifyPage() {
               )
             }
           >
-            核查通过
+            {t('verify.verify-button')}
           </Button>
           <Button
             variant="outline"
@@ -97,7 +103,7 @@ export function ReportVerifyPage() {
               )
             }
           >
-            撤销冲销
+            {t('verify.revoke-button')}
           </Button>
         </div>
         {outcome !== null && <CommandOutcomeHint outcome={outcome} />}

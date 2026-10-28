@@ -42,7 +42,15 @@ export class WorkOrderErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof WorkOrderConflictError
+        ? 'workorder.conflict'
+        : exception instanceof WorkOrderStateError
+          ? 'workorder.state_conflict'
+          : exception instanceof WorkOrderNotFoundError
+            ? 'workorder.not_found'
+            : 'workorder.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

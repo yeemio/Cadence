@@ -40,9 +40,8 @@ export function WorkOrderDrawingsCard({ workOrderId }: { readonly workOrderId: s
       <CardHeader>
         <CardTitle>图纸清单（钉版引用）</CardTitle>
         <CardDescription>
-          工作令附件 kind='drawing' 按「drawingId@vN」钉版编码装配为本清单（非钉版编码的
-          ref 不进清单）。清单是元数据面、不产生查看留痕——内容查看经图纸库的查看路径
-          （必留痕）。
+          此处列出工作令挂接的图纸附件及挂接时锁定的版次：图纸升版后清单仍按原版次显示、不自动变动，要改用新版需显式升级挂接。
+          清单本身只读、不计入查阅记录——查看图纸内容请点行内「在图纸库中打开」（查阅会留痕）。
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -64,7 +63,7 @@ export function WorkOrderDrawingsCard({ workOrderId }: { readonly workOrderId: s
           isPending={drawingsQuery.isPending}
           error={drawingsQuery.error}
           isEmpty={rows.length === 0}
-          empty="本工作令未挂钉版图纸附件（附件 ref 按 drawingId@vN 编码才进清单）"
+          empty="本工作令还没有挂接图纸附件；挂接后按锁定版次出现在此清单"
         >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

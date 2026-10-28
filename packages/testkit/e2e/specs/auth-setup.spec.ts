@@ -29,9 +29,10 @@ test('01 登录流程：填表单 → 提交 → MPA 整页跳主壳', async ({ 
   // MPA 整页跳转：登录 bundle 生命周期结束，主壳 index.html 全新加载
   await expect(page).toHaveURL((url) => url.pathname === '/');
 
-  // 主壳就绪：侧栏品牌 + 顶栏演示管理员身份（displayName 来自 /auth 会话）
+  // 主壳就绪：侧栏品牌 + 顶栏演示管理员身份（displayName 来自 /auth 会话；
+  // W8 批起顶栏经 presentDisplayName 净化夹具括注，种子「(Web 登录流)」不再呈现）
   await expect(page.getByText('离散制造运营平台', { exact: true })).toBeVisible();
-  await expect(page.getByText('演示管理员（Web 登录流）')).toBeVisible();
+  await expect(page.getByText('演示管理员', { exact: true })).toBeVisible();
   await page.screenshot({ path: `${ARTEFACTS}02-desktop-workbench.png`, fullPage: true });
 
   await page.context().storageState({ path: STATE_FILE });

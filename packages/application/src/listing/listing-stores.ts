@@ -208,6 +208,7 @@ export interface GapKindSummary {
   /** 进入核查的行数（itemId 已解析的行；未校验行不入差集）。 */
   readonly checkedLineCount: number;
   readonly gapLineCount: number;
+  /** 类目内无缺口行且确有清单行——0 行类目恒 false（空清单不判齐套，读面显示"无清单行"）。 */
   readonly complete: boolean;
 }
 

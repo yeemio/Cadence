@@ -41,7 +41,15 @@ export class ListingErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof ListingConflictError
+        ? 'listing.conflict'
+        : exception instanceof ListingStateError
+          ? 'listing.state_conflict'
+          : exception instanceof ListingNotFoundError
+            ? 'listing.not_found'
+            : 'listing.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

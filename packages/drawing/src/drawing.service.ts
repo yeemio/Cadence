@@ -18,7 +18,8 @@
  *    索引，内容走 viewRevision 留痕路径）；
  *  - drawingsIndex：租户级图号索引（P1-c 最小：前缀检索+保密过滤+分页；
  *    全链超许可的图纸不进索引）；
- *  - notices：变更通知读取（sinceVersion 游标——消费方轮询/对账）；
+ *  - notices：变更通知读取（sinceVersion 游标——消费方轮询/对账；clearance
+   *    过滤：通知指向的修订超许可即不可见，fail-closed）；
  *  - drawingsForWorkOrder：按工作令图纸清单（消费 workorder 附件的钉版引用
  *    结构同形载荷 + 修订升级视图"我引用的 vN 是否已有更新"；组合根粘合面，
  *    §4 差异表 #3：消费模块不 import 本包）；
@@ -437,17 +438,31 @@ export class DrawingService {
     };
   }
 
-  /** 变更通知读取（sinceVersion 游标：只取 toVersion > sinceVersion；toVersion 升序）。 */
+  /**
+   * 变更通知读取（sinceVersion 游标：只取 toVersion > sinceVersion；toVersion 升序；
+   * clearance 过滤——裁-12：changeNote 随受限修订走，低许可不可读）。
+   * 通知可见 ⇔ 其 toVersion 对应修订存在且 classificationAllows(viewer.clearance,
+   * 该修订.classification)——沿用修订链过滤口径；toVersion 在链中不存在 →
+   * 不可见（fail-closed）。游标语义不变（过滤与游标交集）。
+   */
   async notices(
     tenant: TenantId,
+    viewer: DrawingViewer,
     drawingId: DrawingId,
     sinceVersion?: number,
   ): Promise<readonly DrawingChangeNotice[]> {
-    return this.stores.notices.readByDrawing(
+    classificationRank(viewer.clearance); // 未知许可 fail-fast，不默认放行
+    const chain = await this.stores.revisions.chain(tenant, drawingId);
+    const classificationByVersion = new Map(chain.map((row) => [row.version, row.classification]));
+    const rows = await this.stores.notices.readByDrawing(
       tenant,
       drawingId,
       sinceVersion === undefined ? {} : { sinceVersion },
     );
+    return rows.filter((row) => {
+      const classification = classificationByVersion.get(row.toVersion);
+      return classification !== undefined && classificationAllows(viewer.clearance, classification);
+    });
   }
 
   /**

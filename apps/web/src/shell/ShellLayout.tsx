@@ -8,6 +8,11 @@
  * 抽屉保留完整菜单结构与权限投影语义，改动收敛在本文件（MenuNav 不动）。
  * 桌面（≥md）侧栏恒显，与既有布局零变化。移动端顶栏 hamburger（≥44px 触摸
  * 目标）开抽屉；遮罩点击 / 导航链接点击（事件委托 closest('a')）自动收起。
+ *
+ * i18n 波 1（ADR-0012）：固定 chrome 文案走 common namespace t()；顶栏挂
+ * 语言切换器（localStorage `smes.locale` 持久化，html lang 同步）。
+ * UX-PLAN-13/AP-06/VW-02：顶栏显示名经 presentDisplayName 呈现净化（剥夹具
+ * 括注/权限码拼接、「种子」→「演示」；见 shell/displayName.ts，不碰菜单注册）。
  */
 import { useState } from 'react';
 import {
@@ -16,6 +21,7 @@ import {
   useLogout,
   usePermissions,
 } from '@refinedev/core';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { Outlet } from 'react-router';
@@ -27,6 +33,8 @@ import { useMergedMenu } from './useMenuConfig';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MenuNav } from './MenuNav';
+import { presentDisplayName } from './displayName';
+import { LanguageSwitch } from '../i18n/LanguageSwitch';
 
 export function ShellLayout() {
   return (
@@ -37,10 +45,11 @@ export function ShellLayout() {
 }
 
 function ShellLoading() {
+  const { t } = useTranslation();
   return (
     <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-muted/40 text-sm text-muted-foreground">
       <LoaderCircle className="size-5 animate-spin" />
-      正在检查会话…
+      {t('common:state.sessionChecking')}
     </div>
   );
 }
@@ -66,6 +75,7 @@ export function canPollUnreadCount(permissionData: unknown): boolean {
 }
 
 function ShellBody() {
+  const { t } = useTranslation();
   const { data: permissionData } = usePermissions({});
   const permissions = toPermissionCodes(permissionData);
   // T1 #98：持久化菜单配置（code='default'）启动合并——fail-open，配置不可用
@@ -94,12 +104,12 @@ function ShellBody() {
       : null;
   const displayName =
     typeof identity?.displayName === 'string' && identity.displayName.length > 0
-      ? identity.displayName
-      : '已登录用户';
+      ? presentDisplayName(identity.displayName)
+      : t('common:user.fallbackName');
   const tenantId =
     typeof identity?.tenantId === 'string' && identity.tenantId.length > 0
       ? identity.tenantId
-      : '未命名租户';
+      : t('common:user.fallbackTenant');
   /** 品牌圈占位：显示名首字符。 */
   const initial = displayName.slice(0, 1).toUpperCase();
 
@@ -137,14 +147,14 @@ function ShellBody() {
           </div>
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight">Cadence</div>
-            <div className="text-[11px] text-muted-foreground">离散制造运营平台</div>
+            <div className="text-[11px] text-muted-foreground">{t('common:brand.subtitle')}</div>
           </div>
           {/* 抽屉内关闭钮（窄屏才有意义；桌面侧栏恒显时隐藏） */}
           <Button
             variant="ghost"
             size="icon"
             className="ml-auto size-11 md:hidden"
-            aria-label="关闭菜单"
+            aria-label={t('common:action.closeMenu')}
             onClick={() => setDrawerOpen(false)}
           >
             <X />
@@ -162,7 +172,7 @@ function ShellBody() {
               variant="ghost"
               size="icon"
               className="size-11 md:hidden"
-              aria-label="打开菜单"
+              aria-label={t('common:action.openMenu')}
               aria-expanded={drawerOpen}
               onClick={() => setDrawerOpen(true)}
             >
@@ -175,12 +185,18 @@ function ShellBody() {
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
+            {/* 语言切换器（i18n 波 1）：localStorage 持久化，双入口共享 */}
+            <LanguageSwitch />
             {showBell && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="relative size-11"
-                aria-label={unreadCount > 0 ? `通知中心（${unreadCount} 条未读）` : '通知中心'}
+                aria-label={
+                  unreadCount > 0
+                    ? t('common:notification.unreadAria', { n: unreadCount })
+                    : t('common:notification.center')
+                }
                 asChild
               >
                 <Link to="/notifications">
@@ -206,7 +222,7 @@ function ShellBody() {
             </div>
             <Button variant="ghost" size="sm" className="h-11" onClick={() => logout({})}>
               <LogOut />
-              退出
+              {t('common:action.signOut')}
             </Button>
           </div>
         </header>

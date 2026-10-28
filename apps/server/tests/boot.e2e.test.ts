@@ -23,6 +23,7 @@ import { TenantContext } from '@smes/application';
 import { buildAppModule, parseModulesEnabled } from '../src/app-registry.js';
 import { ApprovalErrorFilter } from '../src/approval-error.filter.js';
 import { AuthErrorFilter } from '../src/auth-error.filter.js';
+import { NavigationErrorFilter } from '../src/navigation-error.filter.js';
 import { BaselineErrorFilter } from '../src/baseline-error.filter.js';
 import { CostingErrorFilter } from '../src/costing-error.filter.js';
 import { DrawingErrorFilter } from '../src/drawing-error.filter.js';
@@ -69,6 +70,7 @@ async function bootApp(): Promise<string> {
   app.useGlobalFilters(
     new OrgErrorFilter(),
     new AuthErrorFilter(),
+    new NavigationErrorFilter(),
     new DomainErrorFilter(),
     new ApprovalErrorFilter(),
     new BaselineErrorFilter(),

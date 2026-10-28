@@ -1,0 +1,100 @@
+{
+  "overview": "运营总览",
+  "workbench": "工作台",
+  "masterdata": {
+    "title": "基础数据",
+    "item": "物品",
+    "resource": "资源",
+    "customer": "客户",
+    "supplier": "供应商",
+    "unit": "计量单位"
+  },
+  "manufacturing": {
+    "title": "制造运营",
+    "workorder": "工作令",
+    "workorder-parts": "配件申请",
+    "listing-sheets": "清单",
+    "listing-gap-checks": "缺口核查",
+    "dispatch": "派工",
+    "outsourcing-lines": "外协明细",
+    "scan": "扫码"
+  },
+  "reporting": {
+    "title": "报工管理",
+    "reports": "报工单",
+    "report-verification": "报工核查",
+    "mobile-report": "移动报工"
+  },
+  "purchasing": {
+    "title": "采购管理",
+    "purchase-requests": "采购申请",
+    "purchase-orders": "采购订单",
+    "purchase-receiving": "采购收货",
+    "purchase-returns": "采购退货",
+    "purchase-details": "采购明细"
+  },
+  "quality": {
+    "title": "质量管理",
+    "inspections": "质检队列",
+    "nonconformities": "不合格处置"
+  },
+  "warehouse": {
+    "title": "仓储管理",
+    "warehouses": "仓库与库位",
+    "stock-levels": "实时库存",
+    "stock-operations": "收发存操作",
+    "stocktakes": "库存盘点",
+    "shipping-orders": "发货任务"
+  },
+  "costing": {
+    "title": "成本与工时",
+    "hours-stats": "工时统计",
+    "costing": "成本核算"
+  },
+  "standard-reports": "标准报表",
+  "ai-query": "AI 问数",
+  "drawing": {
+    "title": "图纸文档",
+    "library": "图纸库",
+    "audit": "查看留痕审计"
+  },
+  "baseline": {
+    "title": "工艺与设备",
+    "processes": "工序",
+    "routings": "工艺路线",
+    "standard-times": "额定工时",
+    "equipment": "设备档案",
+    "fault-reports": "故障上报",
+    "outsourcing-rules": "外协计价",
+    "material-validations": "物料校验"
+  },
+  "system": {
+    "title": "系统管理",
+    "user": "用户与角色",
+    "role": "角色与授权",
+    "department": "机构",
+    "position": "岗位",
+    "audit": "操作日志",
+    "menus": "菜单管理",
+    "approval-config": "审批流配置",
+    "session": "会话审计"
+  },
+  "notifications": "通知中心",
+  "m": {
+    "workbench": "工作台",
+    "report": "报工",
+    "hours": "工时",
+    "stock": "库存",
+    "verify": "报工核查",
+    "parts": "配件申请",
+    "parts-approval": "配件审批",
+    "inspection": "质检",
+    "fault": "故障上报",
+    "receipt": "入库",
+    "transfer": "调拨移库",
+    "stocktake": "库存盘点",
+    "progress": "工作令进度",
+    "op-progress": "工序进度",
+    "mine": "我的报工"
+  }
+}

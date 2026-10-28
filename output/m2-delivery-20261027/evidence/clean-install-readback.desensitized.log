@@ -1,0 +1,15 @@
+干净安装验收（隔离 compose 项目 cadence-m2clean，fresh pg 卷，候选=当前工作区镜像 2026-10-27 23:30:42）
+== 起栈方式 ==
+PG_PORT=55433 SERVER_PORT=3001 WEB_PORT=8081 MODULES_ENABLED=<26 模块全清单> docker compose -p cadence-m2clean up -d --build（exit 0；镜像=当前工作区二次构建，Docker 层缓存命中）
+== D5 健康检查 ==
+{"status":"ok","tenant":"default"}
+web /: 200
+== 全新库种子账号登录（admin）==
+login_token=[REDACTED-TOKEN]
+== 冒烟：工作令列表 + 工作台汇总（全模块面）==
+{"orders":[]}
+{"user":"user-seed-admin","openTotal":0,"bySource":[]}
+== 冒烟：图纸通知（裁-12 面在干净栈可路由）==
+notices(no-auth)=401
+== CM-1 头（干净栈 web）==
+4

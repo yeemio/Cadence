@@ -23,7 +23,8 @@ export class ColumnPreferenceErrorFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<MinimalResponse>();
     const status = HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code = 'column_preference.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

@@ -5,7 +5,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { TenantContext, reportSourceProviderOf, type ReportSourceProvider, LocalFileSystemObjectStorage } from '@smes/application';
+import { TenantContext, reportSourceProviderOf, type ReportSourceProvider, LocalFileSystemObjectStorage, InMemoryObjectStorage } from '@smes/application';
 import {
   DEFAULT_PASSWORD_MIN_LENGTH,
   InMemoryLoginAttemptStore,
@@ -40,6 +40,7 @@ import { connectNotificationStore } from '@smes/business-store/notifications';
 import { connectApprovalConfigStore } from '@smes/business-store/approval-config';
 import { connectIssueStore } from '@smes/business-store/issue';
 import { connectAttachmentStore, connectAttachmentObjectStorage } from '@smes/business-store/attachment';
+import { DrawingReadReferenceSigner } from '@smes/drawing';
 import { connectColumnPreferenceStore } from '@smes/business-store/column-preferences';
 import { connectMachiningDailyStore } from '@smes/business-store/standardreports';
 import { metricSourceSetOf } from '@smes/metric-pack';
@@ -51,6 +52,7 @@ import { parseKnownTenants } from './healthcheck-probe.js';
 import { tenantResolutionErrorHandler } from './tenant-resolution-error.handler.js';
 import { ApprovalErrorFilter } from './approval-error.filter.js';
 import { AuthErrorFilter } from './auth-error.filter.js';
+import { NavigationErrorFilter } from './navigation-error.filter.js';
 import { BaselineErrorFilter } from './baseline-error.filter.js';
 import { DispatchErrorFilter } from './dispatch-error.filter.js';
 import { CostingErrorFilter } from './costing-error.filter.js';
@@ -70,8 +72,50 @@ import { BackfillErrorFilter } from './backfill-error.filter.js';
 import { CapabilityErrorFilter } from './capability-error.filter.js';
 import { UWaveErrorFilter } from './u-wave-error.filter.js';
 import { ColumnPreferenceErrorFilter } from './column-preference-error.filter.js';
+import { AiQueryErrorFilter } from './ai-query-error.filter.js';
 
 const DEFAULT_PORT = 3000;
+
+// ---------------------------------------------------------------------------
+// M2 安全前置批 CM-1（波 b，SP-6 评估落地）：安全响应头。本中间件是
+// **server 直连拓扑**（SaaS 子域 / IP:3000 直连——deploy compose 的 saas
+// proxy 形态，浏览器请求不经 web nginx）的权威层；web nginx 形态下与
+// apps/web/nginx.conf 同值叠加（两处同值——重复头浏览器取交集，同值无害）。
+//
+// CSP 与 apps/web 实际加载实态逐一对应（不机械复制示例；依据清单见
+// nginx.conf 头注，两处同值、同注释口径维护）：
+//   - script-src 'self' + sha256(vite-plugin-pwa injectRegister:'inline' 注入的
+//     SW 注册内联脚本，index.html/login.html 同串——插件版本不变即稳定)；
+//   - style-src 'self' + sha256(offline.html 内联 <style>，纯静态壳页)；
+//   - img-src data:(内置位图/SVG)data URI + blob:(html5-qrcode 扫描帧)；
+//   - worker-src blob:(papaparse Web Worker 由 Blob URL 构造)；
+//   - connect-src 'self'（VITE_API_BASE_URL 缺省 ''=同源，SSE 同源）。
+// 不放开 'unsafe-inline'/'unsafe-eval'——dist 实测无 eval/无游离内联。
+// ---------------------------------------------------------------------------
+
+/** CM-1：CSP 策略（与 apps/web/nginx.conf 同值单份口径，改动须两处同步）。 */
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'sha256-l0IHPvf8eV52c9mPJymShDKYQmoP/YyzUHeE31FDYIs='",
+  "style-src 'self' 'sha256-YtOWrAqaz/Nyg+osXB9QQeza3DEx372rEodcEB9gJ5o='",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+/** CM-1：安全响应头集（CSP/nosniff/Referrer-Policy/frame 限制）。 */
+const SECURITY_RESPONSE_HEADERS: ReadonlyArray<readonly [string, string]> = [
+  ['Content-Security-Policy', CONTENT_SECURITY_POLICY],
+  ['X-Content-Type-Options', 'nosniff'],
+  ['Referrer-Policy', 'strict-origin-when-cross-origin'],
+  ['X-Frame-Options', 'DENY'],
+];
 
 /**
  * 租户中间件响应的结构子集（Express Response 的最小面）。组合根不直接依赖
@@ -148,6 +192,51 @@ function parsePasswordPolicyEnv(): PasswordPolicy {
   return { minLength, requireClasses };
 }
 
+// ---------------------------------------------------------------------------
+// M2 安全前置批 SP-3（波 b）：附件/图纸两域签名密钥 env 解析。两键
+// （SMES_ATTACHMENT_REF_SECRET / SMES_DRAWING_REF_SECRET）值 = base64 或 hex
+// 编码、解码后恰 32 字节，直接作 HMAC-SHA256 key（不做 KDF 派生）。格式非法
+// fail-fast 拒启动（沿上方线 A env 同语义）；未设/空串（compose ${VAR:-} 空串
+// 透传形态）→ undefined = 实例内随机 + bootstrap 段 warn 一行（单实例
+// dev/demo 行为不变；多实例部署必须设——deploy/.env.example 与 deploy/README
+// 同批登记）。env 固化只改跨重启/跨实例可用性：TTL（附件 60s 级/图纸 ≤600s）
+// 与「token 即唯一凭证」语义不动；真实对象存储接入后由 SDK 预签名取代。
+// ---------------------------------------------------------------------------
+
+/**
+ * SP-3 签名密钥 env：未设/空串 → undefined；hex 须恰 64 字符（→32 字节，
+ * 先判——64 hex 字符按 base64 解得 48 字节，hex 是唯一满足 32 字节的解读，
+ * 无真歧义）；base64 须严格字符集且解码恰 32 字节（43 无填充/44 含 '='）。
+ * 其余一律 fail-fast（不静默截断/回退——密钥弱化即令牌伪造面）。
+ */
+function parseSigningKeyEnv(name: string): Uint8Array | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const trimmed = raw.trim();
+  const failFast = (): never => {
+    throw new Error(
+      `环境变量 ${name} 须为 base64 或 hex 编码、解码后恰 32 字节的 HMAC 签名密钥（当前：'${trimmed}'，${trimmed.length} 字符）——拒绝启动（fail-fast）`,
+    );
+  };
+  if (/^[0-9a-fA-F]+$/.test(trimmed)) {
+    if (trimmed.length !== 64) failFast();
+    return new Uint8Array(Buffer.from(trimmed, 'hex'));
+  }
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed) || trimmed.length < 43 || trimmed.length > 44) {
+    failFast();
+  }
+  const key = new Uint8Array(Buffer.from(trimmed, 'base64'));
+  if (key.length !== 32) failFast();
+  return key;
+}
+
+/** SP-3 未设 env 的启动 warn（一行；只提示可用性语义，不含任何凭据）。 */
+function warnSigningKeyEnvUnset(name: string, domain: string): void {
+  console.warn(
+    `[smes] ${name} 未设置——${domain}签名密钥实例内随机生成，重启后既有只读引用失效（单实例演示可用；多实例/跨重启固化必须设置，见 deploy/README）`,
+  );
+}
+
 async function bootstrap(): Promise<void> {
   const enabled = parseModulesEnabled(process.env['MODULES_ENABLED']);
   // 策略注入测试钩子（POST /dev/policies）：默认关；显式 on 才装配（生产形态不开）。
@@ -157,6 +246,18 @@ async function bootstrap(): Promise<void> {
   // 在此先行——起服前拒绝，不进 NestFactory）。
   const loginRateLimit = parseLoginRateLimitEnv();
   const passwordPolicy = parsePasswordPolicyEnv();
+
+  // M2 安全前置批 SP-3（波 b）：附件/图纸两域签名密钥——env 单点读取。设了
+  // → 三附件适配器（local-fs/pg/in-memory）与图纸签发器统一注入同 key（跨
+  // 重启/跨实例引用可用）；未设 → 实例内随机 + warn 一行（零回归）。
+  const attachmentRefSigningKey = parseSigningKeyEnv('SMES_ATTACHMENT_REF_SECRET');
+  if (attachmentRefSigningKey === undefined) {
+    warnSigningKeyEnvUnset('SMES_ATTACHMENT_REF_SECRET', '附件');
+  }
+  const drawingRefSigningKey = parseSigningKeyEnv('SMES_DRAWING_REF_SECRET');
+  if (drawingRefSigningKey === undefined) {
+    warnSigningKeyEnvUnset('SMES_DRAWING_REF_SECRET', '图纸');
+  }
 
   // 启动零 DB 依赖（硬合同）：无 DATABASE_URL 时不构造任何 PrismaClient
   // （组织/策略/基础数据/待办/审批存储回落内存实现，模块仍可装配）；设了也只
@@ -216,7 +317,7 @@ async function bootstrap(): Promise<void> {
   // DATABASE_URL 的部署形态附件字节入库 attachment_objects（bytea），重启随
   // pg-data 卷存活（修复内存适配器重启即丢、download-reference 502）。
   const attachmentObjectStorageHandle = process.env['DATABASE_URL']
-    ? connectAttachmentObjectStorage()
+    ? connectAttachmentObjectStorage({ signingKey: attachmentRefSigningKey })
     : undefined;
   // 对象存储（U6；W4-2 装配切换）：SMES_ATTACHMENT_DIR 显式存在 → 本地文件
   // 适配器（运维显式覆盖，字节落盘跨重启存活——既有行为保留）；否则
@@ -225,8 +326,17 @@ async function bootstrap(): Promise<void> {
   // 换装经同端口替换，不动业务面）。DIR 与 PG 并存时 DIR 优先（显式覆盖
   // 语义优先，预研 §4-1 缺省建议；最终取舍归 Owner 裁定）。
   const attachmentObjectStorage = process.env['SMES_ATTACHMENT_DIR']
-    ? new LocalFileSystemObjectStorage({ rootDirectory: process.env['SMES_ATTACHMENT_DIR'] })
-    : attachmentObjectStorageHandle?.objectStorage;
+    ? new LocalFileSystemObjectStorage({
+        rootDirectory: process.env['SMES_ATTACHMENT_DIR'],
+        // SP-3：env 固化密钥注入（未设 = undefined 同缺省随机，行为不变）
+        signingKey: attachmentRefSigningKey,
+      })
+    : (attachmentObjectStorageHandle?.objectStorage ??
+      // SP-3：零 DB 兜底形态也统一注入（三适配器一致）；未设 env 不构造 =
+      // 模块内随机实例（字节本就重启即失，零回归）。
+      (attachmentRefSigningKey === undefined
+        ? undefined
+        : new InMemoryObjectStorage({ signingKey: attachmentRefSigningKey })));
   const standardReportsProviderByTenant = new Map<string, ReportSourceProvider>();
   const standardReportsSourceProvider = process.env['DATABASE_URL']
     ? {
@@ -304,6 +414,13 @@ async function bootstrap(): Promise<void> {
       payrollStores: payrollStoreHandle?.stores,
       maintenanceStores: maintenanceStoreHandle?.stores,
       drawingStores: drawingStoreHandle?.stores,
+      // SP-3（波 b）：图纸只读引用签发器——env 固化密钥构造注入（经
+      // app-registry drawing 工厂透传 DrawingHttpModule.register）；未设 env
+      // 不注入 = 模块随机密钥实例（重启失效设计内）。
+      drawingReadReferenceSigner:
+        drawingRefSigningKey === undefined
+          ? undefined
+          : new DrawingReadReferenceSigner({ signingKey: drawingRefSigningKey }),
       metricPackStores: metricPackStoreHandle?.stores,
       metricPackSourceSetFor,
       auditLogStore: auditStoreHandle?.logStore,
@@ -401,10 +518,25 @@ async function bootstrap(): Promise<void> {
   expressApp.useBodyParser('json', { limit: '45mb' });
   expressApp.useBodyParser('urlencoded', { extended: true, limit: '45mb' });
 
+  // CM-1 安全响应头中间件：注册在一切会写响应的中间件之前（含下方租户解析
+  // 失败直接 end 的路径），确保任何出口形态（JSON/SSE/附件字节流/4xx/500）
+  // 浏览器都收到安全头——附件开门面回传任意 Content-Type 字节时 CSP/nosniff
+  // 是纵深防御（上传的 SVG/HTML 内嵌脚本被 script-src 'self' 拦截）。
+  app.use((_request: unknown, response: unknown, next: () => void) => {
+    const res = response as { setHeader(name: string, value: string): unknown };
+    for (const [name, value] of SECURITY_RESPONSE_HEADERS) {
+      res.setHeader(name, value);
+    }
+    next();
+  });
+
   // 域错误 -> HTTP 状态（400/401/404/409；域错误类在 application，映射在组合根）。
+  // NavigationErrorFilter（UX 缺陷批）：浏览器文档导航的 401/404 中文可读呈现；
+  // API 请求 Nest 默认体透传零回归（取舍与边界见该文件头）。
   app.useGlobalFilters(
     new OrgErrorFilter(),
     new AuthErrorFilter(),
+    new NavigationErrorFilter(),
     new DomainErrorFilter(),
     new ApprovalErrorFilter(),
     new BaselineErrorFilter(),
@@ -424,6 +556,7 @@ async function bootstrap(): Promise<void> {
     new CapabilityErrorFilter(),
     new UWaveErrorFilter(),
     new ColumnPreferenceErrorFilter(),
+    new AiQueryErrorFilter(),
   );
 
   // 跨模块端口接线收口（M2 后第一增量）：buildAppModule 已把 store 级适配器随

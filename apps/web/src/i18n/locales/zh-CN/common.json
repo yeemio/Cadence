@@ -1,0 +1,64 @@
+{
+  "brand": {
+    "subtitle": "离散制造运营平台",
+    "subtitleFull": "离散制造运营平台 · 演示环境",
+    "mobile": "Cadence 车间"
+  },
+  "action": {
+    "signOut": "退出",
+    "signOutAria": "退出登录",
+    "openMenu": "打开菜单",
+    "closeMenu": "关闭菜单"
+  },
+  "state": {
+    "sessionChecking": "正在检查会话…"
+  },
+  "user": {
+    "fallbackName": "已登录用户",
+    "fallbackTenant": "未命名租户"
+  },
+  "notification": {
+    "center": "通知中心",
+    "unreadAria": "通知中心（{{n}} 条未读）"
+  },
+  "nav": {
+    "mobilePrimary": "移动端主导航"
+  },
+  "error": {
+    "requestFailed": "请求失败{{status}}：{{message}}",
+    "forbidden403": "服务端拒绝（403）：当前会话身份未获授权——需管理员在服务端为其授予策略。{{message}}",
+    "codes": {
+      "auth.invalid_input": "登录请求不合法",
+      "auth.invalid_credentials": "用户名或密码不正确",
+      "auth.rate_limited": "尝试过于频繁，请稍后重试",
+      "dispatch.invalid_input": "派工单载荷不合法",
+      "dispatch.not_found": "派工单不存在",
+      "dispatch.conflict": "派工单版本冲突，请刷新后重试",
+      "dispatch.state_conflict": "派工单当前状态不允许该操作",
+      "workorder.not_found": "工作令不存在",
+      "workorder.state_conflict": "工作令当前状态不允许该操作",
+      "report.not_found": "报工单不存在",
+      "report.state_conflict": "报工单当前状态不允许该操作",
+      "inspection.not_found": "质检单不存在",
+      "inspection.state_conflict": "质检单当前状态不允许该操作",
+      "inventory.not_found": "库存记录不存在",
+      "inventory.state_conflict": "库存当前状态不允许该操作"
+    }
+  },
+  "language": {
+    "label": "语言",
+    "zh-CN": "中文",
+    "en-US": "English"
+  },
+  "query": {
+    "loading": "正在加载…",
+    "empty-default": "暂无数据",
+    "request-failed": "请求失败：{{message}}"
+  },
+  "outcome": {
+    "committed": "操作已生效。",
+    "indeterminate": "操作结果未确认",
+    "error": "操作失败",
+    "rejected": "操作未生效"
+  }
+}

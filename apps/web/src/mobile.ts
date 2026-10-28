@@ -170,3 +170,16 @@ export const MOBILE_SUBPAGES: readonly MenuNode[] = [
 
 /** 移动组全量路由清单（标签 + 子页；main.tsx 装配用；权限投影由各导航面自行执行）。 */
 export const mobileRoutes: readonly MenuRoute[] = flattenRoutes([...MOBILE_MENU, ...MOBILE_SUBPAGES]);
+
+/**
+ * i18n 波 1（ADR-0012）：移动注册表 → menu namespace key 映射（与 menu.ts
+ * 同体例，复合键 `<code>::<静态 title>` 索引；title 中文原文保留为 zh-CN
+ * 权威源与回落值，渲染层走 shell/menuTitle.ts）。移动码 `m.<slug>` 唯一 →
+ * 键 `menu:m.<slug>`。
+ */
+const mobileTitleKeyEntries = [...MOBILE_MENU, ...MOBILE_SUBPAGES].map(
+  (node) => [`${node.code}::${node.title}`, `menu:${node.code}`] as const,
+);
+export const MOBILE_TITLE_KEYS: Readonly<Record<string, string>> = Object.fromEntries(
+  mobileTitleKeyEntries,
+);

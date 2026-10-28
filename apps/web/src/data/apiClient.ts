@@ -24,6 +24,9 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    // i18n 波 2（ADR-0012 决定 3）：服务端错误响应语义 code（{ statusCode, code, message }）
+    // 原样透出；非 ApiError 形状/缺 code 字段时为 undefined，消费方按未知 code 回落。
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -82,12 +85,18 @@ async function requestOnce(
 
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
+    const record =
+      typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : null;
     const message =
-      typeof body === 'object' && body !== null && 'message' in body &&
-      typeof (body as { message: unknown }).message === 'string'
-        ? (body as { message: string }).message
+      record !== null && typeof record['message'] === 'string'
+        ? record['message']
         : `HTTP ${response.status}`;
-    throw new ApiError(response.status, message);
+    // 语义 code 随 message 同源透出（i18n 波 2：前端按 code 映射文案，未知回落原文）
+    const code =
+      record !== null && typeof record['code'] === 'string' && record['code'].length > 0
+        ? record['code']
+        : undefined;
+    throw new ApiError(response.status, message, code);
   }
   return body;
 }

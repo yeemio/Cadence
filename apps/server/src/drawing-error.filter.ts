@@ -35,7 +35,13 @@ export class DrawingErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof DrawingConflictError
+        ? 'drawing.conflict'
+        : exception instanceof DrawingNotFoundError
+          ? 'drawing.not_found'
+          : 'drawing.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

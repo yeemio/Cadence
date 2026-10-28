@@ -27,10 +27,13 @@ import {
   ISSUE_TASK_STORE,
   IssueService,
   TenantContext,
+  WORKORDER_KIT_STORE,
+  newKitCheckId,
   type IssueCommand,
   type IssueTaskStore,
+  type KitCheckStore,
 } from '@smes/application';
-import { OperationId, TenantId, UserId, makeCommandEnvelope } from '@smes/business-core';
+import { OperationId, TenantId, UserId, WorkOrderId, makeCommandEnvelope } from '@smes/business-core';
 import { bindCrossModuleWiring } from '../src/cross-module-wiring.js';
 import { buildAppModule, parseModulesEnabled } from '../src/app-registry.js';
 import { AuthErrorFilter } from '../src/auth-error.filter.js';
@@ -46,6 +49,9 @@ const HEADERS = {
   'x-smes-user': OPERATOR,
 };
 const TENANT = TenantId.create('default');
+
+/** beforeAll 捕获的齐套快照 store（模块级辅助函数播种放行前置用）。 */
+let kitCheckStore: KitCheckStore | undefined;
 
 let operationCounter = 0;
 function opId(prefix: string): string {
@@ -90,13 +96,19 @@ async function createAssemblyDispatch(
   expect(createdOrder.body.status, `建工作令：${JSON.stringify(createdOrder.body)}`).toBe('committed');
   const workOrder = createdOrder.body['workOrder'] as { id: string; objectVersion: number };
 
-  const refreshed = await post(
-    baseUrl,
-    `/workorder/work-orders/${workOrder.id}/kit-checks`,
-    envelope('workorder.kit.refresh.v1', {}, workOrder.objectVersion),
-  );
-  expect(refreshed.body.status, `齐套刷新：${JSON.stringify(refreshed.body)}`).toBe('committed');
-  expect((refreshed.body['kitCheck'] as { complete: boolean }).complete).toBe(true);
+  // Round-2 裁决后空清单刷新不再 vacuous 判齐（UX-PLAN-03 同构口径），本测试的
+  // 齐套放行前置改为直接播种 complete=true 快照（有行有料——与 ISSUE_TASK_STORE
+  // 播种先例同体例；kit.refresh 真实判定链归 workorder 域单测覆盖）。
+  const kitStore = kitCheckStore!;
+  await kitStore.append({
+    tenant: TENANT,
+    id: newKitCheckId(),
+    workOrderId: WorkOrderId.create(workOrder.id),
+    kinds: [{ kind: 'part', lineCount: 1, gapLineCount: 0, complete: true }],
+    gapLines: [],
+    complete: true,
+    refreshedBy: UserId.create(OPERATOR),
+  });
 
   const createdDispatch = await post(
     baseUrl,
@@ -192,6 +204,7 @@ describe('fix-wave-3 W3-2：撤销派工→发料任务清理组合态（dispatc
     await app.listen(0);
     const { port } = app.getHttpServer().address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${port}`;
+    kitCheckStore = app.get(WORKORDER_KIT_STORE, { strict: false });
 
     const granted = await post(
       baseUrl,

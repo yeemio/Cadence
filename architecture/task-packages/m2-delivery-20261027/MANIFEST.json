@@ -1,0 +1,208 @@
+{
+  "package_id": "cadence-m2-delivery-20261027",
+  "prepared_at": "2026-10-27T21:51:00.417779+08:00",
+  "state": "prompt_ready_not_launched",
+  "entrypoint": "README.md",
+  "start_prompt": "ZCODE-START.md",
+  "review_prompt": "DS-REVIEW.md",
+  "repository": "/Users/yeemio/AI/gitrep/Cadence",
+  "base_head": "061db587ff6af3f9abef89753e225ebd9014565f",
+  "release_tag_commit": "0e86007ae262af775741dfb6ad0271f114926016",
+  "product_acceptance_thread_id": "01a17d85-16ec-7c42-a86d-7d42711031a3",
+  "dispatch_mode": "owner_manual_forwarding",
+  "implementation_session_id": null,
+  "review_provider": null,
+  "review_model": null,
+  "current_m2_runkit_assignment": null,
+  "source_snapshots": [
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/PRODUCT_CONTRACT.md",
+      "package_path": "references/architecture/PRODUCT_CONTRACT.md",
+      "bytes": 10071,
+      "sha256": "06dfe9b0fe183ff420077302d06abb97e161710094332595cf6d1b01788731f7"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/PRODUCT_LIFECYCLE_MAP.md",
+      "package_path": "references/architecture/PRODUCT_LIFECYCLE_MAP.md",
+      "bytes": 9942,
+      "sha256": "a821c609366bc4b4a369bb616e0e132f1f45582ef0188990af74a60681e9edd2"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/ROADMAP.md",
+      "package_path": "references/architecture/ROADMAP.md",
+      "bytes": 7892,
+      "sha256": "0f3cfb0a940c850e6b65342b79187b08ba8a62e3f7cd881b57dbdb237cb92039"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/status.md",
+      "package_path": "references/architecture/status.md",
+      "bytes": 85108,
+      "sha256": "f4eb6482b0e046977fc54c6cc30032bcb3be49e96df62bf63e6208ddd1dd333c"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/contracts/m2-security/CONTRACT.md",
+      "package_path": "references/architecture/contracts/m2-security/CONTRACT.md",
+      "bytes": 15484,
+      "sha256": "77dcb6e1a32af460d9f6c2c97727c1df275a6e160c983a1b8f475d1256e06c6d"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/contracts/m2-security/SP6-httpOnly-assessment.md",
+      "package_path": "references/architecture/contracts/m2-security/SP6-httpOnly-assessment.md",
+      "bytes": 22182,
+      "sha256": "9acaf929dce329a322948ed2f2abdead3a7416d4a59f3fffd752f795345f8bd1"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/decisions/ADR-0012-多语言i18n架构决定.md",
+      "package_path": "references/architecture/decisions/ADR-0012-多语言i18n架构决定.md",
+      "bytes": 2383,
+      "sha256": "a258dc5216f611b92219745d70f39fc02b3ca2dd5b24548541f7d7dcc565715c"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/i18n-multi-language-proposal.md",
+      "package_path": "references/architecture/i18n-multi-language-proposal.md",
+      "bytes": 26191,
+      "sha256": "6cf9bf5fcc69dba0eb9e92f535a3eafe45865a84b43aa57474cef8ea849da60c"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/ROLE-PACKS.md",
+      "package_path": "references/architecture/ROLE-PACKS.md",
+      "bytes": 31477,
+      "sha256": "2170a397aed6b5e09d5fb91ea7f152abf1286dfaafae8521691e91b0b9a2e6e6"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/architecture/DECISIONS-QUEUE.md",
+      "package_path": "references/architecture/DECISIONS-QUEUE.md",
+      "bytes": 20665,
+      "sha256": "4af697df1fe826a0c7b4c793a82f71fb339533f3d600853cf7cf7a3f86188e5a"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/deploy/README.md",
+      "package_path": "references/deploy/README.md",
+      "bytes": 16282,
+      "sha256": "722e376bccfd198607192cc785993abc76dca39b6fb4375b72700f79f02256dd"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/TESTING-GUIDE.md",
+      "package_path": "references/TESTING-GUIDE.md",
+      "bytes": 5164,
+      "sha256": "46781898b3104625850d1466197d3e94e12d9c74a7280f14a72c9e0e32b47e76"
+    },
+    {
+      "source_path": "/Users/yeemio/AI/gitrep/Cadence/noodle-test-output/retest-166ce5d/Cadence-final-166ce5d-report.md",
+      "package_path": "references/noodle-test-output/retest-166ce5d/Cadence-final-166ce5d-report.md",
+      "bytes": 7172,
+      "sha256": "f0a467f52ab6abc9fe167de622ce1523c2cbc1c45d00372a7afd6b6ee1b21a03"
+    }
+  ],
+  "hash_algorithm": "sha256",
+  "manifest_self_hash": "excluded",
+  "files": [
+    {
+      "path": "DS-REVIEW.md",
+      "bytes": 5055,
+      "sha256": "ae50bb7790680d6abaf78a6b62d109c87e770c333bccc60f57659481bbd07714"
+    },
+    {
+      "path": "PROTECTED-WORKTREE.json",
+      "bytes": 24772,
+      "sha256": "d8c0205066aa20fb879b8175fd63c0f2165e69347232a8459315ecb390e27f3b"
+    },
+    {
+      "path": "README.md",
+      "bytes": 22782,
+      "sha256": "3ac79fb58845f6ccba51d44d9bf621e79f09cc59e7c418822f1862386e5f37e0"
+    },
+    {
+      "path": "ZCODE-START.md",
+      "bytes": 3315,
+      "sha256": "86b3b2c79ecabcb5645ea8cc880012b3bd158f331d73ef19052661b405465c06"
+    },
+    {
+      "path": "references/TESTING-GUIDE.md",
+      "bytes": 5164,
+      "sha256": "46781898b3104625850d1466197d3e94e12d9c74a7280f14a72c9e0e32b47e76"
+    },
+    {
+      "path": "references/architecture/DECISIONS-QUEUE.md",
+      "bytes": 20665,
+      "sha256": "4af697df1fe826a0c7b4c793a82f71fb339533f3d600853cf7cf7a3f86188e5a"
+    },
+    {
+      "path": "references/architecture/PRODUCT_CONTRACT.md",
+      "bytes": 10071,
+      "sha256": "06dfe9b0fe183ff420077302d06abb97e161710094332595cf6d1b01788731f7"
+    },
+    {
+      "path": "references/architecture/PRODUCT_LIFECYCLE_MAP.md",
+      "bytes": 9942,
+      "sha256": "a821c609366bc4b4a369bb616e0e132f1f45582ef0188990af74a60681e9edd2"
+    },
+    {
+      "path": "references/architecture/ROADMAP.md",
+      "bytes": 7892,
+      "sha256": "0f3cfb0a940c850e6b65342b79187b08ba8a62e3f7cd881b57dbdb237cb92039"
+    },
+    {
+      "path": "references/architecture/ROLE-PACKS.md",
+      "bytes": 31477,
+      "sha256": "2170a397aed6b5e09d5fb91ea7f152abf1286dfaafae8521691e91b0b9a2e6e6"
+    },
+    {
+      "path": "references/architecture/contracts/m2-security/CONTRACT.md",
+      "bytes": 15484,
+      "sha256": "77dcb6e1a32af460d9f6c2c97727c1df275a6e160c983a1b8f475d1256e06c6d"
+    },
+    {
+      "path": "references/architecture/contracts/m2-security/SP6-httpOnly-assessment.md",
+      "bytes": 22182,
+      "sha256": "9acaf929dce329a322948ed2f2abdead3a7416d4a59f3fffd752f795345f8bd1"
+    },
+    {
+      "path": "references/architecture/decisions/ADR-0012-多语言i18n架构决定.md",
+      "bytes": 2383,
+      "sha256": "a258dc5216f611b92219745d70f39fc02b3ca2dd5b24548541f7d7dcc565715c"
+    },
+    {
+      "path": "references/architecture/i18n-multi-language-proposal.md",
+      "bytes": 26191,
+      "sha256": "6cf9bf5fcc69dba0eb9e92f535a3eafe45865a84b43aa57474cef8ea849da60c"
+    },
+    {
+      "path": "references/architecture/status.md",
+      "bytes": 85108,
+      "sha256": "f4eb6482b0e046977fc54c6cc30032bcb3be49e96df62bf63e6208ddd1dd333c"
+    },
+    {
+      "path": "references/deploy/README.md",
+      "bytes": 16282,
+      "sha256": "722e376bccfd198607192cc785993abc76dca39b6fb4375b72700f79f02256dd"
+    },
+    {
+      "path": "references/noodle-test-output/retest-166ce5d/Cadence-final-166ce5d-report.md",
+      "bytes": 7172,
+      "sha256": "f0a467f52ab6abc9fe167de622ce1523c2cbc1c45d00372a7afd6b6ee1b21a03"
+    }
+  ],
+  "revision": "R1",
+  "revised_at": "2026-10-27T22:27:00+08:00",
+  "revision_scope": [
+    {
+      "group": "B",
+      "source_id": "裁-12",
+      "change": "Verify and align drawing-notice visibility with existing revision clearance and tenant policy on the current candidate"
+    },
+    {
+      "group": "C",
+      "source_id": "ROLE-PACKS",
+      "change": "Verify and close named work-order selection/navigation and inspection concession/revocation UI-entry gaps with existing authorization and business semantics"
+    }
+  ],
+  "previous_archive": {
+    "filename": "CADENCE-M2-ZCODE-20261027.zip",
+    "bytes": 145132,
+    "sha256": "bab123ac4ebe0bf7c56bbbab3191294bc39c5926de4505c8b4f257fca6d6d29e",
+    "preserved_byte_exact": true
+  },
+  "source_snapshot_policy": "Original 13 reference snapshots and PROTECTED-WORKTREE.json are preserved byte-exact from the first archive. R1 scope is defined in README.md, ZCODE-START.md and DS-REVIEW.md. Snapshots are historical evidence, not current implementation or decision acceptance.",
+  "distribution_archive": "CADENCE-M2-ZCODE-20261027-R1.zip"
+}

@@ -1,7 +1,9 @@
 # Cadence 测试指南（给自动化测试代理 / 新接手者）
 
-仓库：https://github.com/yeemio/Cadence（私有；SSH `git@github.com:yeemio/Cadence.git`）
+仓库：https://github.com/yeemio/Cadence（公开；SSH `git@github.com:yeemio/Cadence.git`，也可使用 HTTPS 克隆）
 形态：pnpm monorepo（Node ≥24 + pnpm 11.x + Docker）。一切以本文件命令为准，逐条可复制执行。
+
+2026-10-28 Owner 要求将当前工作区全部提交，交由 grokbot 全面测试。测试时先记录 `git rev-parse HEAD`，以该提交锁定源码；本次快照包含 M2 增量、PM 材料及随后新增的 AI 问数首版。历史 verify 日志和 `CANDIDATE-MANIFEST.txt` 只覆盖各自记载的候选，不作为本提交已通过全面测试的声明。当前 PM 判定与边界见 [ROADMAP](architecture/ROADMAP.md)，AI 问数范围与未验项见 [AI 交付记录](output/ai-query-delivery-20261028/DELIVERY.md)。部署模板 `deploy/.env.example` 可随仓库取得；本地 `.env` 与原始运行日志不随提交分发。
 
 ## 0. 前置
 

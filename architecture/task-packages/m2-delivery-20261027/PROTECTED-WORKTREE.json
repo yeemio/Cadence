@@ -1,0 +1,772 @@
+{
+  "package_id": "cadence-m2-delivery-20261027",
+  "observation_started_at": "2026-10-27T21:51:00.355189+08:00",
+  "observation_completed_at": "2026-10-27T21:51:00.400358+08:00",
+  "repository": "/Users/yeemio/AI/gitrep/Cadence",
+  "branch": "main",
+  "head": "061db587ff6af3f9abef89753e225ebd9014565f",
+  "kind": "live_worktree_inventory_not_frozen_candidate",
+  "warning": "Hashes are one observation of existing work. No source bytes or recovery backup are included. Preserve original writers and confirm later changes on intake.",
+  "files": [
+    {
+      "path": "README.md",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 5527,
+      "sha256": "5ac9be7976c5c65daac234c4f1683319e09b3c4a3eadc86a130ed911daee49c8",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/approval-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 2001,
+      "sha256": "662e4dcb9b2c50516265261c20bf2656767a742d26567f5d158e5fb27911684d",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/auth-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1631,
+      "sha256": "666c151417fd97e399c2ee60f581019e2161e50f26a1cafdbb0519bf4d15a142",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/auth.guard.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 6306,
+      "sha256": "82ba4d0b8e351dba5e89268d42ffd4f24461fb62e278dd622caaca64eb074fec",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/backfill-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 2152,
+      "sha256": "74a94921eecea2c6e2c663ca5fd746580c4c0b3dbd1a6bba904364bde69beb2e",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/baseline-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1675,
+      "sha256": "3d07a8a650c5006b8836ea61d8f81727202cba6ec482a4202bfcb33ba05b4efe",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/capability-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 2972,
+      "sha256": "faa3dbf1c1176aca3ff3ec74a8923a56c0f3cfae4521401e3cd2a6cd947ef360",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/column-preference-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1069,
+      "sha256": "5a245c351266ca98f69746f4f89cd5d1427dcefb4c6224e10545798f2ed33716",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/costing-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1531,
+      "sha256": "8b9ace09665835088bced0ec015e0c991929298995437b1ab4478879b9fc4c44",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/dispatch-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1812,
+      "sha256": "a889d1972f9a6f848a070d17c0e775e5183d4fcbe4183254640713ea0e9c048b",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/domain-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 2205,
+      "sha256": "6cd0a603e74da00acaf484fad10be369d186d4f92270af7209f42e54c3275463",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/drawing-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1711,
+      "sha256": "3d0fa2a79c1c964d6fec4d3eb2f170cf8fb4f153a7d00a77569302d9b2505db1",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/hours-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1475,
+      "sha256": "038d4c949dd2595d376744183319fe1afad502eb0b9d9b7b1642d01573e33b25",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/inspection-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1881,
+      "sha256": "ca939f13d34df4f16af216983ebf5f5f23be380910ed339d70a2d532d070ef20",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/inventory-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1864,
+      "sha256": "1788eecc0c99e7077dfd553b2c399ed8d8f5aaad86310b90a0e9fa66e391c92b",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/listing-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1871,
+      "sha256": "47a17d1f1ca51072de9318c90c4b812710ba17223b4018385f25ff6266a28d32",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/main.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 32390,
+      "sha256": "2e3a5f71e218a4146a7e1b3d57ea8a1468502a81c8ba6149d3028debbd0cccfc",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/maintenance-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1752,
+      "sha256": "d14665aed51ddce6fee1266569db52507fbc89657963b07acabad9ee8e52f94b",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/metric-pack-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1679,
+      "sha256": "cf823f0d9f434452a93782dd2f1e6eac1bd6431000b222c3d8fa28fe05916349",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/org-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1567,
+      "sha256": "696a2789378f46f937e6fc8048514d885c7922873d38ad38c0d6105a31fd8b00",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/payroll-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1605,
+      "sha256": "275d6a159c735d66b620d961bc4f194be429c60614bc83ac805cb193f0bace3a",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/report-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1786,
+      "sha256": "78e9c6fd13da06a35f676cc239c30f677f93e6aaaf351c3dafe30b7c10030c9c",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/screen-http.module.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 12305,
+      "sha256": "c8d59c022d62b4c1c4c4aa63e234ccf45e459f769fb7437f563066d24e3687be",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/u-wave-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 3343,
+      "sha256": "1cacbc577e76b0f672590c899fbca0ea525b4b11af745b8532cad9aa4dfd5f1c",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/workorder-error.filter.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1988,
+      "sha256": "0e6e85dd808d78590e2ed4ffa0568207c02b606a95f887a3575bfc712ef3c448",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/tests/boot.e2e.test.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 14259,
+      "sha256": "53e52fdd86121e7491ccc512657ea2be1042b5daa77b93ebfd30c5eade6deee0",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/tests/screen-boot.e2e.test.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 12081,
+      "sha256": "45b767f7b3a8549408d2d8f8a271737e46e904c4fb42976c72e6c67c389f003f",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/login/LoginPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 5118,
+      "sha256": "6a364781cc6e51fb76a351551aff172dcc770108b8695fa708671ef56851db95",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/login/main.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 829,
+      "sha256": "2cb749b20063921e9e1da5c28b0f73af7d8bd462740d3d5c3051881e9c1fe85b",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/nginx.conf",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 3301,
+      "sha256": "1c9e7e03f4907f2764d38df1a1fe840ff0971f28246020044922f48fc7082bd5",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/package.json",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1293,
+      "sha256": "4d2bd6d98427b772ef9e124576c9d08892cdc84c13e2862d58d011e9a683873c",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/components/ApiErrorHint.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1092,
+      "sha256": "c49a72a5c14581f3f68673ad6182143c737c65557e36e7d86f3bf8eaebb5d01d",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/components/ModuleTable.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 6596,
+      "sha256": "ffb02a3d784389925730cf46d02bf836f72db4bba211d8d93d4f3c3bb72c303e",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/data/commandClient.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 7902,
+      "sha256": "50ed4ff6d54cf58a95674d139bd23ee18fa0bb4bef7f11bb07c94203d8309ee4",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/data/inspectionApi.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 5553,
+      "sha256": "b9349480822b5c45ee9eb1c756015a12accb7e97ce067ee5ee1e4a530435455c",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/data/listingApi.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 9492,
+      "sha256": "aec5a0d1360189a393beea27ba2860cf4c9deebe8126f12b2c1020efeb886586",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/data/reportingApi.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 8281,
+      "sha256": "f60a142709bdcbd41d41e3bbbd0e76f3ebe3072966bcf225c6fc613c726f5565",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/main.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 5187,
+      "sha256": "746b00356d0590555934dc0adf7d1e26eda21b8b98f633d982eddb2c34a4f323",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/menu.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 19910,
+      "sha256": "8b0aac5576f00f27cab1d093423764bf815b7fbe7baf1b64eef1d6db1b5e81e7",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/mobile.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 6274,
+      "sha256": "9f5ef591474674938b5edb0bf74ec80bb478e9fe7ca2d5f0d3fa8002167cac03",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/assembly.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 7957,
+      "sha256": "4c5e9b0a136a165c36542dcc306a9957e5d18b45a6299042d39618f8a92c1583",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/dispatch/DispatchOrdersPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 37777,
+      "sha256": "288ee287da46015fb15c1676856611f80ff012fa2c8220af2f80ac8bdfcd2926",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/inspection/InspectionOrdersPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 25904,
+      "sha256": "a16abeca01a0586a5b1cd8b6d25bdf26c23f018f5a9b31306ff66440bd2d9bfb",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/inspection/NonconformitiesPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 8118,
+      "sha256": "02d263723dd4c36b14ac23dcadae1afdc0cc9468195bf1f1d13fb4791b31fc84",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/inventory/StockLevelsPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 6678,
+      "sha256": "3e7e0eb303dcf31d33fce64fec31d66a5d56000612035dfe1181c1fe70713c62",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/inventory/StockOperationsPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 15699,
+      "sha256": "0af073e8d110ee7d12ddadcdf82bfdf9b8b2225f56919eac69363a55767d4fa8",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/inventory/WarehousesPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 5982,
+      "sha256": "700898a9136018e28bfc857b1cbb2022a7b60d60833833720b5d8909cd8bab18",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/listing/GapChecksPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 9148,
+      "sha256": "303d19deeabf1adef150457046eea4e14f20119c77d0d1d9282277848ccff5aa",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/listing/ListingSheetsPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 19787,
+      "sha256": "9a24b842cb8463151fbf82a3552243e7cec9e001b69af4b69124ce8cb6b725d1",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/listing/PurchaseOrdersPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 24572,
+      "sha256": "f3429c8d4496d6b7c40c5433837dabfcc3dff6b546f31536036b171bd0aa3553",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/m/PartsApprovalPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 17363,
+      "sha256": "35e00b71115579519aed56df0df9f3684de5e006701220283b5586cea12c88ab",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/m/ReportPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 19589,
+      "sha256": "4d6a7ffd745138a662ff614827de5c712a601e6459118fd112733a3d6333c957",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/m/WorkbenchPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 9139,
+      "sha256": "1d19d48cc3b883d6a33246bd9f2b303cfdd0e2910527a889bbea2e1b3950b593",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/m/labels.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 3995,
+      "sha256": "c65a25d95cea53656f0a5a06dcc4cb1980757b7cdba28f1adad82c809c55c466",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/m/pageAccess.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 3110,
+      "sha256": "9026ef968a133626a58b06b5c9e86233346895e1dabcbc6cef1d0d3fc047164a",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/overview/IndexPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 17329,
+      "sha256": "e01a099c7960a7f7c4af616fc6eda77375cbbed19fd986375ecc726391f737fe",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/reporting/ReportsPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 12984,
+      "sha256": "4f8aba7784d1a598dbca8509c6c2ecc19563fadb9fec391dbb10860e42d3685b",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/workbench/WorkbenchPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 9723,
+      "sha256": "a9c4ec620a0b0f26299b796439489dc7961fef6cfeb26ccc55c44875591eb4ac",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/workorder/PartsRequestsPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 18966,
+      "sha256": "7774d9bfd8021ae77dd33ac51f68e8d9826747c9d912214867185b32d4ded49d",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/workorder/WorkOrdersPage.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 25247,
+      "sha256": "16d67b55bf4eedbe2cfe6f6dd46331921bbeaae5fa5180ad32ea6160b1a8de17",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/shell/MenuNav.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 4563,
+      "sha256": "5748df6dd659c578994308870ab25d6c581d8ff3612b9367c15f7c3e311e607d",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/shell/MobileLayout.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 5978,
+      "sha256": "a17866ae132d2581d831e05df972e90cdcfee2f19ad4f2e6bdb59b2edd4d90e0",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/shell/ShellLayout.tsx",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 10208,
+      "sha256": "4f4550fe866c6822d2e5686c41e4a36ebe27284ce3988759c2386da073ff20d9",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/tests/e2e-module-chain.test.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 31700,
+      "sha256": "ab4595ee803adafd85ae50fa1ab0e26b8328f75b63dd178b6a08b1cc308db5d6",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/tests/menu.test.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 12255,
+      "sha256": "4de6eaade4a635523f19131b00736df2e338fa880becd1f0bd57a52a764c96f3",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/tests/module-pages.test.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 29052,
+      "sha256": "1bed936f67dd908dc940f24793b504d0170cf033c1d460fd4918b08865114c8b",
+      "stable_during_read": true
+    },
+    {
+      "path": "architecture/README.md",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 1715,
+      "sha256": "161537e7a4134cd3f35b0cadfe541dcfedc9ab16fa30877640e0c9853ca0e06b",
+      "stable_during_read": true
+    },
+    {
+      "path": "architecture/ROADMAP.md",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 7892,
+      "sha256": "0f3cfb0a940c850e6b65342b79187b08ba8a62e3f7cd881b57dbdb237cb92039",
+      "stable_during_read": true
+    },
+    {
+      "path": "packages/application/src/listing/listing.service.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 85411,
+      "sha256": "d069ee417d994c6bebdec0348c6259067e32760e0f24dc6ce9aae2b58e91780d",
+      "stable_during_read": true
+    },
+    {
+      "path": "packages/application/tests/listing/listing.test.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 76175,
+      "sha256": "a3bd18239dbd60f9e54516e4bbb6c7fff00ba6ad9acd7514ff63fc727af47094",
+      "stable_during_read": true
+    },
+    {
+      "path": "packages/testkit/e2e/specs/auth-setup.spec.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 2059,
+      "sha256": "8f6686171f00426c2093319b504c75029047c79af5566face859bd5ec09b7bb8",
+      "stable_during_read": true
+    },
+    {
+      "path": "packages/testkit/e2e/specs/desktop-real-chain.spec.ts",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 19017,
+      "sha256": "2825f635f0dd2010d6b115a89ab9c56f598a99be8a2bc17badcb5c8521d67171",
+      "stable_during_read": true
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "git_status": " M",
+      "kind": "file",
+      "bytes": 343806,
+      "sha256": "43c745ab85a65ec834d255b780606756fcbef59ef7d42f0845233b0b4c68423d",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/src/navigation-error.filter.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 4873,
+      "sha256": "94adc87b79258e021ff040706a3b8dee3455e69617611ddb6068e97054b99d23",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/tests/error-code-mapping.test.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 17489,
+      "sha256": "a1c1efb78aef522b591d8d58ff1b437cf98a9c129277abf6f079567213935c57",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/server/tests/error-presentation.e2e.test.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 6218,
+      "sha256": "5de382a69b43a434892cc0e94be15d25908eb70d4386eede24933fc03f2e78cf",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/i18n/LanguageSwitch.tsx",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 1183,
+      "sha256": "3b5048c29c9cf61ffe6e5991074b68748fd4b3d868384ddc87820df097acbc0e",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/i18n/index.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 5676,
+      "sha256": "ae8e887f95d1527e37fdaf0864a07660f5fe149d5f0c44419a143bc83102e754",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/i18n/locales/en-US/common.json",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 972,
+      "sha256": "430af5136525dbe1ef24367a46e3b99ea4fc4a4d264cb26d61535b1de5400c78",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/i18n/locales/en-US/login.json",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 741,
+      "sha256": "427ae43726cd946c93bfb51cc4defcc285729b6fb5c1ed965bc4f373b1a8dba2",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/i18n/locales/en-US/menu.json",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 2773,
+      "sha256": "276d1bb8e022e2499ec4494bc9df5b63aed498c100e63a00d1bff611f275f7cb",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/i18n/locales/zh-CN/common.json",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 942,
+      "sha256": "d8dd9ecc00cc3f5a8d530c2bf50c2177783be92483c855edbbb03af183358de4",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/i18n/locales/zh-CN/login.json",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 698,
+      "sha256": "b3c09c4e734ed382da499025667c0974a34169a83098da8ac6b0618c81f51bb8",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/i18n/locales/zh-CN/menu.json",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 2658,
+      "sha256": "1f9916048bbac85e1b56fbaffbecff90a30ac8df0c8185a49dbf0f58ec624aa2",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/lib/format.test.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 2742,
+      "sha256": "73a92fd596f9edc47fe136e8da87d1807f22c50125602377b15715cb1012c23c",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/lib/format.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 2487,
+      "sha256": "b29527ba8a0723316740cb11b9a02d129ac73c3f1c5a6678f6d81e8eaa551811",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/pages/workbench/MobileReportGuidePage.tsx",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 2368,
+      "sha256": "8e60981025761c430ca13c866753efbc7eb196d4daa125776784ba25f55c35c1",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/shell/displayName.test.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 1881,
+      "sha256": "392f392092fa5bf3c98b7b73b948bf945efae90bcdfc58d4c2d8604c4940fb92",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/shell/displayName.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 1911,
+      "sha256": "303e21f6295b71d7085b2193554611e1d1227fc476be9f5c33a0870c2e30c808",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/src/shell/menuTitle.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 1015,
+      "sha256": "d93fd67198be950c3f9122eaedb6f7c57e24f20672063640e7ad52d36ca81b33",
+      "stable_during_read": true
+    },
+    {
+      "path": "apps/web/tests/i18n.test.ts",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 10039,
+      "sha256": "bf3780eebfddccdf534f21b52083825e77d768f5302bfdf1814bcc1831653c3a",
+      "stable_during_read": true
+    },
+    {
+      "path": "architecture/PRODUCT_CONTRACT.md",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 10071,
+      "sha256": "06dfe9b0fe183ff420077302d06abb97e161710094332595cf6d1b01788731f7",
+      "stable_during_read": true
+    },
+    {
+      "path": "architecture/PRODUCT_LIFECYCLE_MAP.md",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 9942,
+      "sha256": "a821c609366bc4b4a369bb616e0e132f1f45582ef0188990af74a60681e9edd2",
+      "stable_during_read": true
+    },
+    {
+      "path": "architecture/decisions/ADR-0012-多语言i18n架构决定.md",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 2383,
+      "sha256": "a258dc5216f611b92219745d70f39fc02b3ca2dd5b24548541f7d7dcc565715c",
+      "stable_during_read": true
+    },
+    {
+      "path": "architecture/i18n-multi-language-proposal.md",
+      "git_status": "??",
+      "kind": "file",
+      "bytes": 26191,
+      "sha256": "6cf9bf5fcc69dba0eb9e92f535a3eafe45865a84b43aa57474cef8ea849da60c",
+      "stable_during_read": true
+    }
+  ]
+}

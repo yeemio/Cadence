@@ -1,0 +1,69 @@
+{
+  "list": {
+    "title": "Work Reports",
+    "description": "Five kinds of work reports (process attributes snapshotted with each report, business time backfilled); work reports failing content validation are rejected with a reason and can be re-submitted after correction; select a row to verify / correct / revoke.",
+    "kind-filter": "Kind filter",
+    "kind-all": "All kinds",
+    "state-filter": "State filter",
+    "state-all": "All states",
+    "drawing-filter": "Drawing number filter (optional)",
+    "empty": "No work reports under the current filters"
+  },
+  "kind": {
+    "part": "Part",
+    "assembly": "Assembly",
+    "electrical": "Electrical",
+    "aftermarket": "Aftermarket",
+    "oddjob": "Odd Job"
+  },
+  "state": {
+    "pending": "Pending",
+    "reported": "Reported",
+    "verified": "Verified",
+    "revoked": "Revoked"
+  },
+  "column": {
+    "id": "id",
+    "kind": "Kind",
+    "state": "State",
+    "dispatch-order": "Dispatch Order",
+    "done-qty": "Done Qty",
+    "labor-minutes": "Labor Minutes",
+    "reporter": "Reporter",
+    "version": "Version",
+    "business-time": "Business Time",
+    "date": "Date",
+    "output-qty": "Output Qty",
+    "drawing-number": "Drawing Number",
+    "operation": "Operation"
+  },
+  "detail": {
+    "title": "Work Report Detail & Verification",
+    "description": "Verify → ReportVerified (payload = the hours consumption contract); correction = a corrected version + reason (original untouched); revoke = reversal.",
+    "remark-label": "Verification remark (optional)",
+    "reason-label": "Correction reason (required for correction)",
+    "qty-label": "Corrected qty (optional)",
+    "minutes-label": "Corrected labor minutes (optional)",
+    "verify-button": "Verify",
+    "audit-button": "Submit Corrected Version",
+    "revoke-button": "Revoke (Reverse)"
+  },
+  "progress": {
+    "title": "Drawing × Operation Progress",
+    "drawing-label": "Drawing number",
+    "query-button": "Query Progress",
+    "empty": "No operation progress facts for this drawing number"
+  },
+  "trend": {
+    "title": "Output Trend (12-day window)",
+    "empty": "No output facts yet"
+  },
+  "verify": {
+    "title": "Pending Verification Queue",
+    "description": "GET /reports/pending-verification; verified reports are posted to the hours ledger (hours consumption contract); select a row to operate.",
+    "empty": "No work reports pending verification",
+    "remark-label": "Verification remark (optional; used as the reason on revoke)",
+    "verify-button": "Verify",
+    "revoke-button": "Revoke (Reverse)"
+  }
+}

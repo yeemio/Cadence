@@ -59,10 +59,17 @@ export const STOCKTAKE_STATE_LABELS: Readonly<Record<string, string>> = {
   adjusted: '已调账',
 };
 
-/** 配件申请状态 → 中文名（六态；配置无标签，按状态机注释口径的通用词）。 */
+/**
+ * 配件申请状态 → 中文名（六态 + 多级链两个待审中间态；配置无标签，按状态机
+ * 注释口径的通用词）。level2_review/level3_review 词源 workorder-config.ts
+ * PARTS_LEVEL2/3_REVIEW_STATE——与 submitted 同属「审批中」统一文案族，列表
+ * 混级展示时按级次区分（UX-AP-01：审批人须能分辨行正等待哪一级）。
+ */
 export const PARTS_STATE_LABELS: Readonly<Record<string, string>> = {
   draft: '草稿',
   submitted: '待审批',
+  level2_review: '二级审批中',
+  level3_review: '三级审批中',
   approved: '已批准',
   rejected: '已拒绝',
   shipped: '已发货',

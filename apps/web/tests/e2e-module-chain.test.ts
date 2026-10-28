@@ -349,6 +349,7 @@ d('S3-b 九模块命令链真实后端 e2e（RUN_E2E=1 触发）', () => {
     const gap = await listingApi.runGapCheck(workOrderId);
     expect(gap.committed, `缺口核查：${gap.reason}`).toBe(true);
     const gapCheck = await listingApi.getLatestGapCheck(workOrderId);
+    if (gapCheck === null) throw new Error('最新缺口核查读回应非空（上一步核查已提交）');
     expect(gapCheck['complete']).toBe(false);
     const gapLines = gapCheck['gapLines'] as readonly Record<string, unknown>[];
     const gapLine = rowWhere(gapLines, (entry) => entry['itemId'] === itemId, '缺口行读回');

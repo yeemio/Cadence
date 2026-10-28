@@ -34,7 +34,13 @@ export class MetricPackErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof MetricPackConflictError
+        ? 'metric_pack.conflict'
+        : exception instanceof MetricPackNotFoundError
+          ? 'metric_pack.not_found'
+          : 'metric_pack.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

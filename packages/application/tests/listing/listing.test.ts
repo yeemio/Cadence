@@ -638,8 +638,9 @@ describe('gap.check（清单 × 库存可用量 → 缺口行）', () => {
     expect(snapshot.kinds.map((k) => [k.kind, k.lineCount, k.checkedLineCount, k.gapLineCount, k.complete])).toEqual([
       ['part', 2, 2, 2, false],
       ['standard', 1, 0, 0, true], // pending 行：计数但不入差集 → 类目"无缺口"（可解析口径）
-      ['electrical', 0, 0, 0, true],
-      ['equipment', 0, 0, 0, true],
+      // UX-PLAN-03 Round-2 裁决：0 行类目 complete=false（无行可核不判齐套）
+      ['electrical', 0, 0, 0, false],
+      ['equipment', 0, 0, 0, false],
     ]);
     expect(result.events[0]?.eventType).toBe(LISTING_EVENT_TYPES.gapChecked);
     expect(snapshot.auditStatus).toBe('recorded'); // 证据公共列口径
@@ -648,9 +649,25 @@ describe('gap.check（清单 × 库存可用量 → 缺口行）', () => {
     h.inventory.stock.set('item-1', 10);
     h.inventory.stock.set('item-2', 4);
     const second = mustCommit(await h.service.execute(envelope('gap.check.v1', {}), 'wo-400'));
-    expect((second.gapCheck as NonNullable<typeof second.gapCheck>).complete).toBe(true);
+    expect((second.gapCheck as NonNullable<typeof result.gapCheck>).complete).toBe(true);
     expect((await h.gapChecks.latestByWorkOrder(t1, 'wo-400'))?.complete).toBe(true);
     expect((await h.gapChecks.latestByWorkOrder(t2, 'wo-400'))).toBeNull(); // 跨租户不可见
+  });
+
+  it('空清单核查不得判 complete（vacuous truth：无行可核时差集恒空不等于齐套）', async () => {
+    const h = newHarness();
+    const result = mustCommit(await h.service.execute(envelope('gap.check.v1', {}), 'wo-401'));
+    const snapshot = result.gapCheck as NonNullable<typeof result.gapCheck>;
+    expect(snapshot.complete).toBe(false);
+    expect(snapshot.gapLines).toEqual([]);
+    // 类目级口径同整单（Round-2 复测裁决）：0 行类目 complete=false——
+    // 类目须"确有清单行且无缺口行"才判齐套，读面显示「无清单行（未参与核查）」。
+    expect(snapshot.kinds.map((k) => [k.kind, k.lineCount, k.gapLineCount, k.complete])).toEqual([
+      ['part', 0, 0, false],
+      ['standard', 0, 0, false],
+      ['electrical', 0, 0, false],
+      ['equipment', 0, 0, false],
+    ]);
   });
 });
 

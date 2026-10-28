@@ -10,6 +10,8 @@ import { CustomersPage } from './masterdata/CustomersPage';
 import { SuppliersPage } from './masterdata/SuppliersPage';
 import { UnitsPage } from './masterdata/UnitsPage';
 import { WorkbenchPage } from './workbench/WorkbenchPage';
+// ---- UX-PRD-01（e1a8bd）：移动报工桌面引导页（/reports/mobile → 引导直达 /m/report） ----
+import { MobileReportGuidePage } from './workbench/MobileReportGuidePage';
 import { OrgRolesPage } from './org/OrgRolesPage';
 import { OrgUsersPage } from './org/OrgUsersPage';
 import { DepartmentsPage } from './org/DepartmentsPage';
@@ -21,6 +23,8 @@ import { OverviewIndexPage } from './overview/IndexPage';
 import { MenuConfigsPage } from './system/MenuConfigsPage';
 import { ApprovalConfigPage } from './system/ApprovalConfigPage';
 import { NotificationsPage } from './notifications/NotificationsPage';
+// ---- AI 问数首版（CONTRACT v1 · WP-C）：规则引擎问数页（/ai-query） ----
+import { AiQueryPage } from './ai-query';
 import { ScanPage } from './scan/ScanPage';
 import { WorkOrdersPage } from './workorder/WorkOrdersPage';
 import { PartsRequestsPage } from './workorder/PartsRequestsPage';
@@ -87,8 +91,13 @@ export const PAGE_BY_CODE: Record<string, ComponentType> = {
   'outsourcing-lines': OutsourcingLinesPage,
   reports: ReportsPage,
   'report-verification': ReportVerifyPage,
+  // ---- UX-PRD-01（e1a8bd）：移动报工桌面引导叶子挂接 ----
+  'mobile-report': MobileReportGuidePage,
   'purchase-requests': PurchaseRequestsPage,
   'purchase-orders': PurchaseOrdersPage,
+  // ---- UX-PUR-01/02（e1a8bd）：采购收货直达入口 = 订单页别名挂接（同组件，
+  //      收货操作仍在订单详情内，页面内部零改动） ----
+  'purchase-receiving': PurchaseOrdersPage,
   'purchase-returns': PurchaseReturnsPage,
   'purchase-details': PurchaseDetailsPage,
   inspections: InspectionOrdersPage,
@@ -123,6 +132,8 @@ export const PAGE_BY_CODE: Record<string, ComponentType> = {
   'system-menus': MenuConfigsPage,
   'system-approval-config': ApprovalConfigPage,
   notifications: NotificationsPage,
+  // ---- AI 问数首版（菜单码 ai-query，权限码与 ai-query 控制器实态同码） ----
+  'ai-query': AiQueryPage,
 };
 
 /** 移动页面码 -> 页面装配（注册表见 mobile.ts；预研 scan-report 已升级为 m.report）。 */

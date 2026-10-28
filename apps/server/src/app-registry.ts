@@ -8,6 +8,7 @@
 import { DynamicModule, Module, Provider, Type } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import {
+  AiQueryModule,
   ApprovalModule,
   AuditModule,
   AuditWriteInterceptor,
@@ -22,6 +23,9 @@ import {
   ColumnPreferencesModule,
   createOrgPartsApproverDirectory,
   definePartsApprovalChain,
+  // AI 问数首版（CONTRACT v1 · 2026-10-28，WP-B）：组合面 + 真实权限判定链
+  EMPTY_PROGRESS_PORT,
+  isPermissionCode,
   IssueModule,
   HoursModule,
   InspectionModule,
@@ -31,7 +35,11 @@ import {
   InMemoryLaborEntryStore,
   InMemoryBaselineEventStore,
   InMemoryKitCheckStore,
+  InMemoryGapCheckStore,
+  InMemoryNonconformStore,
   InMemoryOutsourcingLineStore,
+  InMemoryPolicyStore,
+  InMemoryPurchaseRequestStore,
   InMemoryPurchaseOrderStore,
   InMemoryReleaseFactStore,
   InMemoryReportDomainEventStore,
@@ -62,6 +70,7 @@ import {
   InMemoryStockReservationStore,
   InMemoryInventoryDomainEventStore,
   OrgModule,
+  PermissionService,
   ReportingModule,
   // A8/A10 首波：数字运营大屏（SSE 推送 + A10 日跑批；组合根 HTTP 面）
   // ScreenHttpModule 从本仓 screen-http.module 导入（A8 装配，writer 写于 apps/server）：
@@ -70,6 +79,7 @@ import {
   WorkbenchModule,
   WorkOrderModule,
   type ApprovalCaseStore,
+  type AiQueryPermissionResolver,
   type AuditLogStore,
   type BaselineEventStore,
   type BaselineOperationLedger,
@@ -169,7 +179,7 @@ import { inMemoryPayrollStores, type PayrollStores } from '@smes/payroll';
 import { PayrollHttpModule } from './payroll-http.module.js';
 import { inMemoryMaintenanceStores, type MaintenanceStores } from '@smes/maintenance';
 import { MaintenanceHttpModule } from './maintenance-http.module.js';
-import { inMemoryDrawingStores, type DrawingStores } from '@smes/drawing';
+import { inMemoryDrawingStores, type DrawingReadReferenceSigner, type DrawingStores } from '@smes/drawing';
 import { DrawingHttpModule } from './drawing-http.module.js';
 import { inMemoryMetricPackStores, type MetricPackStores, type MetricSourceSet } from '@smes/metric-pack';
 import { MetricPackHttpModule } from './metric-pack-http.module.js';
@@ -390,6 +400,12 @@ export interface StorePorts {
   readonly maintenanceStores?: MaintenanceStores | undefined;
   /** drawing 五存储束（DrawingHttpModule 注入点，M3 第二波）。 */
   readonly drawingStores?: DrawingStores | undefined;
+  /**
+   * 图纸只读引用签发器（M2 安全前置批 SP-3：main.ts 读
+   * SMES_DRAWING_REF_SECRET 构造注入——env 固化后 read-reference 跨重启/
+   * 跨实例可用；缺省不注入 = 模块随机密钥实例，重启后旧引用失效设计内）。
+   */
+  readonly drawingReadReferenceSigner?: DrawingReadReferenceSigner | undefined;
   /** metric-pack 三存储束（MetricPackHttpModule 注入点，M3 第二波）。 */
   readonly metricPackStores?: MetricPackStores | undefined;
   /** 操作日志存储（AuditModule 注入点，S1 backfill：0920 #103）。 */
@@ -431,6 +447,30 @@ export interface StorePorts {
    * PG 形态经 connectColumnPreferenceStore 注入；缺省回落内存实现）。
    */
   readonly columnPreferenceStore?: ColumnPreferenceStore | undefined;
+}
+
+/**
+ * ai-query 域权限复核适配（CONTRACT v1 §三域能力）：core/auth
+ * PermissionService.authorize 的组合根适配——admin bypass（ADMIN_ROLE 身份
+ * 属性）、租户收口、精确码匹配全部由既有 casbin 判定链承载，**禁止 stub
+ * 恒 true**（安全红线）。每次判定新起 PermissionService：enforcer 惰性装载
+ * 时重读共享 PolicyStore 当前快照——合同「服务端每次查询重新验证」；组合根
+ * 不落第二个常驻 enforcer 缓存（D-1 教训：跨实例策略快照无失效广播，常驻
+ * 第二实例与既有写入面分叉即陈旧判定）。policyStore 缺位（绕过
+ * buildAppModule 裁决的直调形态）= 恒 false（fail-closed：无策略事实源不得
+ * 放行）；权限码形状非法 = 永不可能被授予，同样 false。
+ */
+function createAiQueryPermissionResolver(
+  policyStore: PolicyStore | undefined,
+): AiQueryPermissionResolver {
+  return {
+    hasPermission:
+      policyStore === undefined
+        ? async () => false
+        : async (tenant, user, code) =>
+            isPermissionCode(code) &&
+            new PermissionService(policyStore).authorize(tenant, user, code),
+  };
 }
 
 /**
@@ -699,6 +739,11 @@ export const MODULE_DEFINITIONS: Record<
     DrawingHttpModule.register({
       stores: stores.drawingStores ?? inMemoryDrawingStores(),
       workOrderDrawingRefs: wiring.drawing?.workOrderDrawingRefs,
+      // SP-3（M2 安全前置批波 b）：main.ts 读 SMES_DRAWING_REF_SECRET 构造的
+      // 签发器透传（此前恒缺省随机实例）；未设 env 不注入 = 行为不变。
+      ...(stores.drawingReadReferenceSigner === undefined
+        ? {}
+        : { readReferenceSigner: stores.drawingReadReferenceSigner }),
     }),
   'metric-pack': (stores, wiring) =>
     MetricPackHttpModule.register({
@@ -815,6 +860,26 @@ export const MODULE_DEFINITIONS: Record<
       publicStream: process.env['SMES_SCREEN_PUBLIC_STREAM'] === 'on',
     });
   },
+  // AI 问数首版（CONTRACT v1 · 2026-10-28，WP-B；激活价语义：仅显式
+  // MODULES_ENABLED 开启，不进默认清单）：三域只读问数组合行。取数端口全部
+  // 注入共享 store 实例（源模块未启用/未注入 PG 句柄时组合根回落同实现内存
+  // 实例——查询有效、无记录，零 DB boot 语义完整）；progressFacts 与
+  // WorkOrderModule 的 #15 接线同源（workorder+dispatch 未齐装 =
+  // EMPTY_PROGRESS_PORT 零行口径，同模块缺省语义）；permissionResolver 走
+  // core/auth PermissionService 真实 casbin 判定（见
+  // createAiQueryPermissionResolver——admin bypass/租户收口/逐码复核均为
+  // 既有判定链，缺域码经回答通道 denied 而非 403）。
+  'ai-query': (stores, wiring) =>
+    AiQueryModule.register({
+      workOrderStore: stores.workOrderStore ?? new InMemoryWorkOrderStore(),
+      progressFacts: wiring.workorder?.progressPort ?? EMPTY_PROGRESS_PORT,
+      gapCheckStore: stores.listingGapStore ?? new InMemoryGapCheckStore(),
+      purchaseRequestStore: stores.listingRequestStore ?? new InMemoryPurchaseRequestStore(),
+      purchaseOrderStore: stores.listingOrderStore ?? new InMemoryPurchaseOrderStore(),
+      inspectionOrderStore: stores.inspectionOrderStore ?? new InMemoryInspectionOrderStore(),
+      nonconformStore: stores.inspectionNonconformStore ?? new InMemoryNonconformStore(),
+      permissionResolver: createAiQueryPermissionResolver(stores.policyStore),
+    }),
 };
 
 /** 组合根装配选项。 */
@@ -932,6 +997,12 @@ export interface BuildAppModuleOptions {
   readonly maintenanceStores?: MaintenanceStores | undefined;
   /** drawing 五存储束（PG 形态经 connectDrawingStore 注入）。 */
   readonly drawingStores?: DrawingStores | undefined;
+  /**
+   * 图纸只读引用签发器（M2 安全前置批 SP-3：main.ts 读
+   * SMES_DRAWING_REF_SECRET 构造注入，经 MODULE_DEFINITIONS.drawing 透传给
+   * DrawingHttpModule.register；缺省不注入 = 模块随机密钥实例）。
+   */
+  readonly drawingReadReferenceSigner?: DrawingReadReferenceSigner | undefined;
   /** metric-pack 三存储束（PG 形态经 connectMetricPackStore 注入）。 */
   readonly metricPackStores?: MetricPackStores | undefined;
   /**
@@ -1146,6 +1217,13 @@ export function buildAppModule(
   // SP-1 登录失败计数/锁定共享：auth.login 的限流判定唯一实例（同
   // sharedSessionStore 裁决——零 DB 内存实例；PG/env 覆写形态经 options 注入）。
   const sharedLoginAttemptStore = options.loginAttemptStore ?? new InMemoryLoginAttemptStore();
+  // 策略存储共享（AI 问数首版 WP-B）：CoreModule（AuthGuard 判定/org 授权写
+  // 面/dev 策略钩子的同一 PermissionService 判定链）与 ai-query 域权限复核
+  // resolver 必须同一 PolicyStore 实例——零 DB 形态组合根构造内存实例裁决共享
+  // （此前 core 未注入时在 CoreModule 内部自建，组合根外不可达，ai-query 复核
+  // 读不到同源策略）。同 sharedUserStore 裁决先例：与模块内回落同一实现类，
+  // 既有模块行为零变化（core 由 useClass 回落改收 useValue 同类实例）。
+  const sharedPolicyStore = options.policyStore ?? new InMemoryPolicyStore();
 
   // 跨模块接线共享存储（M2 后第一增量，ADR-0004 装配/ADR-0011 依赖方向）：组合根
   // 在零 DB 形态下为已装配模块预建与模块缺省**同实现**的内存实例——生产模块的
@@ -1262,7 +1340,7 @@ export function buildAppModule(
         throw new ModuleRegistryError(`未注册的模块：${name}`);
       }
       return factory({
-        policyStore: options.policyStore,
+        policyStore: sharedPolicyStore,
         userStore: sharedUserStore,
         roleStore: options.roleStore,
         departmentStore: options.departmentStore,
@@ -1363,6 +1441,9 @@ export function buildAppModule(
         // 未接线形态（workorder/todoStore 缺位）回落 wiringStores 原生裁决——
         // dispatchOrderStore 的 #29 同体例。
         drawingStores: wiring.storeOverrides.drawingStores ?? wiringStores.drawingStores,
+        // SP-3：图纸只读引用签发器（env 固化密钥形态 main.ts 注入；缺省 undefined
+        // = DrawingHttpModule 内随机密钥实例，重启失效设计内）。
+        drawingReadReferenceSigner: options.drawingReadReferenceSigner,
         metricPackStores:
           options.metricPackStores ??
           (enabled.includes('metric-pack') ? inMemoryMetricPackStores() : undefined),

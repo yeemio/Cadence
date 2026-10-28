@@ -1,0 +1,224 @@
+{
+  "orders": {
+    "title": "工作令列表",
+    "description": "按状态查看工作令主单据；点行选中后在下方查看详情、执行流转。",
+    "columns": {
+      "id": "编号",
+      "project-name": "项目名",
+      "state": "状态",
+      "customer-reference": "客户引用",
+      "planned-delivery": "计划交付",
+      "version": "版本",
+      "created-at": "创建时刻"
+    },
+    "filter": {
+      "label": "状态过滤",
+      "all-states": "全部状态"
+    },
+    "empty": "当前过滤条件下无工作令"
+  },
+  "state": {
+    "not-started": "未开始",
+    "in-progress": "进行中",
+    "ready-to-ship": "待发货",
+    "shipped": "已发货",
+    "in-acceptance": "验收中",
+    "in-maintenance": "维保中",
+    "in-aftermarket": "售后中",
+    "completed": "已完成",
+    "closed": "已关闭"
+  },
+  "progress-status": {
+    "pending": "未开始",
+    "in-progress": "进行中",
+    "done": "已完成"
+  },
+  "create": {
+    "title": "创建工作令",
+    "description": "项目名必填；项目经理/销售可从候选选择（展示名）或粘贴用户 id（项目经理是配件申请的一级审批人，两者都留空时配件审批将无人处理）。",
+    "project-name": "项目名",
+    "project-name-placeholder": "Proj-2026-01",
+    "customer-reference": "客户引用（可选）",
+    "customer-reference-placeholder": "CUST-01",
+    "manager": "项目经理（可选，候选选择或用户 id）",
+    "sales-rep": "销售（可选，候选选择或用户 id）",
+    "candidate-placeholder": "从候选选择，或粘贴用户 id",
+    "planned-delivery": "计划交付日期（可选）",
+    "planned-delivery-placeholder": "2026-12-01",
+    "submit": "创建工作令",
+    "failed": "建令失败：{{message}}"
+  },
+  "detail": {
+    "title": "工作令详情与操作",
+    "description": "查看主单据与进度，执行流转/关闭/附件挂接/齐套刷新操作。",
+    "fields": {
+      "project-name": "项目名",
+      "customer": "客户",
+      "manager": "项目经理",
+      "sales-rep": "销售",
+      "current-state": "当前状态",
+      "planned-delivery": "计划交付",
+      "packaging-arrival": "包材到货",
+      "created-at": "创建时刻"
+    },
+    "warning": {
+      "both-missing": "未指定项目经理与销售：配件申请的一级审批将无人处理，请在建令时补齐负责人。",
+      "manager-missing": "未指定项目经理：配件申请的一级审批由销售承接。",
+      "sales-missing": "未指定销售。"
+    },
+    "attachments": {
+      "heading": "附件（{{n}} 件）",
+      "empty": "暂无附件",
+      "attached-at": "（挂接于 {{time}}）"
+    },
+    "kit-check": {
+      "heading": "最新齐套检查",
+      "empty": "尚未做过齐套检查（可在下方「刷新齐套检查」）",
+      "complete": "齐套完整，无缺口",
+      "gaps": "存在缺口 {{n}} 行",
+      "refreshed-at": "（刷新于 {{time}}）"
+    },
+    "transitions-log": {
+      "heading": "状态变迁记录",
+      "empty": "暂无变迁记录",
+      "entry-meta": "（{{time}}，经办 {{actor}}）"
+    },
+    "no-data": "暂无详情数据",
+    "transition": {
+      "target-state": "流转目标态",
+      "target-state-placeholder": "选择目标态…",
+      "remark": "流转备注（可选）",
+      "remark-placeholder": "备注留痕",
+      "submit": "执行流转"
+    },
+    "actions": {
+      "close": "关闭工作令",
+      "attach-drawing": "挂接图纸附件（示例）",
+      "refresh-kit-check": "刷新齐套检查",
+      "listing": "清单",
+      "gap-check": "缺口核查"
+    },
+    "action-failed": "操作失败：{{message}}"
+  },
+  "progress": {
+    "project-heading": "项目进度（计划 vs 实际）",
+    "fields": {
+      "project-name": "项目名",
+      "current-state": "当前状态",
+      "planned-delivery": "计划交付",
+      "packaging-arrival": "包材到货",
+      "days-to-delivery": "距计划交付"
+    },
+    "days": "{{days}} 天",
+    "overdue": "（已逾期）",
+    "machining-heading": "机加工进度（图号 × 工序）",
+    "machining-empty": "暂无机加工进度数据",
+    "assembly-heading": "装配调试进度（工序）",
+    "assembly-empty": "暂无装配调试进度数据",
+    "columns": {
+      "drawing-no": "图号",
+      "operation": "工序",
+      "done-quantity": "已完成数量",
+      "planned-quantity": "计划数量",
+      "status": "进度"
+    }
+  },
+  "kit-board": {
+    "title": "齐套看板",
+    "description": "每工作令最新齐套快照：清单需求与库存可用量比对，存在缺口的装配/电气派工会被拦截。",
+    "empty": "尚无齐套快照（选中工作令执行「刷新齐套检查」后生成）",
+    "columns": {
+      "work-order": "工作令",
+      "project-name": "项目名",
+      "result": "齐套结果",
+      "refreshed-at": "刷新时刻",
+      "gap-lines": "缺口行"
+    },
+    "complete": "齐套",
+    "gaps": "缺口 {{n}} 行"
+  },
+  "parts-state": {
+    "draft": "草稿",
+    "submitted": "审批中（一级）",
+    "level2-review": "审批中（二级）",
+    "level3-review": "审批中（三级）",
+    "approved": "已批准",
+    "rejected": "已拒绝",
+    "shipped": "已发货",
+    "received": "已收货"
+  },
+  "parts-flow": {
+    "draft": "草稿",
+    "submitted": "一级审批",
+    "level2-review": "二级审批",
+    "level3-review": "三级审批",
+    "approved": "已批准",
+    "rejected": "已拒绝",
+    "shipped": "已发货",
+    "received": "已收货"
+  },
+  "parts": {
+    "title": "配件申请列表",
+    "description": "配件申请提交后进入审批，批准后可发货（联动出库）；点行选中后在下方查看审批进度。",
+    "columns": {
+      "id": "编号",
+      "work-order": "工作令",
+      "item": "物料",
+      "quantity": "数量",
+      "state": "状态",
+      "requester": "申请人",
+      "shipment-ref": "发货单号",
+      "version": "版本"
+    },
+    "filter": {
+      "state-label": "状态过滤",
+      "all-states": "全部状态",
+      "wo-label": "工作令过滤（可选）",
+      "wo-placeholder": "工作令 id"
+    },
+    "empty": "当前过滤条件下无配件申请",
+    "role-note": "以下操作按角色授权：批准 / 驳回需配件审批权限（审批人角色）；发货（联动出库）需发货权限。当前账号无对应权限时，操作会被拒绝且不生效。",
+    "action": {
+      "target-id": "目标申请 id（取上表 id）",
+      "target-id-placeholder": "粘贴上表 id",
+      "decision-remark": "决策理由（审批必填）",
+      "decision-remark-placeholder": "决策理由",
+      "approve": "批准",
+      "reject": "驳回",
+      "ship": "发货（联动出库）"
+    },
+    "errors": {
+      "target-not-in-list": "目标申请 id 不在当前列表中",
+      "action-failed": "操作失败：{{message}}",
+      "create-failed": "申请失败：{{message}}"
+    },
+    "create": {
+      "title": "新建配件申请",
+      "description": "提交后立即进入审批；一级审批人为所属工作令的项目经理（缺省由销售承接）。 物料可从候选中选择（展示编码与名称，提交用对应物料 id），也可直接粘贴物料 id。",
+      "wo-label": "工作令 id",
+      "item-label": "物料（候选选择或粘贴物料 id）",
+      "quantity-label": "数量（正数）",
+      "remark-label": "备注（可选）",
+      "submit": "提交配件申请"
+    },
+    "approval": {
+      "title": "配件申请详情与审批进度",
+      "description": "当前审批级与本级审批人实时解析；一级审批人 = 工作令项目经理（缺省由销售承接）。",
+      "fields": {
+        "id": "编号",
+        "work-order": "所属工作令",
+        "item": "物料",
+        "quantity": "数量",
+        "requester": "申请人",
+        "current-state": "当前状态"
+      },
+      "current-level": "当前审批级：第 {{level}} 级",
+      "approvers": "本级审批人：{{names}}",
+      "no-approver": "本级暂无审批人：{{note}}——审批将无法进行，请先补齐工作令负责人或审批角色配置。",
+      "no-pending": "当前无待审环节（已批准的申请可执行发货）。",
+      "flow-heading": "审批流转记录",
+      "flow-empty": "暂无流转记录",
+      "flow-entry-meta": "（{{time}}，经办 {{actor}}）"
+    }
+  }
+}

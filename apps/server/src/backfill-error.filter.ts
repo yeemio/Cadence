@@ -43,7 +43,15 @@ export class BackfillErrorFilter implements ExceptionFilter {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof StandardReportsSourceError
+        ? 'standard_reports.source_unavailable'
+        : exception instanceof StandardReportsNotFoundError
+          ? 'standard_reports.not_found'
+          : exception instanceof StandardReportsInputError
+            ? 'standard_reports.invalid_input'
+            : 'audit.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }

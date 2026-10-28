@@ -663,11 +663,13 @@ export class WorkOrderService {
         kind,
         lineCount: kindLines.length,
         gapLineCount,
-        complete: gapLineCount === 0,
+        // Round-2 裁决（UX-PLAN-03）：空类目不判齐套（与 listing.service 缺口核查同构，防 vacuous true）。
+        complete: kindLines.length > 0 && gapLineCount === 0,
       };
     });
     gapLines.sort((a, b) => a.kind.localeCompare(b.kind) || a.itemId.localeCompare(b.itemId));
-    const complete = gapLines.length === 0;
+    // 同上：空清单整单不判齐套。
+    const complete = lines.length > 0 && gapLines.length === 0;
 
     const kitCheckId = newKitCheckId();
     const recorded = await this.operations.record({
@@ -704,8 +706,9 @@ export class WorkOrderService {
     await this.domainEvents.append(event);
 
     // 缺口 → 待办（催办，Done-when：齐套缺口可见并可催办）。
+    // 空清单不催办：催办语义是「有缺口需补料」，空清单是数据未录入，不是缺口。
     const todosCreated: TodoItem[] = [];
-    if (!complete && order.manager !== null) {
+    if (!complete && lines.length > 0 && order.manager !== null) {
       todosCreated.push(
         await this.todos.create({
           tenant,

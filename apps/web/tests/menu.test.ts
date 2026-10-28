@@ -43,12 +43,14 @@ describe('演示注册表装配数据', () => {
       '/dispatches',
       '/outsourcing/lines',
       '/scan',
-      // 报工管理（S2）
+      // 报工管理（S2；UX-PRD-01 增移动报工桌面引导叶子）
       '/reports',
       '/reports/verification',
-      // 采购管理（S2）
+      '/reports/mobile',
+      // 采购管理（S2；UX-PUR-01/02 增采购收货直达别名路径，同订单页组件）
       '/purchase/requests',
       '/purchase/orders',
+      '/purchase/receiving',
       '/purchase/returns',
       '/purchase/details',
       // 质量管理（S2）
@@ -65,6 +67,8 @@ describe('演示注册表装配数据', () => {
       '/costing',
       // 标准报表（S3-a：口径四选一单页）
       '/standard-reports',
+      // AI 问数首版（CONTRACT v1 · WP-C：规则引擎问数页，挂 ai-query:read）
+      '/ai-query',
       // 图纸文档（D-WO-05：图纸库 + 查看留痕审计）
       '/drawings',
       '/drawings/view-audit',
@@ -104,6 +108,7 @@ describe('演示注册表装配数据', () => {
       ['report-verification', 'report:read'],
       ['purchase-requests', 'purchase:read'],
       ['purchase-orders', 'purchase:read'],
+      ['purchase-receiving', 'purchase:read'],
       ['purchase-returns', 'purchase:read'],
       ['purchase-details', 'purchase:read'],
       ['inspections', 'inspection:read'],
@@ -147,10 +152,29 @@ describe('演示注册表装配数据', () => {
     }
   });
 
+  it('AI 问数菜单码：挂 ai-query:read（与 ai-query 控制器端点同码）；operator 未授不可见', () => {
+    const route = menuRoutes.find((candidate) => candidate.code === 'ai-query');
+    expect(route, '菜单码 ai-query 应在路由清单').toBeDefined();
+    expect(route?.routePath).toBe('/ai-query');
+    expect(route?.permission).toBe(permissionCode('ai-query:read'));
+    // 域码由服务端逐次复核（denied 走回答通道）——operator 侧栏断言不动的证据面
+    expect(operatorPermissions).not.toContain(permissionCode('ai-query:read'));
+  });
+
   it('扫码页权限：菜单挂 scan:read；operator 身份持有 scan:read（M1 收尾波-②授予）', () => {
     const scanRoute = menuRoutes.find((route) => route.code === 'scan');
     expect(scanRoute?.permission).toBe(permissionCode('scan:read'));
     expect(operatorPermissions).toContain(permissionCode('scan:read'));
+  });
+
+  it('移动报工引导叶子：码 mobile-report 挂 report:submit（与 mobile.ts m.report 同码——动作页挂动作码先例）', () => {
+    const mobileReportRoute = menuRoutes.find((route) => route.code === 'mobile-report');
+    expect(mobileReportRoute, '移动报工引导路由应在清单').toBeDefined();
+    expect(mobileReportRoute?.routePath).toBe('/reports/mobile');
+    expect(mobileReportRoute?.permission).toBe(permissionCode('report:submit'));
+    // 桌面注册表不得复制移动路径（mobile.test「两注册表不重叠」同款口径，此处就近复核）
+    const desktopPaths = new Set(menuRoutes.map((route) => route.routePath));
+    expect(desktopPaths.has('/m/report')).toBe(false);
   });
 
   it('侧栏：operator（真实身份权限）见工作台/物品/制造运营/报工/库存两页/工时统计/标准报表', () => {
@@ -222,6 +246,7 @@ describe('演示注册表装配数据', () => {
       'warehouse',
       'costing',
       'standard-reports',
+      'ai-query',
       'drawing',
       'baseline',
       'system',

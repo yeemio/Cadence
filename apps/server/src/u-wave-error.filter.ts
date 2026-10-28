@@ -61,7 +61,23 @@ export class UWaveErrorFilter implements ExceptionFilter {
             ? HttpStatus.CONFLICT
             : HttpStatus.BAD_REQUEST;
     const message = exception instanceof Error ? exception.message : String(exception);
+    const code =
+      exception instanceof AttachmentStorageError
+        ? 'attachment.storage_failure'
+        : exception instanceof IssueNotFoundError
+          ? 'issue.not_found'
+          : exception instanceof AttachmentNotFoundError
+            ? 'attachment.not_found'
+            : exception instanceof IssueConflictError
+              ? 'issue.conflict'
+              : exception instanceof IssueStateError
+                ? 'issue.state_conflict'
+                : exception instanceof AttachmentConflictError
+                  ? 'attachment.conflict'
+                  : exception instanceof IssueInputError
+                    ? 'issue.invalid_input'
+                    : 'attachment.invalid_input';
     response.status(status);
-    response.json({ statusCode: status, message });
+    response.json({ statusCode: status, code, message });
   }
 }
