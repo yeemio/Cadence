@@ -19,6 +19,8 @@
  *       serviceOptions: { defaultWarehouseCode: 'MAIN' },
  *     }),
  */
+import { InMemoryItemStore } from '../masterdata/in-memory-masterdata-stores.js';
+import type { ItemStore } from '../masterdata/masterdata-stores.js';
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { createInMemoryApprovalEventStore, type ApprovalEventStore } from '@smes/engine-flow';
 import {
@@ -73,6 +75,7 @@ export const INVENTORY_MACHINE_EVENT_STORE = Symbol('smes.inventory.machineEvent
 export const INVENTORY_SERVICE_OPTIONS = Symbol('smes.inventory.serviceOptions');
 
 export interface InventoryModuleOptions {
+  readonly itemLibrary?: ItemStore | undefined;
   /** 仓库/库位主数据存储；缺省 = 内存实现（重启即失）。显式 undefined 同缺省。 */
   readonly warehouseStore?: WarehouseStore | undefined;
   /** 货架/货架库位主数据存储（B3 / RREQ-IV-002）；缺省 = 内存实现。 */
@@ -104,7 +107,7 @@ export interface InventoryModuleOptions {
 @Module({})
 export class InventoryModule {
   static register(options: InventoryModuleOptions = {}): DynamicModule {
-    const serviceOptions: Partial<InventoryServiceOptions> = options.serviceOptions ?? {};
+    const serviceOptions: Partial<InventoryServiceOptions> = { ...options.serviceOptions, itemLibrary: options.itemLibrary ?? new InMemoryItemStore() };
     const providers: Provider[] = [
       { provide: INVENTORY_WAREHOUSE_STORE, useValue: options.warehouseStore ?? new InMemoryWarehouseStore() },
       {

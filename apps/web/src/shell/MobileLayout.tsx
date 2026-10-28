@@ -94,7 +94,7 @@ function MobileBody() {
         </div>
       </header>
       {/* pb-20：给固定底部导航留出滚动净空；max-w-2xl：桌面浏览器打开时的可读宽度 */}
-      <main className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 pb-20">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
           <Outlet />
         </div>

@@ -78,6 +78,10 @@ export class DispatchOrdersController {
     private readonly dispatch: DispatchService,
   ) {}
 
+  @Get('orders/equipment-options')
+  @RequirePermission('dispatch:write')
+  async equipmentOptions(@Query('workOrderId') workOrderId: string) { return { equipment: await this.dispatch.equipmentOptions(this.tenantContext.current(), parseIdParam(workOrderId, '工作令 id')) }; }
+
   @Post('orders')
   @RequirePermission('dispatch:write')
   async create(@Req() request: AuthenticatedRequest, @Body() body: unknown): Promise<DispatchCommandResult> {

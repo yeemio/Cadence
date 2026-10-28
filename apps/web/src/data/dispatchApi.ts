@@ -44,6 +44,8 @@ export async function getDispatchDetail(id: string): Promise<Record<string, unkn
 /** 六类派工创建（载荷判别按 dispatch-input：part 需图号+工序；outsourcing 需行集；
  *  assembly/electrical 需工序；aftermarket/oddjob 需标题或工序）。 */
 export function createDispatchOrder(input: {
+  readonly equipmentRefs?: readonly string[];
+  readonly rollup?: boolean;
   readonly kind: 'part' | 'outsourcing' | 'assembly' | 'electrical' | 'aftermarket' | 'oddjob';
   readonly quantity: number;
   readonly workOrderId?: string | undefined;
@@ -65,6 +67,8 @@ export function createDispatchOrder(input: {
 }) {
   return postCommand('/dispatch/orders', 'dispatch.create.v1', {
     kind: input.kind,
+    equipmentRefs: input.equipmentRefs ?? [],
+    rollup: input.rollup ?? false,
     quantity: input.quantity,
     workOrderId: input.workOrderId ?? null,
     title: input.title ?? null,
@@ -295,3 +299,5 @@ export function cancelOutsourcingLine(
 export async function getOutsourcingPrintData(orderId: string): Promise<Record<string, unknown>> {
   return fetchObject(`/outsourcing/orders/${encodeURIComponent(orderId)}/print-data`, 'document');
 }
+
+export const dispatchEquipmentOptions = (workOrderId: string) => fetchRows(`/dispatch/orders/equipment-options?workOrderId=${encodeURIComponent(workOrderId)}`, 'equipment');

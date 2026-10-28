@@ -22,6 +22,7 @@ import {
   verifyReport,
 } from '../../data/reportingApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, RowDetail, type TableColumn } from '../../components/ModuleTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -195,12 +196,7 @@ function ReportDetailCard({
       setOutcome(result);
       if (result.committed) onChanged();
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   return (

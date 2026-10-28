@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * 跨模块端口组合根接线（M2 后第一增量，status.md M2 Wave-4 验收登记项①）。
  *
@@ -1439,6 +1440,13 @@ export function parseIssueReservationKey(
   }
 }
 
+/** 每轮恢复都从原三维锚重建，避免旧 g/wh/rb 后缀递归增长突破入参上限。 */
+export function buildRestoredIssueReservationKey(reservationKey: string, sourceKey: string): string {
+  const anchor = parseIssueReservationKey(reservationKey);
+  if (anchor === null) throw new Error('发料恢复预占缺少可解析的原三维锚');
+  return `${buildIssueReservationKey(anchor.workOrderId, anchor.equipmentRef || null, anchor.itemId)}:rb:${createHash('sha256').update(sourceKey).digest('hex')}`;
+}
+
 /** 系统信封（U6 适配器命令面；操作者记系统账号，幂等由子键 sourceKey 承载）。 */
 function wiringIssueEnvelope(
   tenant: TenantId,
@@ -1527,7 +1535,7 @@ export function createInventoryIssueMaterialPort(deps: InventoryIssueMaterialDep
             entry.row.refId === command.workOrderId &&
             entry.row.itemId === command.itemId &&
             entry.anchor !== null &&
-            (entry.anchor as { equipmentRef: string }).equipmentRef === '',
+            (entry.anchor as { equipmentRef: string }).equipmentRef === (command.equipmentRef ?? ''),
         )
         .sort((a, b) => a.row.createdAt.localeCompare(b.row.createdAt) || a.row.id.localeCompare(b.row.id));
       const remainingOf = new Map<string, number>(consumable.map((entry) => [entry.row.reservationKey, entry.row.remaining]));
@@ -1645,7 +1653,7 @@ export function createInventoryIssueMaterialPort(deps: InventoryIssueMaterialDep
           const reservationKey = readString(payload['reservationKey']);
           const consumedQty = payload['consumedReservationQty'];
           if (reservationKey === null || typeof consumedQty !== 'number' || consumedQty <= 0) continue;
-          const restoreKey = `${reservationKey}:rb:${movement.sourceKey}`;
+          const restoreKey = buildRestoredIssueReservationKey(reservationKey, movement.sourceKey as string);
           if ((await deps.reservations.findByKey(tenant, restoreKey)) !== null) continue; // 已恢复
           const restored = await inventory.reserveStock(tenant, {
             reservationKey: restoreKey,
@@ -1701,13 +1709,14 @@ export function createInventoryUseReservationPort(
     tenant: TenantId,
     workOrderId: string,
     itemId: string,
+    equipmentRef: string | null,
   ): Promise<number> => {
     let total = 0;
     for (const row of await deps.reservations.list(tenant, { status: 'active' })) {
       if (row.refType !== 'issue' || row.refId !== workOrderId) continue;
       if (row.itemId !== itemId) continue;
       const anchor = parseIssueReservationKey(row.reservationKey);
-      if (anchor === null || anchor.equipmentRef !== '') continue; // 仅订单级锚
+      if (anchor === null || anchor.equipmentRef !== (equipmentRef ?? '')) continue;
       total += row.remaining;
     }
     return total;
@@ -1721,7 +1730,7 @@ export function createInventoryUseReservationPort(
         if (row.refType !== 'issue' || row.refId !== workOrderId) continue;
         if (!wanted.has(row.itemId)) continue;
         const anchor = parseIssueReservationKey(row.reservationKey);
-        if (anchor === null || anchor.equipmentRef !== '') continue; // 仅订单级锚
+        if (anchor === null) continue;
         result.set(row.itemId, (result.get(row.itemId) ?? 0) + row.remaining);
       }
       return result;
@@ -1732,7 +1741,7 @@ export function createInventoryUseReservationPort(
       if (inventory === undefined) {
         return { reserved: true, created: [] }; // NOOP 同构（bind 前窗口）
       }
-      const ownActive = await orderAnchorActive(tenant, command.workOrderId, command.itemId);
+      const ownActive = await orderAnchorActive(tenant, command.workOrderId, command.itemId, command.equipmentRef ?? null);
       const need = Math.max(0, command.quantity - ownActive);
       if (need <= 0) {
         return {
@@ -1746,7 +1755,7 @@ export function createInventoryUseReservationPort(
         .filter((level) => level.availableQty > 0)
         .sort((a, b) => a.warehouseId.localeCompare(b.warehouseId));
       const enc = (value: string): string => encodeURIComponent(value);
-      const base = buildIssueReservationKey(command.workOrderId, null, command.itemId);
+      const base = buildIssueReservationKey(command.workOrderId, command.equipmentRef ?? null, command.itemId);
       let remaining = need;
       const reservationKeys: string[] = [];
       for (const level of levels) {
@@ -1830,15 +1839,17 @@ export function createIssueSyncDispatchStore(
         before.state !== 'assigned' &&
         advanced.state === 'assigned' &&
         before.workOrderId !== null &&
-        before.kind === 'assembly'
+        (before.kind === 'assembly' || before.kind === 'electrical') &&
+        ((advanced.equipmentRefs?.length ?? 0) > 0 || advanced.rollup === true)
       ) {
         try {
           const issue = resolveIssue();
           if (issue !== undefined) {
             await issue.syncFromDispatch(tenant, {
               workOrderId: before.workOrderId,
-              dispatchKind: 'assembly',
-              rollup: true,
+              dispatchKind: before.kind,
+              equipmentRefs: advanced.equipmentRefs ?? [],
+              rollup: advanced.rollup ?? false,
               workOrderLabel: advanced.title,
               plannedStartAt: null,
               plannedEndAt: advanced.dueAt,
@@ -1858,7 +1869,7 @@ export function createIssueSyncDispatchStore(
         before !== null &&
         before.state !== 'cancelled' &&
         advanced.state === 'cancelled' &&
-        before.kind === 'assembly' &&
+        (before.kind === 'assembly' || before.kind === 'electrical') &&
         before.workOrderId !== null
       ) {
         try {
@@ -1868,16 +1879,16 @@ export function createIssueSyncDispatchStore(
             // 归拢任务存在则整线清理；无任务跳过（无可清理，不占 operationId）。
             const tasks = await issue.listTasks(tenant, {
               workOrderId: before.workOrderId,
-              dispatchKind: 'assembly',
+              dispatchKind: before.kind,
             });
             const equipmentRefs = [
               ...new Set(
                 tasks
-                  .filter((task) => !task.rollup && task.equipmentRef !== null)
+                  .filter((task) => !task.rollup && task.equipmentRef !== null && (before.equipmentRefs ?? []).includes(task.equipmentRef))
                   .map((task) => task.equipmentRef as string),
               ),
             ];
-            const includeRollup = tasks.some((task) => task.rollup);
+            const includeRollup = before.rollup === true && tasks.some((task) => task.rollup);
             if (equipmentRefs.length > 0 || includeRollup) {
               const outcome = await issue.execute(
                 makeCommandEnvelope<IssueCommand>({
@@ -1890,7 +1901,7 @@ export function createIssueSyncDispatchStore(
                     kind: 'issue.cleanup.v1',
                     payload: {
                       workOrderId: before.workOrderId,
-                      dispatchKind: 'assembly',
+                      dispatchKind: before.kind,
                       ...(equipmentRefs.length > 0 ? { equipmentRefs } : {}),
                       ...(includeRollup ? { includeRollup: true } : {}),
                       remark: '撤销派工自动清理',
@@ -2469,16 +2480,17 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
   // #26 workorder.inventoryPort（service 级迟到绑定；与 #13/#16 共用同一
   // InventoryService——可用量恒等式口径单点定义）
   const workorderInventoryPort: InventoryAvailabilityPort | undefined =
-    has('workorder') && has('inventory')
-      ? createInventoryAvailabilityAdapter({
-          availableQtyOf: async (tenant, itemIds) => {
-            const inventory = lateInventory.resolve();
-            return inventory === undefined
-              ? new Map<string, number>()
-              : inventory.availableQtyOf(tenant, itemIds);
-          },
-        })
-      : undefined;
+    has('workorder') && has('inventory') ? {
+      availableQty: async (tenant, itemIds, workOrderId) => {
+        const result = new Map(await lateInventory.resolve()?.availableQtyOf(tenant, itemIds) ?? []);
+        if (workOrderId && stores.inventoryReservations) {
+          for (const reservation of await stores.inventoryReservations.list(tenant, { status: 'active' })) {
+            if (reservation.refType === 'issue' && reservation.refId === workOrderId && itemIds.includes(reservation.itemId)) result.set(reservation.itemId, (result.get(reservation.itemId) ?? 0) + reservation.remaining);
+          }
+        }
+        return result;
+      },
+    } : undefined;
 
   // #17 inspection.stockReleasePort（service 级迟到绑定；未绑定回落 no-op 缺省语义）
   const stockReleasePort: StockReleasePort | undefined =

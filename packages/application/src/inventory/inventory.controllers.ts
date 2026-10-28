@@ -86,6 +86,10 @@ export class WarehousesController {
     return this.inventory.execute(envelopeOf(this.tenantContext, request, body, 'warehouse.define.v1'));
   }
 
+  @Get('receive-options')
+  @RequirePermission('stock:receive')
+  async receiveOptions() { return this.inventory.receiveOptions(this.tenantContext.current()); }
+
   @Get('warehouses')
   @RequirePermission('warehouse:read')
   async list(): Promise<{ warehouses: Awaited<ReturnType<InventoryService['listWarehouses']>> }> {

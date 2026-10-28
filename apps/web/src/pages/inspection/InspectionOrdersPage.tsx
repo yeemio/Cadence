@@ -25,6 +25,7 @@
  * 注册与 shell init 由总控统一接线）。
  */
 import { useEffect, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 // i18n 波 2：inspection namespace 绑定（namespace 注册与 shell init 由总控统一接线）。
 import { useTranslation } from 'react-i18next';
@@ -38,12 +39,14 @@ import {
   getInspectionDetail,
   getInspectionSummary,
   judgeInspectionOrder,
+  inspectionMaterialOptions,
   listInspectionOrders,
   recheckInspectionOrder,
   revokeInspection,
   scanInspectionOverdue,
 } from '../../data/inspectionApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState } from '../../components/ModuleTable';
 import { formatLocalDateTime, shortId } from '../../lib/format';
 import { Button } from '@/components/ui/button';
@@ -172,7 +175,7 @@ function displayRowOf(row: Record<string, unknown>, t: TFunction): Record<string
     ...row,
     kind: mapText('kind', inspectionKindLabel),
     state: mapText('state', inspectionStateLabel),
-    sourceType: mapText('sourceType', inspectionSourceLabel),
+    sourceType: row['sourceType'] == null ? '未关联来源' : mapText('sourceType', inspectionSourceLabel),
   };
 }
 
@@ -180,16 +183,19 @@ export function InspectionOrdersPage() {
   const queryClient = useQueryClient();
   const { t } = useTranslation('inspection');
   const [kindFilter, setKindFilter] = useState('');
-  const [stateFilter, setStateFilter] = useState('');
+  const [searchParams] = useSearchParams();
+  const [stateFilter, setStateFilter] = useState(searchParams.get('state') ?? '');
+  const from = searchParams.get('from');
+  const to = searchParams.get('to');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const ordersQuery = useQuery({
-    queryKey: ['inspection', 'orders', kindFilter, stateFilter],
+    queryKey: ['inspection', 'orders', kindFilter, stateFilter, from, to],
     queryFn: () =>
       listInspectionOrders({
         ...(kindFilter === '' ? {} : { kind: kindFilter }),
         ...(stateFilter === '' ? {} : { state: stateFilter }),
-      }),
+      }).then((rows) => rows.filter((row) => (!from || (typeof row['judgedAt'] === 'string' && row['judgedAt'] >= from)) && (!to || (typeof row['judgedAt'] === 'string' && row['judgedAt'] < to)))),
   });
   const summaryQuery = useQuery({ queryKey: ['inspection', 'summary'], queryFn: getInspectionSummary });
 
@@ -199,16 +205,12 @@ export function InspectionOrdersPage() {
   const scanMutation = useMutation({
     mutationFn: scanInspectionOverdue,
     onSuccess: (result) => setOutcome(result),
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   return (
     <div className="flex flex-col gap-6">
+      {(from || to) && <p role="note" className="text-sm">判定时间：{formatLocalDateTime(from)} 至 {formatLocalDateTime(to)}（含起点，不含终点）</p>}
       <Card>
         <CardHeader>
           <CardTitle>{t('orders.title')}</CardTitle>
@@ -466,6 +468,8 @@ function InspectionDetailCard({
     queryKey: ['inspection', 'concession', id],
     queryFn: () => getConcessionView(id),
   });
+  const [materialId, setMaterialId] = useState('');
+  const materialQuery = useQuery({ queryKey: ['inspection', 'material-options'], queryFn: inspectionMaterialOptions });
   const [passedQty, setPassedQty] = useState('1');
   const [failedQty, setFailedQty] = useState('0');
   const [remark, setRemark] = useState('');
@@ -480,6 +484,9 @@ function InspectionDetailCard({
   // UX-QC-R2-02：切换质检行清除上一单操作结果（结果横幅跨单粘滞）；
   // M2 R1 同口径清除撤销的确认步与原因输入。
   useEffect(() => {
+    setMaterialId('');
+    setPassedQty(String(row['quantity'] ?? 1));
+    setFailedQty('0');
     setOutcome(null);
     setOutcomeSource(null);
     setRevokeConfirming(false);
@@ -502,11 +509,7 @@ function InspectionDetailCard({
     onError: (error) => {
       setOutcomeSource('action');
       setOutcome(
-        outcomeOf({
-          committed: false,
-          status: 'error',
-          reason: error instanceof Error ? error.message : String(error),
-        }),
+        outcomeOf(errorOutcomeOf(error)),
       );
     },
   });
@@ -526,16 +529,13 @@ function InspectionDetailCard({
     onError: (error) => {
       setOutcomeSource('revoke');
       setOutcome(
-        outcomeOf({
-          committed: false,
-          status: 'error',
-          reason: error instanceof Error ? error.message : String(error),
-        }),
+        outcomeOf(errorOutcomeOf(error)),
       );
     },
   });
 
   const payload = () => ({
+    ...(materialId ? { itemId: materialId } : {}),
     passedQty: Number(passedQty),
     failedQty: Number(failedQty),
     ...(remark.trim().length > 0 ? { remark: remark.trim() } : {}),
@@ -601,6 +601,15 @@ function InspectionDetailCard({
         <QueryState isPending={detailQuery.isPending} error={detailQuery.error} isEmpty={false}>
           <InspectionDetailView detail={detailQuery.data ?? {}} />
         </QueryState>
+        {row['itemId'] == null && row['state'] === 'pending' && <div className="flex flex-col gap-2">
+          <Label htmlFor="insp-material">放行物料（来源未提供物料时，判定前明确选择）</Label>
+          <Select id="insp-material" value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
+            <option value="">请选择本租户有效物料</option>
+            {(materialQuery.data ?? []).map((item) => <option key={String(item['id'])} value={String(item['id'])}>{String(item['code'])} · {String(item['name'])}</option>)}
+          </Select>
+          {materialQuery.isError && <p role="alert">物料选项加载失败，请刷新后重试。</p>}
+          <p className="text-xs text-muted-foreground">图号不能唯一确定物料；此次选择与判定同时保存，已有物料不可覆盖。</p>
+        </div>}
         <div className="grid gap-4 sm:grid-cols-3 sm:items-end">
           <div className="flex flex-col gap-2">
             <Label htmlFor="insp-passed">{t('detail.judge.passed-qty')}</Label>
@@ -757,12 +766,7 @@ function CreateInspectionCard({ onChanged }: { readonly onChanged: () => void })
         setDrawingNo('');
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

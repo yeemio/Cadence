@@ -1,0 +1,28 @@
+{
+  "candidate": "1c1e9a42173584e7e780d8be93c3023bd137be13227cfef7f3a8cc5b47f4f597",
+  "scope": "Pure in-memory readback against built runtime exports; no database/server/browser mutations",
+  "duplicateReceipt": {
+    "actualReceived": 1,
+    "rows": [
+      {
+        "id": "line-1",
+        "inboundCompletedQty": 1,
+        "availableByCurrentFormula": 1
+      },
+      {
+        "id": "line-2",
+        "inboundCompletedQty": 1,
+        "availableByCurrentFormula": 1
+      }
+    ],
+    "projectedTotal": 2
+  },
+  "purchasedLineWithSelfMadeDevice": {
+    "rejection": null
+  },
+  "emptyOptional": {
+    "accepted": false,
+    "message": "设备 equipmentRef须为 1~128 个非空白字符",
+    "nullControlAccepted": true
+  }
+}

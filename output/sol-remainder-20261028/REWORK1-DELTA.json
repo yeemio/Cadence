@@ -1,0 +1,51 @@
+{
+  "previousCandidateSha256": "1c1e9a42173584e7e780d8be93c3023bd137be13227cfef7f3a8cc5b47f4f597",
+  "candidateSha256": "39fc159969198fc15104bfd224d8b2604d84cbc524e881c1241e2cfe8bc435e8",
+  "modified": [
+    {
+      "path": "apps/server/src/app-registry.ts",
+      "before": "57516506300157fd68144e500e4816b25d0e59729e9e010cb503f0abbe909364",
+      "after": "bf36386794b6c14b56959dc354a4af6f6f27c30396c1c44d22bd729cbc3cbf59"
+    },
+    {
+      "path": "apps/web/src/data/listingApi.ts",
+      "before": "b8c7274100b05cc6abee965efc1ed60cd9f451acf8ab61ee865c394b1561bf2b",
+      "after": "fc516a12c1f089eb538a1b96f91a90d6d299406d953a2cee87e87fb88925f9ca"
+    },
+    {
+      "path": "apps/web/src/pages/listing/ListingSheetsPage.tsx",
+      "before": "9bf7dc4ba96168d71ec64188ae53ec170bb361e21565ee1a0e584041fecd550a",
+      "after": "f95956852e7f3881619f6d2e3e75cc9978004098c0b273eac58cbf324e0ab4d5"
+    },
+    {
+      "path": "architecture/requirements/18-发料与配件.md",
+      "before": "86f4fd65a83c6468eebb708e6a65aa71b129cae0ec284c9088eba5615cd6d196",
+      "after": "02f2a01ce9e580f0ba3115f52e4b7f2dfae23de019ca0add844f585b2f9891a4"
+    },
+    {
+      "path": "packages/application/src/issue/issue.service.ts",
+      "before": "029e48d07c9bf494da08eb146276c9224e9d6d35e619de8f29cbcefca8b197eb",
+      "after": "2c605924d73d80dfa1a0524b3d5a667474ad75e64be897b3fc405e38b61e2b05"
+    },
+    {
+      "path": "packages/application/src/listing/listing.service.ts",
+      "before": "b7968efa64fde3d1cb4de53aa9d5b605d9da45a08401a95e39f406383d4cb3a8",
+      "after": "c17cc9183f04706d1be217cc226b934f5c8ea6cb5cda3bca5ad7a06fc13693e4"
+    }
+  ],
+  "new": [
+    {
+      "path": "apps/server/tests/equipment-receipt-pool.test.ts",
+      "sha256": "58e0fb716ad52b0dea2fafcbcdce13ea7a6caffb8eeef031d8a8a29a48515f04"
+    },
+    {
+      "path": "apps/web/tests/listing-api.test.ts",
+      "sha256": "7225ee097b1dc4aa3bf56c5415e50ae51ef9d172b901aeafa2d52cf3be8bb011"
+    },
+    {
+      "path": "packages/application/tests/listing/listing.test.ts",
+      "sha256": "5abd530c3030eae1e821fcb96746c0161541067af97d029051fb5374f131eaec"
+    }
+  ],
+  "removed": []
+}

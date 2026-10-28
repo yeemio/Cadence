@@ -21,6 +21,7 @@ import {
 } from '../../data/workorderApi';
 import { listItems } from '../../data/masterdataApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, type TableColumn } from '../../components/ModuleTable';
 // P2 横切批：时刻本地化/长 id 截断显示（UX-PLAN-07/08；行数据不动，title 悬停全文）。
 import { formatLocalDateTime } from '@/lib/format';
@@ -147,18 +148,13 @@ export function PartsRequestsPage() {
       setOutcome(result);
       if (result.committed) queryClient.invalidateQueries({ queryKey: ['workorder', 'parts'] });
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function runOnTarget(fn: (row: Record<string, unknown>) => Promise<CommandOutcomeView>): void {
     const target = (partsQuery.data ?? []).find((row) => String(row['id']) === targetId.trim());
     if (target === undefined) {
-      setOutcome({ committed: false, status: 'error', reason: t('parts.errors.target-not-in-list') });
+      setOutcome(errorOutcomeOf(t('parts.errors.target-not-in-list')));
       return;
     }
     actionMutation.mutate(() => fn(target));
@@ -265,7 +261,8 @@ export function PartsRequestsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={actionMutation.isPending || targetId.trim().length === 0}
+                  disabled={actionMutation.isPending || !(partsQuery.data ?? []).some((row) => String(row['id']) === targetId.trim() && row['state'] === 'approved')}
+                  title="仅已批准的配件申请可发货"
                   onClick={() =>
                     runOnTarget((row) =>
                       shipPartsRequest(String(row['id']), row, {

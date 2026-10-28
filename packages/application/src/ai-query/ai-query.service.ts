@@ -249,7 +249,7 @@ export class AiQueryService {
       options: shown.map((order) => ({
         id: String(order.id),
         label: order.projectName || String(order.id),
-        description: `工作令 ${String(order.id)}`,
+        description: `工作令 ${String(order.id).length > 20 ? `${String(order.id).slice(0, 8)}…${String(order.id).slice(-4)}` : String(order.id)}`,
       })),
     };
     return {

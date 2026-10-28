@@ -51,7 +51,7 @@ export class MaterialGapCapability {
       this.purchaseOrders.list(context.tenant, { workOrderId: String(order.id) }),
     ]);
 
-    const subject = { kind: 'workorder' as const, id: String(order.id), label: order.projectName || String(order.id) };
+    const subject = { kind: 'material' as const, id: String(order.id), label: order.projectName || String(order.id) };
 
     // ---- 卡 1：齐套总览（类目汇总行表） ----
     const kindsCapped = capRows(gap.kinds, context.rowLimit);

@@ -1,3 +1,4 @@
+import { request } from './apiClient';
 /**
  * workorder 薄数据层（S2 批次）：fetch 直连 server workorder 端点，经共享
  * apiClient 注入 Bearer；端点/权限码/信封形状按 workorder.controllers.ts 实态
@@ -161,3 +162,6 @@ export function shipPartsRequest(
     revisionOf(row, '配件申请行'),
   );
 }
+
+export const listWorkOrderEquipment = (id: string) => fetchRows(`/workorder/work-orders/${encodeURIComponent(id)}/equipment`, 'equipment');
+export async function defineWorkOrderEquipment(id: string, input: { code: string; name: string; quantity: number; kind: 'self-made' | 'purchased' }) { return request(`/workorder/work-orders/${encodeURIComponent(id)}/equipment`, { method: 'POST', body: JSON.stringify(input) }); }

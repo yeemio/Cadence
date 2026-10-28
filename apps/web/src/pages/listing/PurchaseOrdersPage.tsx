@@ -12,11 +12,11 @@ import {
   issuePurchaseOrder,
   listPurchaseOrders,
   listPurchaseRequests,
+  receivingWarehouseOptions,
 } from '../../data/listingApi';
-import { listWarehouses } from '../../data/inventoryApi';
 import { permissionCode, sessionHasPermission, toPermissionCodes } from '@smes/product-ui';
 import type { CommandOutcomeView } from '../../data/commandClient';
-import { postCommand, revisionOf } from '../../data/commandClient';
+import { errorOutcomeOf, postCommand, revisionOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, type TableColumn } from '../../components/ModuleTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -324,7 +324,7 @@ function OrderDetailCard({
   // UX-PUR-R2-02：收货仓库下拉（listWarehouses，值落 warehouseId，留空=默认仓）。
   // 仓库列表读需仓库查看权限——无权限/加载失败时降级回文本框（可手填仓库 id），
   // 收货动作不被选择器阻断。
-  const warehousesQuery = useQuery({ queryKey: ['inventory', 'warehouses'], queryFn: listWarehouses });
+  const warehousesQuery = useQuery({ queryKey: ['purchase', 'receiving-warehouses'], queryFn: receivingWarehouseOptions });
   const warehouseOptions = warehousesQuery.data ?? [];
 
   const mutation = useMutation({
@@ -333,12 +333,7 @@ function OrderDetailCard({
       setOutcome(result);
       if (result.committed) onChanged();
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   return (
@@ -402,13 +397,13 @@ function OrderDetailCard({
             )}
             {warehousesQuery.isError && (
               <p className="text-xs text-muted-foreground">
-                仓库列表加载失败（当前账号可能没有仓库查看权限），可直接填写仓库 id。
+                收货仓库选项加载失败，请刷新后重试；留空按默认仓规则处理。
               </p>
             )}
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          {STATE_HINTS[state] ?? `当前状态：${poStateLabel(state)}`}
+          {state === 'submitted' && !hasApprovePermission ? '订单待审核，请由具有采购审批权限的人员处理。' : STATE_HINTS[state] ?? `当前状态：${poStateLabel(state)}`}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -579,12 +574,7 @@ function SubmitOrderCard({ onChanged }: { readonly onChanged: () => void }) {
         setSelectedRequestIds([]);
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

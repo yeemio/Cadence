@@ -1,3 +1,5 @@
+import { PgWorkOrderEquipmentStore } from './pg-workorder-equipment-store.js';
+import type { WorkOrderEquipmentStore } from '@smes/application';
 /**
  * workorder 七端口的 PG 实现 + 组合根装配工厂（M2-W1，经本包 `./workorder`
  * 子路径导出——与 `./approval` / `./baseline` 同模式：主入口保持零 @prisma/client
@@ -735,6 +737,7 @@ export interface WorkOrderStoreOptions {
 
 /** 组合根装配句柄：七端口实现（可直接喂 WorkOrderModule.register）+ 优雅断连。 */
 export interface WorkOrderStoreHandle {
+  readonly equipmentStore: WorkOrderEquipmentStore;
   readonly orderStore: WorkOrderStore;
   readonly attachmentStore: WorkOrderAttachmentStore;
   readonly partsStore: PartsRequestStore;
@@ -753,6 +756,7 @@ export function connectWorkOrderStore(options: WorkOrderStoreOptions = {}): Work
   // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
   const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
   return {
+    equipmentStore: new PgWorkOrderEquipmentStore(client),
     orderStore: new PgWorkOrderStore(client),
     attachmentStore: new PgWorkOrderAttachmentStore(client),
     partsStore: new PgPartsRequestStore(client),

@@ -43,6 +43,7 @@ export interface InventoryAvailabilityPort {
   availableQty(
     tenant: TenantId,
     itemIds: readonly string[],
+    workOrderId?: string,
   ): Promise<ReadonlyMap<string, number>>;
 }
 

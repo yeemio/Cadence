@@ -1,3 +1,4 @@
+import { InMemoryItemStore } from '../../src/masterdata/in-memory-masterdata-stores.js';
 /**
  * inventory 模块测试（M2-W5，07-inventory.md v1.0）：两份状态机配置合法集、
  * 仓库/库位主数据、三类入库（质检放行咬合 + 采购 receiptKey 幂等 + 完工直入）、
@@ -103,10 +104,10 @@ interface Harness {
   readonly releaseFacts: InMemoryReleaseFactStore;
   readonly domainEvents: InMemoryInventoryDomainEventStore;
   /** 同一组 stores 上重建 service（改服务选项——默认仓/负库存策略切换用；D-16 起默认仓按 code 配置）。 */
-  rebuild(options: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string }): InventoryService;
+  rebuild(options: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string; itemLibrary?: InMemoryItemStore }): InventoryService;
 }
 
-function makeHarness(options: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string } = {}): Harness {
+function makeHarness(options: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string; itemLibrary?: InMemoryItemStore } = {}): Harness {
   const warehouses = new InMemoryWarehouseStore();
   const accounts = new InMemoryStockAccountStore();
   const balances = new InMemoryStockLocationBalanceStore();
@@ -116,7 +117,7 @@ function makeHarness(options: { negativeStockPolicy?: NegativeStockPolicy; defau
   const shippings = new InMemoryShippingOrderStore();
   const releaseFacts = new InMemoryReleaseFactStore();
   const domainEvents = new InMemoryInventoryDomainEventStore();
-  const build = (opts: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string }): InventoryService =>
+  const build = (opts: { negativeStockPolicy?: NegativeStockPolicy; defaultWarehouseCode?: string; itemLibrary?: InMemoryItemStore }): InventoryService =>
     new InventoryService(
       warehouses,
       accounts,
@@ -131,6 +132,7 @@ function makeHarness(options: { negativeStockPolicy?: NegativeStockPolicy; defau
       createInMemoryApprovalEventStore(),
       {
         now: () => FIXED_NOW,
+        ...(opts.itemLibrary === undefined ? {} : { itemLibrary: opts.itemLibrary }),
         ...(opts.negativeStockPolicy === undefined ? {} : { negativeStockPolicy: opts.negativeStockPolicy }),
         ...(opts.defaultWarehouseCode === undefined ? {} : { defaultWarehouseCode: opts.defaultWarehouseCode }),
       },
@@ -1478,5 +1480,23 @@ describe('模块装配与权限码', () => {
       );
       expect(actual, `${String(method)} 权限码`).toBe(code);
     }
+  });
+});
+
+
+describe('库存物料完整性（sol remainder）', () => {
+  it('图号/未知/跨租户物料不入账，无物料放行事实不可消费', async () => {
+    const library = new InMemoryItemStore();
+    const item = await library.create({ tenant: t1, code: 'RM-01', name: '隔离物料' });
+    const foreign = await library.create({ tenant: t2, code: 'RM-02', name: '外租户物料' });
+    const h = makeHarness({ itemLibrary: library });
+    const { wh1 } = await seedWarehouses(h);
+    for (const itemId of ['DWG-001', foreign.id]) {
+      expect((await h.service.execute(envelope('stock.receive.v1', { kind: 'production', itemId, warehouseId: wh1, quantity: 1 }))).status).toBe('rejected');
+    }
+    await h.service.recordInspectionRelease(t1, { inspectionId: 'missing-anchor', kind: 'self_outsourced', itemId: null, drawingNo: 'DWG-001', quantity: 5, sourceType: 'report', sourceRefId: 'rpt-01', releasedAt: FIXED_NOW });
+    expect((await h.service.execute(envelope('stock.receive.v1', { kind: 'inspection', inspectionId: 'missing-anchor', itemId: item.id, warehouseId: wh1, quantity: 1 }))).status).toBe('rejected');
+    expect(await h.accounts.list(t1)).toHaveLength(0);
+    expect(await h.movements.list(t1)).toHaveLength(0);
   });
 });

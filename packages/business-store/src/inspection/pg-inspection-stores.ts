@@ -214,6 +214,7 @@ export function rowToInspectionEvent(row: InspectionEventDbRow): ApprovalEvent {
 /** 判定字段块（advance/updateJudgment 共用；ISO ↔ Date 换算唯一换算点）。 */
 function judgmentData(fields: JudgmentFields): Prisma.InspectionOrderRecordUpdateInput {
   return {
+    ...(fields.itemId === undefined ? {} : { itemId: fields.itemId }),
     passedQty: fields.passedQty,
     failedQty: fields.failedQty,
     judgeRemark: fields.judgeRemark,

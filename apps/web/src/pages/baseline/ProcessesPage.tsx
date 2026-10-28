@@ -6,6 +6,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { defineProcess, listProcesses, reviseProcess } from '../../data/baselineApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState } from '../../components/ModuleTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,12 +45,7 @@ export function ProcessesPage() {
       setOutcome(result);
       if (result.committed) queryClient.invalidateQueries({ queryKey: ['baseline', 'processes'] });
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleDefine(event: FormEvent<HTMLFormElement>) {

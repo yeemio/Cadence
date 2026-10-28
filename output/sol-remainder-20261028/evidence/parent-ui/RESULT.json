@@ -1,0 +1,78 @@
+{
+  "scope": "Parent visible IAB UI readback against pre-equipment runtime; only named behaviors, not full product acceptance",
+  "observedBy": "/root",
+  "surface": "Codex visible iab tab 1",
+  "origin": "http://127.0.0.1:8181",
+  "runtimeBinding": "../UI-RUNTIME-BINDING.json",
+  "runtimeBindingSha256": "cac8e619cdb4638ba8a99a0fbd653a6eb03fd4046e8aec604a3e17e2769ee0d9",
+  "completedAt": "2026-10-28T17:36:24.868131+08:00",
+  "checks": [
+    {
+      "id": "login_query",
+      "result": "PASS",
+      "evidence": "01-login-query.png",
+      "observation": "Query-bearing login URL rendered and login succeeded"
+    },
+    {
+      "id": "clarify_selection",
+      "result": "PASS",
+      "evidence": "02-clarify-selected.txt",
+      "observation": "Selected clarification value remained visible"
+    },
+    {
+      "id": "workorder_deeplink",
+      "result": "PASS",
+      "evidence": "03-workorder-deeplink.txt",
+      "observation": "wo URL parameter opened the intended work-order detail"
+    },
+    {
+      "id": "quality_zero",
+      "result": "PASS",
+      "evidence": "04-quality-zero.txt",
+      "observation": "Zero failed inspections displayed as a valid numeric result"
+    },
+    {
+      "id": "quality_deeplink",
+      "result": "PASS",
+      "evidence": "05-quality-filter.txt",
+      "observation": "Failed state and from/to judgment time retained"
+    },
+    {
+      "id": "denied",
+      "result": "PASS",
+      "evidence": "06-denied-card.txt",
+      "observation": "Denied card visibly names inspection:read"
+    },
+    {
+      "id": "purchase_details",
+      "result": "PASS",
+      "evidence": "07-purchase-details.txt",
+      "observation": "Purchase details displayed as a business table"
+    },
+    {
+      "id": "purchase_warehouse",
+      "result": "PASS",
+      "evidence": "08-purchase-warehouse-options.txt",
+      "observation": "Purchaser sees FG, MAIN and RAW choices and received quantity 3"
+    }
+  ],
+  "files": {
+    "01-login-query.png": "cc6c809336b11086dd0132c79a5f7bb7b56f4c43a62ec2338f556960aecf43c6",
+    "02-clarify-selected.png": "a07d9522d2a9475a1d3866fe937b904a0813a1b25e122f7602bc46016588b604",
+    "02-clarify-selected.txt": "72dbf8e43bc5a40e373cd5d381736e49d8ee0ee3990e1e430a9898bca9b18957",
+    "03-workorder-deeplink.txt": "62a100cc57b2aabac184f7ed90800ec54d8029ce896360added3d95c1312ffad",
+    "04-quality-zero.txt": "f75441bf06075017a9d099aadefdcbc55e9256a8dcaa3736e8f94f53a298c1fb",
+    "05-quality-filter.txt": "f5394be09bb2fc56f7067d09a2378863a3e9f8ca08c87b15ee8156eee0d7b8ae",
+    "06-denied-card.png": "84876364dce44ddd0080b58a2556bac505f8d95fa1358d4acef15e3a12b1a40d",
+    "06-denied-card.txt": "1862178b8719161955b5583b4bb0a730dcf1edbf7f83a6560f84329ae099ba4f",
+    "07-purchase-details.png": "ff6a035bb840b2b17789d068881359e9faa351be141b66a2db125e89483d73f5",
+    "07-purchase-details.txt": "3eeeecab6212d3fb757978aaee5d42082952b0f37f1a4f270558e782ae86e559",
+    "08-purchase-warehouse-options.png": "200dcc5567122bb3bc34467768f57276db59cdac1e44d13d213fd9be00f7ff6f",
+    "08-purchase-warehouse-options.txt": "c3bec66dea46fbb2ed017e449e979f39d571c1199a16e7795f92308a4c048f94"
+  },
+  "limitations": [
+    "Equipment extension was still being implemented; this UI pass does not prove that extension",
+    "HTTP denied/answer/revocation evidence is supplied separately by the writer",
+    "Purchase receive business mutation was exercised through the API before this UI readback"
+  ]
+}

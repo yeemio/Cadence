@@ -31,6 +31,7 @@ import {
   cancelDispatchOrder,
   completeDispatchOrder,
   createDispatchOrder,
+  dispatchEquipmentOptions,
   getDispatchDetail,
   getDispatchOrderStats,
   listDispatchOrders,
@@ -42,6 +43,7 @@ import {
 import { listWorkOrders } from '../../data/workorderApi';
 import { listOrgUsers } from '../../data/orgApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, type TableColumn } from '../../components/ModuleTable';
 import { formatLocalDateTime, shortId } from '../../lib/format';
 import { Button } from '@/components/ui/button';
@@ -138,6 +140,10 @@ function dispatchDisplayRowOf(row: Record<string, unknown>, t: TFunction): Recor
 export function DispatchOrdersPage() {
   const { t } = useTranslation('dispatch');
   const queryClient = useQueryClient();
+  const { data: lookupPermissions } = usePermissions({});
+  const lookupCodes = toPermissionCodes(lookupPermissions);
+  const canReadWorkorders = sessionHasPermission(lookupCodes, permissionCode('workorder:read'));
+  const canReadUsers = sessionHasPermission(lookupCodes, permissionCode('user:read'));
   const [kindFilter, setKindFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [workOrderIdFilter, setWorkOrderIdFilter] = useState('');
@@ -149,11 +155,13 @@ export function DispatchOrdersPage() {
   const workOrderOptionsQuery = useQuery({
     queryKey: ['workorder', 'orders', 'options'],
     queryFn: () => listWorkOrders().catch(() => []),
+    enabled: canReadWorkorders,
     staleTime: 60_000,
   });
   const userOptionsQuery = useQuery({
     queryKey: ['org', 'users', 'options'],
     queryFn: () => listOrgUsers().catch(() => []),
+    enabled: canReadUsers,
     staleTime: 60_000,
   });
 
@@ -176,6 +184,7 @@ export function DispatchOrdersPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {(!canReadWorkorders || !canReadUsers) && <p role="note" className="text-sm text-muted-foreground">当前账号缺少部分候选读取权限，请由计划或管理员提供工作令和人员编号；提交仍按原业务权限校验。</p>}
       {/* UX-PRD-09：页面级候选池（datalist 由各手填输入以 list 属性引用） */}
       <datalist id="dispatch-wo-options">
         {(workOrderOptionsQuery.data ?? []).map((row) => (
@@ -591,12 +600,7 @@ function DispatchDetailCard({
       setOutcome(result);
       if (result.committed) onChanged();
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   return (
@@ -729,6 +733,9 @@ function CreateDispatchCard({ onChanged }: { readonly onChanged: () => void }) {
 
   const [kind, setKind] = useState<(typeof DISPATCH_KINDS)[number]>('part');
   const [workOrderId, setWorkOrderId] = useState('');
+  const [equipmentRefs, setEquipmentRefs] = useState<string[]>([]);
+  const [rollup, setRollup] = useState(false);
+  const equipmentQuery = useQuery({ queryKey: ['dispatch', 'equipment-options', workOrderId], queryFn: () => dispatchEquipmentOptions(workOrderId), enabled: canCreate && workOrderId.trim().length > 0 });
   const [title, setTitle] = useState('');
   const [drawingNo, setDrawingNo] = useState('');
   const [operationCode, setOperationCode] = useState('');
@@ -753,6 +760,8 @@ function CreateDispatchCard({ onChanged }: { readonly onChanged: () => void }) {
     mutationFn: () =>
       createDispatchOrder({
         kind,
+        equipmentRefs,
+        rollup: kind === 'assembly' && rollup,
         quantity: Number(quantity),
         ...(workOrderId.trim().length > 0 ? { workOrderId: workOrderId.trim() } : {}),
         ...(title.trim().length > 0 ? { title: title.trim() } : {}),
@@ -780,11 +789,7 @@ function CreateDispatchCard({ onChanged }: { readonly onChanged: () => void }) {
       }
     },
     onError: (error) => {
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      });
+      setOutcome(errorOutcomeOf(error));
       setCreatedId(null);
     },
   });
@@ -807,6 +812,7 @@ function CreateDispatchCard({ onChanged }: { readonly onChanged: () => void }) {
           </p>
         )}
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
+          {(kind === 'assembly' || kind === 'electrical') && <div className="flex flex-col gap-2 sm:col-span-2"><Label>派工自制设备（可多选）</Label>{(equipmentQuery.data ?? []).filter((row) => row['kind'] === 'self-made').map((row) => <label key={String(row['id'])} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={equipmentRefs.includes(String(row['id']))} onChange={(e) => setEquipmentRefs((prev) => e.target.checked ? [...prev, String(row['id'])] : prev.filter((id) => id !== String(row['id'])))} />{String(row['code'])} · {String(row['name'])}</label>)}{kind === 'assembly' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={rollup} onChange={(e) => setRollup(e.target.checked)} />生成整线外购设备归拢任务（仅外购设备行）</label>}<p className="text-xs text-muted-foreground">先填工作令，再选择本令真实自制设备；无设备时不能用图号代替。</p></div>}
           <div className="flex flex-col gap-2">
             <Label htmlFor="disp-new-kind">{t('create.kind-label')}</Label>
             <Select id="disp-new-kind" value={kind} disabled={!canCreate} onChange={(e) => setKind(e.target.value as typeof kind)}>
@@ -821,7 +827,7 @@ function CreateDispatchCard({ onChanged }: { readonly onChanged: () => void }) {
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="disp-new-wo">{t('create.wo-label')}</Label>
-            <Input id="disp-new-wo" value={workOrderId} list="dispatch-wo-options" disabled={!canCreate} onChange={(e) => setWorkOrderId(e.target.value)} />
+            <Input id="disp-new-wo" value={workOrderId} list="dispatch-wo-options" disabled={!canCreate} onChange={(e) => { setWorkOrderId(e.target.value); setEquipmentRefs([]); }} />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="disp-new-title">{t('create.title-label')}</Label>

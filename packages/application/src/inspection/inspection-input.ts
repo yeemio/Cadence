@@ -191,6 +191,7 @@ export function parseCreateInspectionPayload(input: unknown): CreateInspectionPa
 
 /** 判定与复检共用数量载荷（inspection.judge / inspection.recheck）。 */
 export interface JudgeInspectionPayload {
+  readonly itemId?: string;
   readonly passedQty: number;
   readonly failedQty: number;
   readonly remark: string | null;
@@ -202,6 +203,7 @@ function parseJudgmentQuantities(record: Record<string, unknown>, what: string):
   return {
     passedQty,
     failedQty,
+    ...(typeof record['itemId'] === 'string' ? { itemId: requireBoundedString(record['itemId'], '物料 itemId', 1, 128) } : {}),
     remark: optionalBoundedString(record['remark'], `${what}备注 remark`, 1, 2000) ?? null,
   };
 }

@@ -83,6 +83,8 @@ function json(value: Readonly<Record<string, unknown>> | readonly unknown[]): Pr
 // ---- 行 <-> 领域形状映射 ----
 
 interface DispatchOrderDbRow {
+  readonly equipmentRefs?: unknown;
+  readonly rollup?: boolean;
   readonly id: string;
   readonly tenantId: string;
   readonly workOrderId: string | null;
@@ -106,6 +108,8 @@ interface DispatchOrderDbRow {
 
 export function rowToDispatchOrder(row: DispatchOrderDbRow): DispatchOrder {
   return {
+    equipmentRefs: Array.isArray(row.equipmentRefs) ? row.equipmentRefs as string[] : [],
+    rollup: row.rollup ?? false,
     id: row.id,
     tenant: TenantId.create(row.tenantId),
     workOrderId: row.workOrderId,
@@ -216,6 +220,8 @@ export class PgDispatchOrderStore implements DispatchOrderStore {
           state: input.state,
           objectVersion: input.objectVersion,
           title: input.title,
+          equipmentRefs: json(input.equipmentRefs ?? []),
+          rollup: input.rollup ?? false,
           drawingNo: input.drawingNo,
           operationCode: input.operationCode,
           material: input.material,

@@ -13,44 +13,20 @@
  */
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../data/apiClient';
-
-/**
- * 高频码白名单（proposal §8 波 2 枚举：auth.* 全量 3 个 + 五个高频域
- * dispatch/workorder/report/inspection/inventory 的 not_found 与
- * state_conflict，dispatch 另含 conflict/invalid_input 全族）——码值拼写
- * 对照 apps/server/tests/error-code-mapping.test.ts；与两语言 common.json
- * 的 error.codes 段同集；白名单外 code 不进映射。
- * （波 2 实装注：块注释内禁写"斜杠+星号收尾"字样——它会提前终止注释，
- * 前任半成品的 tsc 全树不编译即此处。）
- */
-const MAPPED_ERROR_CODES: ReadonlySet<string> = new Set([
-  'auth.invalid_input',
-  'auth.invalid_credentials',
-  'auth.rate_limited',
-  'dispatch.invalid_input',
-  'dispatch.not_found',
-  'dispatch.conflict',
-  'dispatch.state_conflict',
-  'workorder.not_found',
-  'workorder.state_conflict',
-  'report.not_found',
-  'report.state_conflict',
-  'inspection.not_found',
-  'inspection.state_conflict',
-  'inventory.not_found',
-  'inventory.state_conflict',
-]);
+import { mappedErrorCodeCopy } from '../lib/api-error-codes';
 
 export function ApiErrorHint({ error }: { error: unknown }) {
   const { t, i18n } = useTranslation();
   const status = error instanceof ApiError ? error.status : undefined;
-  const code = error instanceof ApiError ? error.code : undefined;
   const message = error instanceof Error ? error.message : String(error);
   // en-US + 白名单内 code → 英文同码文案；其余（含 zh-CN 全部情形）回落现状
-  const codeCopy =
-    code !== undefined && i18n.language === 'en-US' && MAPPED_ERROR_CODES.has(code)
-      ? t(`common:error.codes.${code}`)
-      : null;
+  // （白名单与解析提为共享件 lib/api-error-codes，供 QueryState 与
+  // CommandOutcomeHint 两出口复用——本组件行为零变化。）
+  const codeCopy = mappedErrorCodeCopy(
+    error instanceof ApiError ? error.code : undefined,
+    i18n.language,
+    t,
+  );
   if (codeCopy !== null) {
     return (
       <p role="alert" className="text-sm text-destructive">

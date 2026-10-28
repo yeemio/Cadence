@@ -6,7 +6,9 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { exportPurchaseDetails, getPurchaseDetails, listOverdue, scanOverdue } from '../../data/listingApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, RowDetail } from '../../components/ModuleTable';
+import { formatLocalDateTime } from '../../lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -31,12 +33,7 @@ export function PurchaseDetailsPage() {
   const scanMutation = useMutation({
     mutationFn: scanOverdue,
     onSuccess: (result) => setOutcome(result),
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   return (
@@ -62,11 +59,25 @@ export function PurchaseDetailsPage() {
             </Button>
           </div>
           <QueryState isPending={detailsQuery.isPending} error={detailsQuery.error} isEmpty={false}>
-            <RowDetail row={detailsQuery.data ?? {}} title="采购明细视图" />
+            <>
+              <ModuleTable columns={[
+                { key: 'purchaseOrderId', label: '采购订单', mono: true, format: 'shortId' },
+                { key: 'stateLabel', label: '状态' }, { key: 'supplierName', label: '供应商' },
+                { key: 'lineNo', label: '行号' }, { key: 'itemId', label: '物料', mono: true },
+                { key: 'drawingNo', label: '图号' }, { key: 'quantity', label: '订购数量' },
+                { key: 'receivedQty', label: '已收数量' }, { key: 'unitPrice', label: '单价（元）' },
+                { key: 'amount', label: '已收金额（元）' }, { key: 'delivery', label: '交期' },
+              ]} rows={(Array.isArray(detailsQuery.data?.['rows']) ? detailsQuery.data['rows'] : []).map((row: Record<string, unknown>) => ({
+                ...row, unitPrice: typeof row['unitPriceMinor'] === 'number' ? (row['unitPriceMinor'] / 100).toFixed(2) : '未定价',
+                amount: typeof row['amountMinor'] === 'number' ? (row['amountMinor'] / 100).toFixed(2) : '—',
+                delivery: formatLocalDateTime(row['promisedAt']),
+              }))} />
+              <p className="text-sm">已收金额合计：{((Number(detailsQuery.data?.['totalAmountMinor']) || 0) / 100).toFixed(2)} 元</p>
+            </>
           </QueryState>
           {loadedWorkOrderId !== null && (
             <QueryState isPending={exportQuery.isPending} error={exportQuery.error} isEmpty={false}>
-              <RowDetail row={exportQuery.data ?? {}} title="导出载荷（details/export）" />
+              <details><summary className="cursor-pointer text-sm">查看导出数据（技术明细）</summary><RowDetail row={exportQuery.data ?? {}} title="导出载荷" /></details>
             </QueryState>
           )}
         </CardContent>

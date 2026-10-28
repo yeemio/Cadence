@@ -1,3 +1,4 @@
+import { InMemoryWorkOrderEquipmentStore } from '../../src/workorder/workorder-equipment.js';
 /**
  * 发料任务/发料记录（U1，A11 增量）测试：内存存储合同、派工同步生成/补全/
  * 归拢、四数量口径、确认发料（part 拆预占 / std-elec 库位扣减回执快照 /
@@ -183,7 +184,7 @@ class FakeMaterialPort implements IssueMaterialPort {
   }
 }
 
-function newHarness(options: { demand?: FakeDemandPort; material?: FakeMaterialPort } = {}) {
+function newHarness(options: { demand?: FakeDemandPort; material?: FakeMaterialPort; equipmentSource?: InMemoryWorkOrderEquipmentStore } = {}) {
   const stores = createInMemoryIssueStores();
   const demand = options.demand ?? new FakeDemandPort();
   const material = options.material ?? new FakeMaterialPort();
@@ -196,7 +197,7 @@ function newHarness(options: { demand?: FakeDemandPort; material?: FakeMaterialP
     stores.domainEventStore,
     demand,
     material,
-    { now: () => FIXED_NOW },
+    { now: () => FIXED_NOW, ...(options.equipmentSource ? { equipmentSource: options.equipmentSource } : {}) },
   );
   return { stores, demand, material, service };
 }
@@ -1003,5 +1004,30 @@ describe('控制器权限码与模块装配', () => {
       await service.execute(envelopeOf('issue.sync.v1', { workOrderId: 'wo-x', dispatchKind: 'assembly', rollup: true })),
     );
     expect(result.tasks).toHaveLength(0); // 空需求源 → 无外购设备行 → 不建归拢单
+  });
+});
+
+
+describe('真实设备维发料同步', () => {
+  it('两设备分单、不串行，aftermarket不进入生产；重同步不重复任务或行，跨令设备拒绝', async () => {
+    const source = new InMemoryWorkOrderEquipmentStore();
+    for (const id of ['eq-a', 'eq-b']) await source.create({ tenant: t1, id, workOrderId: 'wo-1', code: id, name: id, quantity: 1, kind: 'self-made' });
+    await source.create({ tenant: t1, id: 'eq-other', workOrderId: 'wo-other', code: 'O', name: '其它令', quantity: 1, kind: 'self-made' });
+    const demand = new FakeDemandPort([
+      demandLine({ listingLineId: 'line-a', kind: 'part', equipmentRef: 'eq-a', itemId: 'same-material' }),
+      demandLine({ listingLineId: 'line-b', kind: 'standard', equipmentRef: 'eq-b', itemId: 'same-material' }),
+      demandLine({ listingLineId: 'aftermarket', kind: 'standard', equipmentRef: 'eq-a', itemId: 'same-material', origin: 'aftermarket' }),
+    ]);
+    const h = newHarness({ demand, equipmentSource: source });
+    const payload = { workOrderId: 'wo-1', dispatchKind: 'assembly', equipmentRefs: ['eq-a', 'eq-b'] };
+    const first = await committed(await h.service.execute(envelopeOf('issue.sync.v1', payload)));
+    expect(first.tasks).toHaveLength(2);
+    for (const task of first.tasks ?? []) {
+      const detail = await h.service.issueDetail(t1, task.id, { lineKind: undefined, moduleName: undefined, name: undefined, pendingFilter: undefined, current: 1, size: 20 });
+      expect(detail.lines.map((line) => line.sourceLineId)).toEqual([task.equipmentRef === 'eq-a' ? 'line-a' : 'line-b']);
+    }
+    const second = await committed(await h.service.execute(envelopeOf('issue.sync.v1', payload)));
+    expect(second.tasks?.map((task) => task.id).sort()).toEqual(first.tasks?.map((task) => task.id).sort());
+    expect((await h.service.execute(envelopeOf('issue.sync.v1', { ...payload, equipmentRefs: ['eq-other'] }))).status).toBe('rejected');
   });
 });

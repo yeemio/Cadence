@@ -64,6 +64,14 @@ export class WorkOrdersController {
     private readonly workOrder: WorkOrderService,
   ) {}
 
+  @Get(':id/equipment')
+  @RequirePermission('workorder:read')
+  async equipment(@Param('id') id: string) { return { equipment: await this.workOrder.equipmentList(this.tenantContext.current(), parseIdParam(id, '工作令 id')) }; }
+
+  @Post(':id/equipment')
+  @RequirePermission('workorder:write')
+  async defineEquipment(@Param('id') id: string, @Body() body: unknown) { return this.workOrder.defineEquipment(this.tenantContext.current(), parseIdParam(id, '工作令 id'), body); }
+
   @Post()
   @RequirePermission('workorder:write')
   async create(@Req() request: AuthenticatedRequest, @Body() body: unknown): Promise<WorkOrderCommandResult> {

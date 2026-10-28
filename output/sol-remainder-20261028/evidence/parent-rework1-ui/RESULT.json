@@ -1,0 +1,24 @@
+{
+  "result": "PASS",
+  "candidateSha256": "39fc159969198fc15104bfd224d8b2604d84cbc524e881c1241e2cfe8bc435e8",
+  "runtimeBinding": "../REWORK1-UI-RUNTIME-BINDING.json",
+  "surface": "visible Codex IAB tab2, http://127.0.0.1:8181",
+  "reviewer": "/root",
+  "recordedAt": "2026-10-28T13:08:30.938888+00:00",
+  "checks": [
+    "self-made A selected then purchased kind change clears old selection",
+    "purchased equipment option left blank; isolated line saved successfully",
+    "full page reload and detail selection show same persisted line"
+  ],
+  "fixture": {
+    "lineId": "ll-01a1829d-c407-7d4c-8e4d-678bb0afa10e",
+    "workOrderId": "wo-01a181e9-097e-73e8-b058-1c118d9178d8",
+    "name": "UI可选设备空值验收（隔离）",
+    "quantity": 1,
+    "inventoryMutation": false
+  },
+  "files": {
+    "optional-equipment-saved.png": "2374035e4ed6b8e314aa8d8352a8b3abb556e073a22f77115fe02da049e6bf33",
+    "readback.txt": "a2ce78507d7f17cc36d02cc52ee19221e6b8bf55f7a0556c3e863c353df638f4"
+  }
+}

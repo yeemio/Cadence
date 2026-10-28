@@ -71,7 +71,7 @@ const EMPTY_DRAFT: DraftFormState = { ref: '', quantity: '1', laborMinutes: '60'
 type SubmitState =
   | { readonly kind: 'idle' }
   | { readonly kind: 'submitting' }
-  | { readonly kind: 'submitted'; readonly ref: string }
+  | { readonly kind: 'submitted'; readonly ref: string; readonly reportId?: string | undefined }
   | { readonly kind: 'queued' }
   | { readonly kind: 'invalid'; readonly message: string };
 
@@ -195,8 +195,9 @@ export function MobileReportPage() {
     }
     setSubmitState({ kind: 'submitting' });
     try {
-      await submitReportDraft(submission); // 在线：真实提交通道（reportingApi → POST /reports）
-      setSubmitState({ kind: 'submitted', ref: submission.ref });
+      const reportId = await submitReportDraft(submission, true);
+      setSubmitState({ kind: 'submitted', ref: submission.ref, reportId });
+      setDraft(EMPTY_DRAFT);
     } catch {
       enqueueSubmission(submission); // 在线提交失败（网络/拒绝）：离线策略兜底入队
     }
@@ -206,7 +207,7 @@ export function MobileReportPage() {
     if (replaying) return;
     setReplaying(true);
     try {
-      await queue.replay((entry) => submitReportDraft(entry.payload));
+      await queue.replay(async (entry) => { await submitReportDraft(entry.payload); });
     } finally {
       syncQueue();
       setReplaying(false);
@@ -286,7 +287,7 @@ export function MobileReportPage() {
               </div>
 
               {currentTier === 'tier1-camera' && (
-                <div className="relative overflow-hidden rounded-lg border bg-muted/60" style={{ aspectRatio: '4 / 3' }}>
+                <div className="relative overflow-hidden rounded-lg border bg-muted/60" style={{ maxHeight: '12rem', aspectRatio: '16 / 9' }}>
                   <div id={SCAN_VIDEO_ELEMENT_ID} className="h-full w-full [&>video]:h-full [&>video]:w-full [&>video]:object-cover" />
                   {!active && (
                     <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
@@ -378,10 +379,10 @@ export function MobileReportPage() {
           </Button>
 
           {submitState.kind === 'submitted' && (
-            <p className="text-xs text-emerald-700">
-              报工已提交，派工单号{' '}
+            <p className="text-sm text-emerald-700">
+              操作已生效。派工单号{' '}
               <span className="font-mono" title={submitState.ref}>
-                {shortId(submitState.ref)}
+                {submitState.ref}{submitState.reportId ? `；报工单号 ${submitState.reportId}` : ''}
               </span>
             </p>
           )}

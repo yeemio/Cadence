@@ -44,6 +44,7 @@ const QUESTION_MAX_LENGTH = 500;
 /** 详情跳转门禁码（与目标页菜单码同码：workorder / listing-gap-checks / inspections）。 */
 const WORKORDER_READ = permissionCode('workorder:read');
 const GAP_READ = permissionCode('gap:read');
+const AI_QUERY_READ = permissionCode('ai-query:read');
 const INSPECTION_READ = permissionCode('inspection:read');
 
 /** 线程一问一答轮次（chosenOptionId 为 clarify 回放后的本地已选标记）。 */
@@ -62,6 +63,7 @@ export function AiQueryPage() {
   // ——会话权限未就绪按无权限兜底（跳转入口不渲染；admin 通配由 sessionHasPermission 内含）。
   const { data: permissionData } = usePermissions({});
   const codes = toPermissionCodes(permissionData);
+  const canAsk = sessionHasPermission(codes, AI_QUERY_READ);
   const canOpenWorkorder = sessionHasPermission(codes, WORKORDER_READ);
   const canOpenGapChecks = sessionHasPermission(codes, GAP_READ);
   const canOpenInspections = sessionHasPermission(codes, INSPECTION_READ);
@@ -69,10 +71,12 @@ export function AiQueryPage() {
   const capabilitiesQuery = useQuery({
     queryKey: ['ai-query', 'capabilities'],
     queryFn: listCapabilities,
+    enabled: canAsk,
   });
   const sessionsQuery = useQuery({
     queryKey: ['ai-query', 'sessions'],
     queryFn: () => listSessions(),
+    enabled: canAsk,
   });
 
   /** 问数（新问/澄清回放共用；恒 200，五态经 kind 判别）。 */
@@ -142,15 +146,18 @@ export function AiQueryPage() {
     if (subject.kind === 'material') {
       return canOpenGapChecks ? `/listings/gap-checks?wo=${encodeURIComponent(subject.id)}` : null;
     }
-    return canOpenInspections ? '/inspections' : null;
+    const window = /^window:(.+)\.\.(.+)$/.exec(subject.id);
+    return canOpenInspections ? `/inspections?state=failed${window ? `&from=${encodeURIComponent(window[1]!)}&to=${encodeURIComponent(window[2]!)}` : ''}` : null;
   }
+
+  if (!canAsk) return <p role="note">当前账号没有问数入口权限，请联系管理员。</p>;
 
   return (
     <div className="flex flex-col gap-6">
       {/* 如实降级标注（合同 §意图路由：v1 无模型；样式克制，固定页面顶部） */}
       <div
         role="note"
-        className="sticky top-0 z-10 rounded-md border border-dashed bg-background/95 px-3 py-2 text-xs text-muted-foreground backdrop-blur"
+        className="rounded-md border border-dashed bg-background/95 px-3 py-2 text-xs text-muted-foreground backdrop-blur"
       >
         规则引擎模式 · 未接入 AI 模型 —— 意图路由与回答由确定性规则和结构化事实模板生成，不含推测性结论。
       </div>
@@ -171,7 +178,7 @@ export function AiQueryPage() {
                   id="aiq-question"
                   value={question}
                   maxLength={QUESTION_MAX_LENGTH}
-                  placeholder="例如：WO-2026-001 进度做到哪了 / WO-2026-001 缺料吗 / 今天检验有哪些不合格"
+                  placeholder="例如：工作令进度做到哪了 / 工作令缺料吗 / 今天检验有哪些不合格"
                   onChange={(e) => setQuestion(e.target.value)}
                 />
                 <div className="flex items-center justify-between">
@@ -323,7 +330,7 @@ function TurnResponse({
               onClick={() => onChooseOption(turn, option.id)}
               className={cn(
                 'rounded-full border px-3 py-1 text-sm transition-colors hover:bg-muted/60',
-                chosen === option.id && 'border-primary bg-primary text-primary-foreground',
+                chosen === option.id && 'border-blue-700 bg-blue-50 text-blue-950 dark:bg-blue-950 dark:text-blue-50',
               )}
             >
               {option.label}

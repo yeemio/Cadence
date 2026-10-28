@@ -38,6 +38,7 @@ import type {
  * closeDueAt 仅 failed 分支非空（判定时刻 + 闭环超时阈值；复检仍失败时刷新）。
  */
 export interface JudgmentFields {
+  readonly itemId?: string;
   readonly passedQty: number;
   readonly failedQty: number;
   readonly judgeRemark: string | null;

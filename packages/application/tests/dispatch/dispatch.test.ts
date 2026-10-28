@@ -1,3 +1,4 @@
+import { InMemoryWorkOrderEquipmentStore } from '../../src/workorder/workorder-equipment.js';
 /**
  * dispatch 模块测试（M2-W6）：四态状态机配置合法集、六类创建（零件工艺属性
  * 随单 / 外协批量派发×实时取价 / 装配电气齐套硬拦截 / 售后零工）、派工-开工-
@@ -134,7 +135,7 @@ class FakePrintPort implements DispatchPrintPort {
   }
 }
 
-function newHarness() {
+function newHarness(equipmentSource?: InMemoryWorkOrderEquipmentStore) {
   const orders = new InMemoryDispatchOrderStore();
   const outsourcingLines = new InMemoryOutsourcingLineStore();
   const operations = new InMemoryDispatchOperationStore();
@@ -153,7 +154,7 @@ function newHarness() {
     machineEvents,
     todos,
     { kitCheck, priceSource, inspectionIntake, print },
-    { now: () => FIXED_NOW },
+    { now: () => FIXED_NOW, ...(equipmentSource ? { equipmentSource } : {}) },
   );
   return { service, orders, outsourcingLines, operations, domainEvents, machineEvents, todos, kitCheck, priceSource, inspectionIntake, print };
 }
@@ -1130,5 +1131,22 @@ describe('模块装配与权限码', () => {
       );
       expect(actual, `${String(method)} 权限码`).toBe(code);
     }
+  });
+});
+
+
+describe('真实设备维派工闸门', () => {
+  it('缺设备、跨令、跨租户和外购设备不可作为自制派工；真实设备集合随单持久化', async () => {
+    const source = new InMemoryWorkOrderEquipmentStore();
+    await source.create({ tenant: t1, id: 'weq-a', workOrderId: 'wo-1', code: 'A', name: 'A设备', quantity: 1, kind: 'self-made' });
+    await source.create({ tenant: t1, id: 'weq-other', workOrderId: 'wo-other', code: 'O', name: '其它令设备', quantity: 1, kind: 'self-made' });
+    await source.create({ tenant: TenantId.create('foreign'), id: 'weq-foreign', workOrderId: 'wo-1', code: 'F', name: '外租户设备', quantity: 1, kind: 'self-made' });
+    await source.create({ tenant: t1, id: 'weq-purchased', workOrderId: 'wo-1', code: 'P', name: '外购设备', quantity: 1, kind: 'purchased' });
+    const h = newHarness(source); h.kitCheck.seed('wo-1', true);
+    const payload = { kind: 'assembly', quantity: 1, workOrderId: 'wo-1', operationCode: 'ASM' };
+    for (const equipmentRefs of [[], ['weq-other'], ['weq-foreign'], ['weq-purchased']]) expect((await h.service.execute(envelopeOf('dispatch.create.v1', { ...payload, equipmentRefs }))).status).toBe('rejected');
+    expect(await h.orders.list(t1)).toHaveLength(0);
+    const result = await committed(await h.service.execute(envelopeOf('dispatch.create.v1', { ...payload, equipmentRefs: ['weq-a'] })));
+    expect(result.dispatchOrder?.equipmentRefs).toEqual(['weq-a']);
   });
 });

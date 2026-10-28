@@ -20,6 +20,7 @@ import {
   listNonconformities,
 } from '../../data/inspectionApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState } from '../../components/ModuleTable';
 import { formatLocalDateTime, shortId } from '../../lib/format';
 import { Button } from '@/components/ui/button';
@@ -132,12 +133,7 @@ export function NonconformitiesPage() {
       setOutcome(result);
       if (result.committed) queryClient.invalidateQueries({ queryKey: ['inspection', 'nonconformities'] });
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   return (

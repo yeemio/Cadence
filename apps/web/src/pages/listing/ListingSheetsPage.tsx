@@ -16,7 +16,7 @@
  * 模式）；支持 ?wo= 直达（工作令页入口带所选单进入）并回写 URL；已选工作令
  * 人话确认（项目名 + 短码，悬停看全号），换单仍走原表单清态路径。
  */
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import {
@@ -28,8 +28,8 @@ import {
   type ListingKindId,
 } from '../../data/listingApi';
 // M2-R1：工作令候选池数据源（只读复用工作令列表 API，不改其导出）。
-import { listWorkOrders } from '../../data/workorderApi';
-import { rowsOf, type CommandOutcomeView } from '../../data/commandClient';
+import { listWorkOrderEquipment, listWorkOrders } from '../../data/workorderApi';
+import { errorOutcomeOf, rowsOf, type CommandOutcomeView } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState } from '../../components/ModuleTable';
 import type { TableColumn } from '../../components/ModuleTable';
 import { ColumnVisibilityMenu } from '../../components/ColumnVisibilityMenu';
@@ -133,12 +133,7 @@ export function ListingSheetsPage() {
         queryClient.invalidateQueries({ queryKey: ['listing'] });
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleLoad(event: FormEvent<HTMLFormElement>) {
@@ -337,9 +332,12 @@ function AddLineCard({
   readonly defaultKind: ListingKindId | '';
   readonly onAdded: () => void;
 }) {
+  const [equipmentRef, setEquipmentRef] = useState('');
+  const equipmentQuery = useQuery({ queryKey: ['workorder', 'equipment', workOrderId], queryFn: () => listWorkOrderEquipment(workOrderId), enabled: workOrderId.length > 0 });
   const [kind, setKind] = useState<ListingKindId | ''>(defaultKind);
   // 未手工选择时跟随选中清单的类目（选中清单变化即联动；手工改过则尊重手工值）。
   const effectiveKind: ListingKindId | '' = kind === '' ? defaultKind : kind;
+  useEffect(() => { setEquipmentRef(''); }, [workOrderId, effectiveKind]);
   const [drawingNo, setDrawingNo] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -362,12 +360,7 @@ function AddLineCard({
         onAdded();
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -377,6 +370,7 @@ function AddLineCard({
     if (!Number.isFinite(qty) || qty <= 0) return;
     mutation.mutate({
       workOrderId,
+      equipmentRef,
       kind: effectiveKind,
       ...(drawingNo.trim().length > 0 ? { drawingNo: drawingNo.trim() } : {}),
       ...(code.trim().length > 0 ? { code: code.trim() } : {}),
@@ -397,6 +391,7 @@ function AddLineCard({
       </CardHeader>
       <CardContent>
         <form className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-2"><Label htmlFor="listing-equipment">{effectiveKind === 'equipment' ? '关联外购设备（可选）' : '关联自制设备'}</Label><Select id="listing-equipment" value={equipmentRef} onChange={(e) => setEquipmentRef(e.target.value)} required={effectiveKind !== 'equipment'}><option value="">请选择本工作令设备</option>{(equipmentQuery.data ?? []).filter((row) => row['kind'] === (effectiveKind === 'equipment' ? 'purchased' : 'self-made')).map((row) => <option key={String(row['id'])} value={String(row['id'])}>{String(row['code'])} · {String(row['name'])}（{String(row['quantity'])}台）</option>)}</Select><p className="text-xs text-muted-foreground">无设备时先到工作令设备清单新增；外购设备清单行由整线归拢处理。</p></div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="add-line-kind">类目</Label>
             <Select
@@ -484,12 +479,7 @@ function LineUpdateCard({
         setRequiredQty('');
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

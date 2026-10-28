@@ -90,7 +90,8 @@ import {
 } from '../../src/listing/listing.controllers.js';
 import { ProcessMaterialsController } from '../../src/listing/process-material.controllers.js';
 import { ListingService } from '../../src/listing/listing.service.js';
-import type { ListingCommitted, ListingCommandResult } from '../../src/listing/listing.service.js';
+import { InMemoryWorkOrderEquipmentStore } from '../../src/workorder/workorder-equipment.js';
+import type { ListingCommitted, ListingCommandResult, ListingServiceOptions } from '../../src/listing/listing.service.js';
 
 const t1 = TenantId.create('t1');
 const t2 = TenantId.create('t2');
@@ -223,7 +224,7 @@ function newHarness(extraPorts: Partial<{
   readonly useReservation: InventoryUseReservationPort;
   /** D-15：真实 inventory 收货面注入（createInventoryReceiptAdapter 包装）。 */
   readonly receipt: InventoryReceiptPort;
-}> = {}) {
+}> = {}, extraOptions: Pick<ListingServiceOptions, 'equipmentSource'> = {}) {
   const sheets = new InMemoryListingSheetStore();
   const lines = new InMemoryListingLineStore();
   const gapChecks = new InMemoryGapCheckStore();
@@ -249,7 +250,7 @@ function newHarness(extraPorts: Partial<{
       materialValidation,
       ...extraPorts,
     },
-    { orderApprover: approver, now: () => FIXED_NOW },
+    { orderApprover: approver, now: () => FIXED_NOW, ...extraOptions },
   );
   return {
     sheets, lines, gapChecks, requests, orders, returns, operations, domainEvents,
@@ -1556,3 +1557,28 @@ describe('模块装配与权限码', () => {
   });
 });
 
+
+
+describe('外购设备清单的对称类型约束', () => {
+  it('自制/跨令/跨租户关联拒绝零写；外购和可选null通过，自制清单仍必选', async () => {
+    const source = new InMemoryWorkOrderEquipmentStore();
+    for (const [id, tenant, workOrderId, kind] of [
+      ['self', t1, 'wo-type', 'self-made'], ['purchased', t1, 'wo-type', 'purchased'],
+      ['other', t1, 'wo-other', 'purchased'], ['foreign', t2, 'wo-type', 'purchased'],
+    ] as const) await source.create({ id, tenant, workOrderId, kind, code: id, name: id, quantity: 1 });
+    const h = newHarness({}, { equipmentSource: source });
+    const payload = { source: 'excel', workOrderId: 'wo-type', kind: 'equipment', excel: excelSource(CN_HEADER, [['P', 'P', '泵组', '', '1', '']]) };
+    for (const equipmentRef of ['self', 'other', 'foreign']) {
+      expect((await h.service.execute(envelope('listing.import.v1', { ...payload, equipmentRef }))).status).toBe('rejected');
+      expect(await h.lines.listByWorkOrder(t1, 'wo-type')).toHaveLength(0);
+      expect(await h.sheets.listByWorkOrder(t1, 'wo-type')).toHaveLength(0);
+    }
+    expect((await h.service.execute(envelope('listing.import.v1', { ...payload, kind: 'part', equipmentRef: null }))).status).toBe('rejected');
+    const linked = mustCommit(await h.service.execute(envelope('listing.import.v1', { ...payload, equipmentRef: 'purchased' })));
+    expect(linked.lines?.[0]?.equipmentRef).toBe('purchased');
+    const line = linked.lines![0]!;
+    expect((await h.service.execute(envelope('listing.line.update.v1', { equipmentRef: 'self' }, { expectedRevision: line.objectVersion }), line.id)).status).toBe('rejected');
+    expect((await h.lines.find(t1, line.id))?.equipmentRef).toBe('purchased');
+    expect((await h.service.execute(envelope('listing.import.v1', { ...payload, equipmentRef: null }))).status).toBe('committed');
+  });
+});

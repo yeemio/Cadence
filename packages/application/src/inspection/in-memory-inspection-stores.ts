@@ -45,7 +45,7 @@ interface InspectionRow {
   readonly kind: InspectionKind;
   readonly sourceType: InspectionSourceType | null;
   readonly sourceRefId: string | null;
-  readonly itemId: string | null;
+  itemId: string | null;
   readonly drawingNo: string | null;
   readonly quantity: number;
   passedQty: number | null;
@@ -85,6 +85,7 @@ function toOrder(row: InspectionRow): InspectionOrder {
 }
 
 function applyJudgment(row: InspectionRow, fields: JudgmentFields): void {
+  if (fields.itemId !== undefined) row.itemId = fields.itemId;
   row.passedQty = fields.passedQty;
   row.failedQty = fields.failedQty;
   row.judgeRemark = fields.judgeRemark;

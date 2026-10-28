@@ -164,4 +164,5 @@ export const RLS_TABLES: readonly RlsTableSpec[] = [
   // M2 安全前置批线 A（2026-10-27 落库：SP-1 登录失败计数/锁定单表；
   // 守恒测试触发补登 + 全量重放迁移 20261027090100——107 表快照）
   tenantTable('login_attempts'),
+  tenantTable('work_order_equipment'),
 ];

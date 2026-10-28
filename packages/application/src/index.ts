@@ -2660,3 +2660,5 @@ export type {
   AiQuerySessionStore,
   AiQuerySourceStores,
 } from './ai-query/ai-query-ports.js';
+
+export * from './workorder/workorder-equipment.js';

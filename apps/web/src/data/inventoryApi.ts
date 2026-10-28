@@ -264,3 +264,10 @@ export function confirmShipping(
     revisionOf(row, '发货任务行'),
   );
 }
+
+export interface ReceiveOptions {
+  readonly items: readonly { id: string; code: string; name: string }[];
+  readonly warehouses: readonly { id: string; code: string; name: string }[];
+  readonly releases: readonly { id: string; itemId: string; remainingQty: number }[];
+}
+export async function receiveOptions(): Promise<ReceiveOptions> { return await request('/inventory/receive-options') as ReceiveOptions; }

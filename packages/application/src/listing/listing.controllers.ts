@@ -333,6 +333,10 @@ export class PurchaseQueriesController {
     );
   }
 
+  @Get('receiving-warehouses')
+  @RequirePermission('purchase:receive')
+  async receivingWarehouses() { return { warehouses: await this.listing.receivingWarehouseOptions(this.tenantContext.current()) }; }
+
   @Get('overdue')
   @RequirePermission('purchase:read')
   async overdue(): Promise<{ overdue: Awaited<ReturnType<ListingService['overdueList']>> }> {

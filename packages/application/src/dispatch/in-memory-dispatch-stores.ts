@@ -33,6 +33,8 @@ import type {
 // ---- 派工单（投影，乐观 advance） ----
 
 interface OrderRow {
+  readonly equipmentRefs?: readonly string[];
+  readonly rollup?: boolean;
   readonly tenant: string;
   readonly id: string;
   readonly workOrderId: string | null;
@@ -56,6 +58,8 @@ interface OrderRow {
 
 function toOrder(row: OrderRow): DispatchOrder {
   return {
+    ...(row.equipmentRefs === undefined ? {} : { equipmentRefs: [...row.equipmentRefs] }),
+    ...(row.rollup === undefined ? {} : { rollup: row.rollup }),
     id: row.id,
     tenant: TenantId.create(row.tenant),
     workOrderId: row.workOrderId,
@@ -96,6 +100,8 @@ export class InMemoryDispatchOrderStore implements DispatchOrderStore {
       state: input.state,
       objectVersion: input.objectVersion,
       title: input.title,
+      ...(input.equipmentRefs === undefined ? {} : { equipmentRefs: [...input.equipmentRefs] }),
+      ...(input.rollup === undefined ? {} : { rollup: input.rollup }),
       drawingNo: input.drawingNo,
       operationCode: input.operationCode,
       material: input.material,

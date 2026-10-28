@@ -1,3 +1,4 @@
+import type { WorkOrderEquipmentStore } from '../workorder/workorder-equipment.js';
 /**
  * DispatchService —— 六类派工用例编排（M2-W6，04-dispatch.md v1.0）。
  *
@@ -150,6 +151,8 @@ export interface DispatchCommitted extends CommittedOutcome {
 export type DispatchCommandResult = DispatchCommitted | RejectedOutcome | IndeterminateOutcome;
 
 export interface DispatchServiceOptions {
+  readonly equipmentSource?: WorkOrderEquipmentStore | undefined;
+  readonly hasUnassignedProductionLines?: (tenant: TenantId, workOrderId: string) => Promise<boolean>;
   /** 派工单状态机配置（缺省 DEFAULT_DISPATCH_FLOW_CONFIG；整体替换 = 换合法集）。 */
   readonly flowConfig: ApprovalFlowConfig;
   /** 齐套放行拦截覆盖的 kind（缺省 DEFAULT_KIT_GATED_KINDS：装配/电气）。 */
@@ -204,11 +207,28 @@ export class DispatchService {
       excel: ports.excel ?? new JsonTablesDispatchExcelPort(),
     };
     this.options = {
+      ...(options.equipmentSource === undefined ? {} : { equipmentSource: options.equipmentSource }),
+      ...(options.hasUnassignedProductionLines === undefined ? {} : { hasUnassignedProductionLines: options.hasUnassignedProductionLines }),
       flowConfig: options.flowConfig ?? DEFAULT_DISPATCH_FLOW_CONFIG,
       kitGatedKinds: options.kitGatedKinds ?? DEFAULT_KIT_GATED_KINDS,
       ...(options.now === undefined ? {} : { now: options.now }),
     };
   }
+
+  private async validateEquipmentSelection(tenant: TenantId, workOrderId: string | null, kind: string, refs: readonly string[], rollup: boolean): Promise<string | null> {
+    if (!this.options.equipmentSource || (kind !== 'assembly' && kind !== 'electrical')) return null;
+    if (!workOrderId) return '装配/电气派工必须关联工作令';
+    if (rollup && kind !== 'assembly') return '仅装配派工支持外购设备归拢';
+    if (refs.length === 0 && !rollup) return '请选择本工作令的自制设备；缺设备不能生成生产发料任务';
+    for (const ref of refs) {
+      const equipment = await this.options.equipmentSource.find(tenant, ref);
+      if (!equipment || equipment.workOrderId !== workOrderId || equipment.kind !== 'self-made') return '所选设备不存在、不属于本工作令/租户或不是自制设备';
+    }
+    if (this.options.hasUnassignedProductionLines && await this.options.hasUnassignedProductionLines(tenant, workOrderId)) return '生产清单仍有未关联设备的行，请先补齐真实设备关联后派工';
+    return null;
+  }
+
+  async equipmentOptions(tenant: TenantId, workOrderId: string) { return this.options.equipmentSource?.list(tenant, workOrderId) ?? []; }
 
   private now(): string {
     return this.options.now?.() ?? DEFAULT_NOW();
@@ -263,6 +283,8 @@ export class DispatchService {
     const payload = parseDispatchCreatePayload(envelope.command.payload);
     const tenant = envelope.tenantId;
 
+    const equipmentFault = await this.validateEquipmentSelection(tenant, payload.workOrderId, payload.kind, payload.equipmentRefs ?? [], payload.rollup ?? false);
+    if (equipmentFault) return rejected(equipmentFault);
     // 齐套放行拦截（装配/电气——默认配置可整体替换，ADR-0010 三层之默认配置层）：
     // 未齐套/无核查记录拒绝创建（fail-closed：齐套事实不可伪证）。
     let kitEvidence: { readonly kitCheckId: string; readonly refreshedAt: string } | null = null;
@@ -371,6 +393,8 @@ export class DispatchService {
       flowConfigId: this.options.flowConfig.flowId,
       state: this.options.flowConfig.initial, // draft：初始态落库，无机器事件
       objectVersion: 1,
+      equipmentRefs: payload.equipmentRefs ?? [],
+      rollup: payload.rollup ?? false,
       title: payload.title ?? this.defaultTitle(payload.kind, payload.drawingNo, payload.operationCode, firstSupplier),
       drawingNo: payload.drawingNo,
       operationCode: payload.operationCode,
@@ -477,6 +501,8 @@ export class DispatchService {
       );
     }
 
+    const equipmentFault = await this.validateEquipmentSelection(envelope.tenantId, order.workOrderId, order.kind, order.equipmentRefs ?? [], order.rollup ?? false);
+    if (equipmentFault) return rejected(equipmentFault);
     const runtime = await this.replayOrder(order);
     try {
       const from = runtime.state();

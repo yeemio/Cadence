@@ -23,7 +23,8 @@ import 'reflect-metadata';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NestFactory } from '@nestjs/core';
-import { TenantContext } from '@smes/application';
+import { InMemoryItemStore, TenantContext } from '@smes/application';
+import { TenantId } from '@smes/business-core';
 import { bindCrossModuleWiring } from '../src/cross-module-wiring.js';
 import { buildAppModule, parseModulesEnabled } from '../src/app-registry.js';
 import { ApprovalErrorFilter } from '../src/approval-error.filter.js';
@@ -114,6 +115,7 @@ async function ensureProcessDefined(baseUrl: string, code: string): Promise<void
 
 describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => {
   let baseUrl = '';
+  let kitMaterialId = '';
   const savedEnv = new Map<string, string | undefined>();
 
   function setEnv(name: string, value: string | undefined): void {
@@ -136,10 +138,13 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
     setEnv('SMES_DEV_AUTH', 'on'); // dev 身份回落（测试钩子）
     setEnv('SMES_DEV_POLICY_ENDPOINT', 'on'); // 策略注入钩子
 
+    const itemStore = new InMemoryItemStore();
+    kitMaterialId = (await itemStore.create({ tenant: TenantId.create('default'), code: 'KIT-VALID', name: '齐套接线物料' })).id;
     const enabled = parseModulesEnabled(process.env['MODULES_ENABLED']);
     const app = await NestFactory.create(
       buildAppModule(enabled, {
         devPolicyEndpoint: true,
+        itemStore,
         // 接线 #24 e2e 注入面：内存假源集（零 DB 下六源 PG 束不可用属预期）
         metricPackSourceSetFor: () => FAKE_METRIC_SOURCE_SET,
       }),
@@ -331,6 +336,8 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
     const workOrder = createdOrder.body['workOrder'] as { id: string };
     expect(createdOrder.body.status).toBe('committed');
 
+    const equipment = await post(baseUrl, `/workorder/work-orders/${workOrder.id}/equipment`, JSON.stringify({ code: 'KIT-REFUSED', name: '齐套拦截设备', quantity: 1, kind: 'self-made' }));
+    expect(equipment.status).toBe(201);
     const refused = await post(
       baseUrl,
       '/dispatch/orders',
@@ -338,6 +345,7 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
         workOrderId: workOrder.id,
         kind: 'assembly',
         operationCode: 'ASM-01',
+        equipmentRefs: [equipment.body['id']],
         quantity: 2,
       }),
     );
@@ -358,6 +366,9 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
       expect(createdOrder.body.status).toBe('committed');
       const wo = createdOrder.body['workOrder'] as { id: string; objectVersion: number };
 
+      const equipment = await post(baseUrl, `/workorder/work-orders/${wo.id}/equipment`, JSON.stringify({ code: 'KIT-DEVICE', name: '齐套设备', quantity: 1, kind: 'self-made' }));
+      expect(equipment.status).toBe(201);
+      const equipmentRef = equipment.body['id'];
       const skeleton = await post(
         baseUrl,
         '/listing/imports',
@@ -365,7 +376,7 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
       );
       expect(skeleton.body.status).toBe('committed');
 
-      // masterdata 未装配（零 DB 组合态）→ 校验 unmatched → itemId 空；行本身落账
+      // 导入码无主数据匹配→ itemId 空；随后显式确认同租户合法主数据。
       const lineImport = await post(
         baseUrl,
         '/listing/imports',
@@ -373,6 +384,7 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
           source: 'excel',
           workOrderId: wo.id,
           kind: 'part',
+          equipmentRef,
           excel: {
             kind: 'json-tables',
             sheets: [
@@ -402,7 +414,7 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
       const confirmed = await post(
         baseUrl,
         `/listing/lines/${line.id}/update`,
-        envelope('listing.line.update.v1', { itemId: 'item-wire-kit', requiredQty: 10 }, line.objectVersion),
+        envelope('listing.line.update.v1', { itemId: kitMaterialId, requiredQty: 10 }, line.objectVersion),
       );
       expect(confirmed.body.status, `人工确认：${JSON.stringify(confirmed.body)}`).toBe('committed');
 
@@ -420,14 +432,14 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
       };
       expect(shortSnapshot.complete).toBe(false);
       expect(shortSnapshot.gapLines).toEqual([
-        expect.objectContaining({ itemId: 'item-wire-kit', requiredQty: 10, availableQty: 0, gapQty: 10 }),
+        expect.objectContaining({ itemId: kitMaterialId, requiredQty: 10, availableQty: 0, gapQty: 10 }),
       ]);
 
       // ---- 拦截：缺口快照上的装配派工被拒（缺口驱动形态，非"无记录"形态）----
       const refused = await post(
         baseUrl,
         '/dispatch/orders',
-        envelope('dispatch.create.v1', { workOrderId: wo.id, kind: 'assembly', operationCode: 'ASM-KIT', quantity: 2 }),
+        envelope('dispatch.create.v1', { workOrderId: wo.id, kind: 'assembly', operationCode: 'ASM-KIT', equipmentRefs: [equipmentRef], quantity: 2 }),
       );
       expect(refused.body.status).toBe('rejected');
       expect(String(refused.body.reason)).toMatch(/齐套未通过.*被齐套拦截/);
@@ -455,7 +467,7 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
         '/inventory/stock/receipts',
         envelope('stock.receive.v1', {
           kind: 'production',
-          itemId: 'item-wire-kit',
+          itemId: kitMaterialId,
           warehouseId,
           locationId: null,
           quantity: 10,
@@ -484,7 +496,7 @@ describe('跨模块端口接线组合态（九模块零 DB 全装配）', () => 
       const allowed = await post(
         baseUrl,
         '/dispatch/orders',
-        envelope('dispatch.create.v1', { workOrderId: wo.id, kind: 'assembly', operationCode: 'ASM-KIT', quantity: 2 }),
+        envelope('dispatch.create.v1', { workOrderId: wo.id, kind: 'assembly', operationCode: 'ASM-KIT', equipmentRefs: [equipmentRef], quantity: 2 }),
       );
       expect(allowed.body.status, `补货后装配派工：${JSON.stringify(allowed.body)}`).toBe('committed');
     },

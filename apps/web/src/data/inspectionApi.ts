@@ -53,12 +53,12 @@ export function createInspectionOrder(input: {
 export function judgeInspectionOrder(
   id: string,
   row: Record<string, unknown>,
-  input: { readonly passedQty: number; readonly failedQty: number; readonly remark?: string | undefined },
+  input: { readonly itemId?: string | undefined; readonly passedQty: number; readonly failedQty: number; readonly remark?: string | undefined },
 ) {
   return postCommand(
     `/inspection/orders/${encodeURIComponent(id)}/judgment`,
     'inspection.judge.v1',
-    { passedQty: input.passedQty, failedQty: input.failedQty, remark: input.remark ?? null },
+    { ...(input.itemId ? { itemId: input.itemId } : {}), passedQty: input.passedQty, failedQty: input.failedQty, remark: input.remark ?? null },
     revisionOf(row, '质检单行'),
   );
 }
@@ -67,12 +67,12 @@ export function judgeInspectionOrder(
 export function recheckInspectionOrder(
   id: string,
   row: Record<string, unknown>,
-  input: { readonly passedQty: number; readonly failedQty: number; readonly remark?: string | undefined },
+  input: { readonly itemId?: string | undefined; readonly passedQty: number; readonly failedQty: number; readonly remark?: string | undefined },
 ) {
   return postCommand(
     `/inspection/orders/${encodeURIComponent(id)}/recheck`,
     'inspection.recheck.v1',
-    { passedQty: input.passedQty, failedQty: input.failedQty, remark: input.remark ?? null },
+    { ...(input.itemId ? { itemId: input.itemId } : {}), passedQty: input.passedQty, failedQty: input.failedQty, remark: input.remark ?? null },
     revisionOf(row, '质检单行'),
   );
 }
@@ -175,3 +175,5 @@ export function closeNonconformity(id: string, row: Record<string, unknown>, rem
     revisionOf(row, '不合格处置行'),
   );
 }
+
+export const inspectionMaterialOptions = () => fetchRows('/inspection/orders/material-options', 'items');

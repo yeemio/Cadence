@@ -1,0 +1,40 @@
+{
+  "candidateSha256": "1c1e9a42173584e7e780d8be93c3023bd137be13227cfef7f3a8cc5b47f4f597",
+  "base": "0fbaff32d4625869417f37e8d0f8d18fd38649f0",
+  "boundAt": "2026-10-28T12:38:53.808367+00:00",
+  "web": "http://127.0.0.1:8181",
+  "api": "http://127.0.0.1:3101",
+  "serverPid": 86656,
+  "serverLog": "evidence/final-server.log",
+  "buildLog": "evidence/pnpm-verify-final.log (build phase succeeded; later typecheck test-shape failure retained)",
+  "sourceAfterBuild": "Only tests and requirement/demo documentation changed; no runtime source edits after the successful build phase.",
+  "runtimeFiles": "evidence/FINAL-RUNTIME-FILES.json",
+  "runtimeAggregateSha256": "fe5aa24f8e01bdb76ecd5f81a308132dcb5eb9aae18b48a50195ef11256387af",
+  "webEntrySha256": "08e1b77a6264a29af172c2d0fc282ac24da8ddaf4be80d0a50fbe9764f5469f6",
+  "serverEntries": {
+    "apps/server/dist/main.js": "8e902682455c8cb323dce3caf378d61bf6f35696a72bcc61925cc56ef6770bc5",
+    "apps/server/dist/app-registry.js": "45c783261d6d642d25d2e378623a148817f3d0dc670640ddbf3b81d588c9492a",
+    "apps/server/dist/cross-module-wiring.js": "90573f9716a16104cfe2a5e740d0052dd883afa8e5c986e78ca1e9e5cd5a5d58"
+  },
+  "isolation": {
+    "pg": "cadence-sol-rem-pg-20261028:55435/cadence",
+    "web": "cadence-sol-rem-web-20261028:8181",
+    "sharedStackChanged": false
+  },
+  "healthModules": 30,
+  "users": [
+    "plan01",
+    "prod01",
+    "qc01",
+    "wh01",
+    "purch01",
+    "sol-denied"
+  ],
+  "credentials": "Not included; same previously authorized synthetic demo accounts.",
+  "deviceWorkOrderId": "wo-01a181e9-097e-73e8-b058-1c118d9178d8",
+  "equipmentIds": {
+    "A": "weq-01a181eb-2fdc-7b39-aca7-c5c22980ba90",
+    "B": "weq-01a181eb-3068-7f39-913b-f983c48fdcf9"
+  },
+  "uiReadback": "Parent must open/reload final runtime; original evidence/UI-RUNTIME-BINDING.json is preserved for old 8 UI checks. New device surfaces are not covered by that old pass."
+}

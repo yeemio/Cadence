@@ -20,6 +20,7 @@ import { createInMemoryApprovalEventStore } from '@smes/engine-flow';
 import {
   EMPTY_ISSUE_DEMAND_PORT,
   InMemoryDispatchOrderStore,
+  InMemoryItemStore,
   InMemoryGapCheckStore,
   InMemoryInventoryDomainEventStore,
   InMemoryInventoryOperationStore,
@@ -66,6 +67,7 @@ import {
   CROSS_MODULE_WIRING,
   bindCrossModuleWiring,
   buildIssueReservationKey,
+  buildRestoredIssueReservationKey,
   createInventoryIssueMaterialPort,
   createInventoryUseReservationPort,
   createIssueSyncDispatchStore,
@@ -539,6 +541,7 @@ describe('U6 #29：dispatch→issue 派工生成钩子（store 装饰）', () =>
       id: 'dsp-u6-1',
       workOrderId: 'wo-u6-1',
       kind: 'assembly',
+      rollup: true,
       flowConfigId: 'fc-1',
       state: 'draft',
       objectVersion: 1,
@@ -597,6 +600,7 @@ describe('U6 #29：dispatch→issue 派工生成钩子（store 装饰）', () =>
       id: 'dsp-u6-3',
       workOrderId: 'wo-u6-3',
       kind: 'assembly',
+      rollup: true,
       flowConfigId: 'fc-1',
       state: 'draft',
       objectVersion: 1,
@@ -805,11 +809,14 @@ describe('D-16 装配面：env SMES_DEFAULT_WAREHOUSE_CODE → inventory 服务�
   }
 
   it('env 已配 code：两租户省略仓各落自己的 WH-ENV；显式仓优先；env 未配 → 拒收', async () => {
+    const itemStore = new InMemoryItemStore();
+    const itemA = await itemStore.create({ tenant, code: 'ITEM-D16', name: '默认仓物料A' });
+    const itemB = await itemStore.create({ tenant: otherTenant, code: 'ITEM-D16', name: '默认仓物料B' });
     const previous = process.env[ENV_KEY];
     process.env[ENV_KEY] = 'WH-ENV';
     try {
       const context = await NestFactory.create(
-        buildAppModule(['core', 'inventory'], { inventoryWarehouseStore: await preseededWarehouseStore() }),
+        buildAppModule(['core', 'inventory'], { inventoryWarehouseStore: await preseededWarehouseStore(), itemStore }),
         { logger: ['error', 'warn'] },
       );
       contexts.push(context);
@@ -820,32 +827,32 @@ describe('D-16 装配面：env SMES_DEFAULT_WAREHOUSE_CODE → inventory 服务�
       const receivedA = await inventory.receivePurchaseStock(tenant, {
         receiptKey: 'd16-po-1#1',
         purchaseOrderId: 'd16-po-1',
-        itemId: 'itm-d16',
+        itemId: itemA.id,
         quantity: 3,
       });
       expect(receivedA.received).toBe(true);
-      expect((await inventory.stockLevels(tenant, 'wh-env-main-1', 'itm-d16'))[0]?.qtyOnHand).toBe(3);
+      expect((await inventory.stockLevels(tenant, 'wh-env-main-1', itemA.id))[0]?.qtyOnHand).toBe(3);
 
       const receivedB = await inventory.receivePurchaseStock(otherTenant, {
         receiptKey: 'd16-po-1#1',
         purchaseOrderId: 'd16-po-1',
-        itemId: 'itm-d16',
+        itemId: itemB.id,
         quantity: 2,
       });
       expect(receivedB.received).toBe(true);
-      expect((await inventory.stockLevels(otherTenant, 'wh-env-main-2', 'itm-d16'))[0]?.qtyOnHand).toBe(2);
+      expect((await inventory.stockLevels(otherTenant, 'wh-env-main-2', itemB.id))[0]?.qtyOnHand).toBe(2);
 
       // 显式仓优先：显式 wh-explicit 落显式仓，env 默认仓不动。
       const explicit = await inventory.receivePurchaseStock(tenant, {
         receiptKey: 'd16-po-2#1',
         purchaseOrderId: 'd16-po-2',
-        itemId: 'itm-d16',
+        itemId: itemA.id,
         quantity: 2,
         warehouseId: 'wh-explicit',
       });
       expect(explicit.received).toBe(true);
-      expect((await inventory.stockLevels(tenant, 'wh-explicit', 'itm-d16'))[0]?.qtyOnHand).toBe(2);
-      expect((await inventory.stockLevels(tenant, 'wh-env-main-1', 'itm-d16'))[0]?.qtyOnHand).toBe(3);
+      expect((await inventory.stockLevels(tenant, 'wh-explicit', itemA.id))[0]?.qtyOnHand).toBe(2);
+      expect((await inventory.stockLevels(tenant, 'wh-env-main-1', itemA.id))[0]?.qtyOnHand).toBe(3);
       await context.close();
     } finally {
       if (previous === undefined) delete process.env[ENV_KEY];
@@ -855,7 +862,7 @@ describe('D-16 装配面：env SMES_DEFAULT_WAREHOUSE_CODE → inventory 服务�
     // env 未配（compose 显式置空同义——`''` 经 `|| null` 归 null）：无默认仓拒收。
     delete process.env[ENV_KEY];
     try {
-      const bare = await NestFactory.create(buildAppModule(['core', 'inventory'], {}), {
+      const bare = await NestFactory.create(buildAppModule(['core', 'inventory'], { itemStore }), {
         logger: ['error', 'warn'],
       });
       contexts.push(bare);
@@ -863,7 +870,7 @@ describe('D-16 装配面：env SMES_DEFAULT_WAREHOUSE_CODE → inventory 服务�
       const refused = await inventory.receivePurchaseStock(tenant, {
         receiptKey: 'd16-po-3#1',
         purchaseOrderId: 'd16-po-3',
-        itemId: 'itm-d16',
+        itemId: itemA.id,
         quantity: 1,
       });
       expect(refused.received).toBe(false);
@@ -872,5 +879,26 @@ describe('D-16 装配面：env SMES_DEFAULT_WAREHOUSE_CODE → inventory 服务�
     } finally {
       delete process.env[ENV_KEY];
     }
+  });
+});
+
+
+describe('设备三维预占恢复键', () => {
+  it('真实UUID锚多轮恢复不增长、不改变设备归属；同源幂等、不同流水分离', () => {
+    const wo = 'wo-00000000-0000-7000-8000-000000000001';
+    const equipment = 'weq-00000000-0000-7000-8000-000000000002';
+    const item = 'itm-seed-factory-004';
+    let key = `${buildIssueReservationKey(wo, equipment, item)}:g:gap-00000000-0000-7000-8000-000000000003:wh:wh-seed-main`;
+    const lengths: number[] = [];
+    for (let cycle = 0; cycle < 5; cycle++) {
+      const source = `issue-irc-00000000-0000-7000-8000-00000000000${cycle}-l0@0r0`;
+      const restored = buildRestoredIssueReservationKey(key, source);
+      expect(restored.length).toBeLessThanOrEqual(200);
+      expect(parseIssueReservationKey(restored)).toEqual({ workOrderId: wo, equipmentRef: equipment, itemId: item });
+      expect(buildRestoredIssueReservationKey(key, source)).toBe(restored);
+      lengths.push(restored.length); key = restored;
+    }
+    expect(new Set(lengths).size).toBe(1);
+    expect(buildRestoredIssueReservationKey(key, 'another-source')).not.toBe(key);
   });
 });

@@ -30,6 +30,8 @@ export type ListingKindId = 'part' | 'standard' | 'electrical' | 'equipment';
  * 物料编码自动比对物料库；无该类目清单时自动创建）。
  */
 export function addListingLine(input: {
+  readonly equipmentRef?: string | undefined;
+  readonly origin?: 'production' | 'aftermarket';
   readonly workOrderId: string;
   readonly kind: ListingKindId;
   readonly drawingNo?: string | undefined;
@@ -49,6 +51,8 @@ export function addListingLine(input: {
   ];
   return postCommand('/listing/imports', 'listing.import.v1', {
     source: 'excel',
+    equipmentRef: input.equipmentRef?.trim() || null,
+    origin: input.origin ?? 'production',
     workOrderId: input.workOrderId,
     kind: input.kind,
     excel: {
@@ -276,3 +280,5 @@ export async function getPurchaseDetails(workOrderId?: string | undefined): Prom
 export async function exportPurchaseDetails(workOrderId?: string | undefined): Promise<Record<string, unknown>> {
   return fetchRawObject(`/purchase/details/export${queryString([['workOrderId', workOrderId]])}`);
 }
+
+export const receivingWarehouseOptions = () => fetchRows('/purchase/receiving-warehouses', 'warehouses');

@@ -157,6 +157,8 @@ export interface ImportFromWorkOrderPayload {
 }
 
 export interface ImportFromExcelPayload {
+  readonly equipmentRef?: string | null;
+  readonly origin?: 'production' | 'aftermarket';
   readonly source: 'excel';
   readonly workOrderId: string;
   readonly kind: ListingKind;
@@ -178,6 +180,8 @@ export function parseListingImportPayload(input: unknown): ListingImportPayload 
       workOrderId,
       kind: requireKind(record['kind'], LISTING_KINDS, '清单类目 kind') as ListingKind,
       excel: requireExcelSource(record['excel'], 'excel 源'),
+      ...(record['equipmentRef'] === undefined ? {} : { equipmentRef: optionalBoundedString(record['equipmentRef'], '设备 equipmentRef', 1, 128) ?? null }),
+      ...(record['origin'] === undefined ? {} : { origin: requireKind(record['origin'], ['production', 'aftermarket'], '来源 origin') as 'production' | 'aftermarket' }),
     };
   }
   throw new ListingInputError(
@@ -188,6 +192,8 @@ export function parseListingImportPayload(input: unknown): ListingImportPayload 
 // ---- listing.line.update 载荷 ----
 
 export interface UpdateListingLinePayload {
+  readonly equipmentRef?: string | null;
+  readonly origin?: 'production' | 'aftermarket';
   readonly drawingNo?: string | null;
   readonly code?: string | null;
   readonly name?: string | null;
@@ -201,6 +207,8 @@ export interface UpdateListingLinePayload {
 export function parseUpdateListingLinePayload(input: unknown): UpdateListingLinePayload {
   const record = requireObject(input, 'listing.line.update 载荷');
   const payload: {
+    equipmentRef?: string | null;
+    origin?: 'production' | 'aftermarket';
     drawingNo?: string | null;
     code?: string | null;
     name?: string | null;
@@ -209,11 +217,12 @@ export function parseUpdateListingLinePayload(input: unknown): UpdateListingLine
     requiredQty?: number;
     neededBy?: string | null;
   } = {};
-  for (const key of ['drawingNo', 'code', 'name', 'spec', 'itemId'] as const) {
+  for (const key of ['drawingNo', 'code', 'name', 'spec', 'itemId', 'equipmentRef'] as const) {
     if (record[key] !== undefined) {
       payload[key] = record[key] === null ? null : requireBoundedString(record[key], key, 1, 256);
     }
   }
+  if (record['origin'] !== undefined) payload.origin = requireKind(record['origin'], ['production', 'aftermarket'], 'origin') as 'production' | 'aftermarket';
   if (record['requiredQty'] !== undefined) {
     payload.requiredQty = requireQuantity(record['requiredQty'], 'requiredQty');
   }

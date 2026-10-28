@@ -13,6 +13,7 @@ import {
   listOutsourcingLines,
 } from '../../data/dispatchApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, RowDetail } from '../../components/ModuleTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,12 +67,7 @@ export function OutsourcingLinesPage() {
         setUnitPriceMinor('');
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   // 取消外协（6a-1 RREQ-DP-031）：仅已派工（status=dispatched）行可取消；原因选填 ≤200。
@@ -88,12 +84,7 @@ export function OutsourcingLinesPage() {
         setCancelReason('');
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleLoad(event: FormEvent<HTMLFormElement>) {

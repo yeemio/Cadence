@@ -1,3 +1,5 @@
+import type { WorkOrderEquipmentStore } from './workorder-equipment.js';
+import { uuidv7 } from './workorder-ids.js';
 /**
  * WorkOrderService —— 工作令用例编排（M2-W1）。
  *
@@ -161,6 +163,7 @@ export interface WorkOrderCommitted extends CommittedOutcome {
 export type WorkOrderCommandResult = WorkOrderCommitted | RejectedOutcome;
 
 export interface WorkOrderServiceOptions {
+  readonly equipmentStore?: WorkOrderEquipmentStore;
   /** 九态配置（缺省 DEFAULT_WORK_ORDER_FLOW_CONFIG；可整体替换 = 换合法集）。 */
   readonly workOrderConfig: ApprovalFlowConfig;
   /** 配件申请配置（缺省 DEFAULT_PARTS_REQUEST_FLOW_CONFIG；多级链时由链派生，见 partsApprovalChain）。 */
@@ -231,6 +234,7 @@ export class WorkOrderService {
       approvers: ports.approvers ?? EMPTY_PARTS_APPROVER_DIRECTORY,
     };
     this.options = {
+      ...(options.equipmentStore === undefined ? {} : { equipmentStore: options.equipmentStore }),
       workOrderConfig: options.workOrderConfig ?? DEFAULT_WORK_ORDER_FLOW_CONFIG,
       partsConfig: options.partsConfig ?? DEFAULT_PARTS_REQUEST_FLOW_CONFIG,
       partsApprovalChain: options.partsApprovalChain ?? DEFAULT_PARTS_APPROVAL_CHAIN,
@@ -240,6 +244,18 @@ export class WorkOrderService {
       riskWindowDays: options.riskWindowDays ?? 7,
       ...(options.now === undefined ? {} : { now: options.now }),
     };
+  }
+
+  async equipmentList(tenant: TenantId, workOrderId: string) {
+    if (await this.orders.find(tenant, WorkOrderId.create(workOrderId)) === null) throw new WorkOrderNotFoundError('工作令不存在');
+    return this.options.equipmentStore?.list(tenant, workOrderId) ?? [];
+  }
+  async defineEquipment(tenant: TenantId, workOrderId: string, input: unknown) {
+    await this.equipmentList(tenant, workOrderId);
+    const row = input as Record<string, unknown> | null;
+    if (!row || typeof row['code'] !== 'string' || !row['code'].trim() || row['code'].length > 128 || typeof row['name'] !== 'string' || !row['name'].trim() || row['name'].length > 128 || !Number.isInteger(row['quantity']) || Number(row['quantity']) <= 0 || (row['kind'] !== 'self-made' && row['kind'] !== 'purchased')) throw new WorkOrderInputError('设备编码/名称必填（最多128字），数量须为正整数，类型须为自制或外购');
+    if (!this.options.equipmentStore) throw new WorkOrderInputError('设备清单存储未接线');
+    return this.options.equipmentStore.create({ tenant, id: `weq-${uuidv7()}`, workOrderId, code: row['code'].trim(), name: row['name'].trim(), quantity: Number(row['quantity']), kind: row['kind'] });
   }
 
   private now(): string {
@@ -638,14 +654,15 @@ export class WorkOrderService {
       (scope as readonly string[]).includes(line.kind),
     );
     const itemIds = [...new Set(lines.map((line) => line.itemId))];
-    const available = await this.ports.inventory.availableQty(tenant, itemIds);
+    const available = new Map(await this.ports.inventory.availableQty(tenant, itemIds, id));
 
     const gapLines: KitCheckLineGapPayload[] = [];
     const kindSummaries: KitCheckKindSummaryPayload[] = scope.map((kind) => {
       const kindLines = lines.filter((line) => line.kind === kind);
       let gapLineCount = 0;
       for (const line of kindLines) {
-        const availableQty = available.get(line.itemId) ?? 0;
+        const availableQty = Math.min(line.requiredQty, available.get(line.itemId) ?? 0);
+        available.set(line.itemId, Math.max(0, (available.get(line.itemId) ?? 0) - availableQty));
         const gapQty = Math.max(0, line.requiredQty - availableQty);
         if (gapQty > 0) {
           gapLineCount += 1;

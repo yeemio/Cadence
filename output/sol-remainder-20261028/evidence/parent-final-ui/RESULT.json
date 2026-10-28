@@ -1,0 +1,37 @@
+{
+  "candidate": "1c1e9a42173584e7e780d8be93c3023bd137be13227cfef7f3a8cc5b47f4f597",
+  "runtimeAggregate": "fe5aa24f8e01bdb76ecd5f81a308132dcb5eb9aae18b48a50195ef11256387af",
+  "servedIndexSha256": "08e1b77a6264a29af172c2d0fc282ac24da8ddaf4be80d0a50fbe9764f5469f6",
+  "surface": "visible Codex IAB tab2; 127.0.0.1:8181",
+  "reviewer": "/root",
+  "result": "PASS for named read-only UI scope; product candidate remains REWORK for separate 3 probes",
+  "checks": [
+    "plan01 workorder card A/B self-made and P purchased visible",
+    "plan01 listing self-made options only A/B",
+    "plan01 purchased listing options only P",
+    "prod01 assembly options A/B and explicit purchased rollup",
+    "prod01 electrical options A/B without rollup",
+    "390x844 mobile report scroll: submit fully above fixed bottom navigation",
+    "qc01 pending unbound inspection offers active item code and name",
+    "wh01 receipt offers item and warehouse options",
+    "wh01 inspection source locks item and lists only available releases; empty after all released amounts received"
+  ],
+  "limitations": [
+    "No new business mutations were submitted in this UI pass",
+    "No camera permission requested; not a physical mobile device check",
+    "Mobile success receipt and multi-level approval full browser chain not repeated",
+    "Listing selector requires targeted new-version follow-up after rework1"
+  ],
+  "files": {
+    "01-workorder-equipment.txt": "84900d7e2d149a1fa9bc5a807681f5ae1fea288d91cef4d5acc372035f29e93e",
+    "02-listing-selfmade-options.txt": "f8e96c0cb2cceb58161fd71e558640fb5a762740e2b52b66f82ac0398c8f1f40",
+    "03-listing-purchased-options.txt": "5418ef530cf47bb21472d944c96e97e01b5edb25bacaf9be0f64b88d43249e5e",
+    "04-dispatch-assembly-options.txt": "9b31ac0bafdbc75ed0c777eb08e740e16ac3921b0ee8fe23f938f4052e30bb9f",
+    "05-dispatch-electrical-options.txt": "7f8b3dfa44b04af8a5295e39e84bbaa28774934f8671b89055b5710086961f1b",
+    "06-mobile-submit-390x844.png": "d01a38b75d96fa1ff44c64480f4ff13d8949490c21a7244ecfc81f0fad16f000",
+    "06-mobile-submit-390x844.txt": "aa97806b78040ba237ea4d900d80f54486083f48ac1d6fd8fe4f87f2031b90c7",
+    "07-inspection-material-options.txt": "ac15cb89b165584bbb4c663a9de574a1315cdd1be0784d775ad5b4f1b11d1759",
+    "08-warehouse-options.txt": "3341a1542d1c53f5e9e27fbdfadcf7dafbd2fc1b33d07560d36a501f47155c4e",
+    "09-warehouse-release-options.txt": "99bc99572e7c68e702448c315551019ea9077d08c1075cd20bc4cc0e8239c43a"
+  }
+}

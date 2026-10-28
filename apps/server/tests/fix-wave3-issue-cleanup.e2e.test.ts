@@ -1,3 +1,4 @@
+import { InMemoryWorkOrderEquipmentStore } from '@smes/application';
 /**
  * fix-wave-3 W3-2 组合态 e2e：撤销派工→issue.cleanup 钩子（U6 #29 装饰器扩展）。
  *
@@ -49,6 +50,7 @@ const HEADERS = {
   'x-smes-user': OPERATOR,
 };
 const TENANT = TenantId.create('default');
+const equipmentStore = new InMemoryWorkOrderEquipmentStore();
 
 /** beforeAll 捕获的齐套快照 store（模块级辅助函数播种放行前置用）。 */
 let kitCheckStore: KitCheckStore | undefined;
@@ -87,6 +89,7 @@ async function getJson(baseUrl: string, path: string): Promise<OutcomeShape> {
 async function createAssemblyDispatch(
   baseUrl: string,
   projectName: string,
+  equipmentRef: string,
 ): Promise<{ workOrderId: string; dispatchId: string; dispatchVersion: number }> {
   const createdOrder = await post(
     baseUrl,
@@ -95,6 +98,7 @@ async function createAssemblyDispatch(
   );
   expect(createdOrder.body.status, `建工作令：${JSON.stringify(createdOrder.body)}`).toBe('committed');
   const workOrder = createdOrder.body['workOrder'] as { id: string; objectVersion: number };
+  await equipmentStore.create({ tenant: TENANT, id: equipmentRef, workOrderId: workOrder.id, code: equipmentRef, name: equipmentRef, quantity: 1, kind: 'self-made' });
 
   // Round-2 裁决后空清单刷新不再 vacuous 判齐（UX-PLAN-03 同构口径），本测试的
   // 齐套放行前置改为直接播种 complete=true 快照（有行有料——与 ISSUE_TASK_STORE
@@ -116,6 +120,7 @@ async function createAssemblyDispatch(
     envelope('dispatch.create.v1', {
       workOrderId: workOrder.id,
       kind: 'assembly',
+      equipmentRefs: [equipmentRef],
       operationCode: 'ASM-W3-CLEANUP',
       quantity: 2,
     }),
@@ -160,10 +165,11 @@ async function syncEquipmentTask(
   return tasks[0]!;
 }
 
-async function listIssueTasks(baseUrl: string, workOrderId: string): Promise<{ id: string; state: string }[]> {
+async function listIssueTasks(baseUrl: string, workOrderId: string): Promise<{ id: string; state: string; objectVersion: number }[]> {
   return (await getJson(baseUrl, `/issue/tasks?workOrderId=${encodeURIComponent(workOrderId)}`))['tasks'] as {
     id: string;
     state: string;
+    objectVersion: number;
   }[];
 }
 
@@ -185,7 +191,7 @@ describe('fix-wave-3 W3-2：撤销派工→发料任务清理组合态（dispatc
     setEnv('SMES_DEV_POLICY_ENDPOINT', 'on');
 
     const enabled = parseModulesEnabled(process.env['MODULES_ENABLED']);
-    app = await NestFactory.create(buildAppModule(enabled, { devPolicyEndpoint: true }), {
+    app = await NestFactory.create(buildAppModule(enabled, { devPolicyEndpoint: true, workOrderEquipmentStore: equipmentStore }), {
       logger: ['error', 'warn'],
     });
     app.useGlobalFilters(
@@ -224,7 +230,7 @@ describe('fix-wave-3 W3-2：撤销派工→发料任务清理组合态（dispatc
   });
 
   it('场景1：派工 assigned 后撤销 → 发料任务被清理（listTasks 空）', async () => {
-    const { workOrderId, dispatchId, dispatchVersion } = await createAssemblyDispatch(baseUrl, 'W3-2 场景1 清理');
+    const { workOrderId, dispatchId, dispatchVersion } = await createAssemblyDispatch(baseUrl, 'W3-2 场景1 清理', 'eq-w3-a');
     const task = await syncEquipmentTask(baseUrl, workOrderId, 'eq-w3-a');
     expect((await listIssueTasks(baseUrl, workOrderId)).length).toBe(1); // 前置：任务在
 
@@ -249,19 +255,21 @@ describe('fix-wave-3 W3-2：撤销派工→发料任务清理组合态（dispatc
   it('场景2：目标任务已发料中 → 撤销仍成功、任务保留（清理被拒 warn 路径）', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      const { workOrderId, dispatchId, dispatchVersion } = await createAssemblyDispatch(baseUrl, 'W3-2 场景2 拒清理');
+      const { workOrderId, dispatchId, dispatchVersion } = await createAssemblyDispatch(baseUrl, 'W3-2 场景2 拒清理', 'eq-w3-b');
       const task = await syncEquipmentTask(baseUrl, workOrderId, 'eq-w3-b');
+      const assignedVersion = await assignDispatch(baseUrl, dispatchId, dispatchVersion);
       // 播种"发料中"（非未开始）：issue 状态机归域内测试，此处只造清理拒绝前置。
       const taskStore = app!.get(ISSUE_TASK_STORE, { strict: false }) as IssueTaskStore;
-      const seeded = await taskStore.refreshSummary(TENANT, task.id, 1, {
+      const seeded = await taskStore.refreshSummary(TENANT, task.id, (await listIssueTasks(baseUrl, workOrderId)).find((row) => row.id === task.id)!.objectVersion, {
         state: 'issuing',
         totalRequiredQty: 0,
         totalIssuedQty: 0,
         finishedAt: null,
       });
       expect(seeded?.state).toBe('issuing');
+      const beforeCancel = await listIssueTasks(baseUrl, workOrderId);
+      expect(beforeCancel).toEqual([expect.objectContaining({ id: task.id, state: 'issuing' })]);
 
-      const assignedVersion = await assignDispatch(baseUrl, dispatchId, dispatchVersion);
       const cancelled = await post(
         baseUrl,
         `/dispatch/orders/${dispatchId}/cancel`,
@@ -284,7 +292,7 @@ describe('fix-wave-3 W3-2：撤销派工→发料任务清理组合态（dispatc
   }, 60_000);
 
   it('场景3（幂等）：确定性 operationId 重放被拒，重建任务不重复删账', async () => {
-    const { workOrderId, dispatchId, dispatchVersion } = await createAssemblyDispatch(baseUrl, 'W3-2 场景3 幂等');
+    const { workOrderId, dispatchId, dispatchVersion } = await createAssemblyDispatch(baseUrl, 'W3-2 场景3 幂等', 'eq-w3-c');
     const task = await syncEquipmentTask(baseUrl, workOrderId, 'eq-w3-c');
 
     const assignedVersion = await assignDispatch(baseUrl, dispatchId, dispatchVersion);

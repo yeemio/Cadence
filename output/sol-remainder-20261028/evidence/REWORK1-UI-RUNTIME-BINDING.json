@@ -1,0 +1,41 @@
+{
+  "candidateSha256": "39fc159969198fc15104bfd224d8b2604d84cbc524e881c1241e2cfe8bc435e8",
+  "base": "0fbaff32d4625869417f37e8d0f8d18fd38649f0",
+  "boundAt": "2026-10-28T13:00:54.240966+00:00",
+  "web": "http://127.0.0.1:8181",
+  "api": "http://127.0.0.1:3101",
+  "serverPid": 89992,
+  "serverLog": "evidence/rework1/server-runtime.log",
+  "buildLog": "evidence/rework1/build.log",
+  "sourceAfterBuild": "Only requirement/handoff documentation changed after the successful affected-package build; runtime source unchanged.",
+  "runtimeFiles": "evidence/REWORK1-RUNTIME-FILES.json",
+  "runtimeAggregateSha256": "2a436d0c09643a68a607f47aee22d1e1d4594cb635889713d64a2a9e2b0aa59f",
+  "webEntrySha256": "2be6fcab11c3bf8e5c066426996d4814047303e3668c1b1635ddfcb68c892906",
+  "serverEntries": {
+    "apps/server/dist/main.js": "8e902682455c8cb323dce3caf378d61bf6f35696a72bcc61925cc56ef6770bc5",
+    "apps/server/dist/app-registry.js": "483f0eae0b3468cb3ce095a7c3e99e022777869b3b9ab0e1d4df14c5f002f983",
+    "apps/server/dist/cross-module-wiring.js": "90573f9716a16104cfe2a5e740d0052dd883afa8e5c986e78ca1e9e5cd5a5d58"
+  },
+  "isolation": {
+    "pg": "cadence-sol-rem-pg-20261028:55435/cadence",
+    "web": "cadence-sol-rem-web-20261028:8181",
+    "sharedStackChanged": false
+  },
+  "healthModules": 30,
+  "users": [
+    "plan01",
+    "prod01",
+    "qc01",
+    "wh01",
+    "purch01",
+    "sol-denied"
+  ],
+  "credentials": "Not included; same previously authorized synthetic demo accounts.",
+  "deviceWorkOrderId": "wo-01a181e9-097e-73e8-b058-1c118d9178d8",
+  "equipmentIds": {
+    "A": "weq-01a181eb-2fdc-7b39-aca7-c5c22980ba90",
+    "B": "weq-01a181eb-3068-7f39-913b-f983c48fdcf9"
+  },
+  "uiReadback": "Parent-final-ui old runtime retained. Only listing optional empty selection/type switch needs new UI readback; other named old UI evidence reused.",
+  "previousCandidateSha256": "1c1e9a42173584e7e780d8be93c3023bd137be13227cfef7f3a8cc5b47f4f597"
+}

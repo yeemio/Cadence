@@ -75,6 +75,8 @@ export type ListingLineSource = 'workorder' | 'excel' | 'manual';
 
 /** 清单行（一行 = 图号 + 物料三要素 + 数量 + 需求日期 + 校验状态）。 */
 export interface ListingLine {
+  readonly equipmentRef?: string | null;
+  readonly origin?: 'production' | 'aftermarket';
   /** ll-<uuidv7>。 */
   readonly id: string;
   readonly tenant: TenantId;
@@ -108,6 +110,8 @@ export interface ListingLine {
 }
 
 export interface AppendListingLineInput {
+  readonly equipmentRef?: string | null;
+  readonly origin?: 'production' | 'aftermarket';
   readonly tenant: TenantId;
   readonly id: string;
   readonly sheetId: string;
@@ -131,6 +135,8 @@ export interface AppendListingLineInput {
 
 /** 行级更新（未提供的键不变；改物料三要素 → service 附加校验重置列，见其注释）。 */
 export interface UpdateListingLineFields {
+  readonly equipmentRef?: string | null;
+  readonly origin?: 'production' | 'aftermarket';
   readonly drawingNo?: string | null;
   readonly code?: string | null;
   readonly name?: string | null;

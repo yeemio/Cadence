@@ -8,6 +8,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPurchaseReturn, listPurchaseReturns, revokePurchaseReturn } from '../../data/listingApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState } from '../../components/ModuleTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -72,12 +73,7 @@ export function PurchaseReturnsPage() {
         queryClient.invalidateQueries({ queryKey: ['purchase', 'returns'] });
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   const revokeAction = useMutation({
@@ -87,12 +83,7 @@ export function PurchaseReturnsPage() {
       setOutcome(result);
       if (result.committed) queryClient.invalidateQueries({ queryKey: ['purchase', 'returns'] });
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleLoad(event: FormEvent<HTMLFormElement>) {

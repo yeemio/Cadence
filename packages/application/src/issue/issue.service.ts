@@ -1,3 +1,4 @@
+import type { WorkOrderEquipmentStore } from '../workorder/workorder-equipment.js';
 /**
  * IssueService —— 发料任务/发料记录用例编排（U1，A11 增量：发料链路）。
  *
@@ -163,6 +164,7 @@ export interface IssueDetailView {
 }
 
 export interface IssueServiceOptions {
+  readonly equipmentSource?: WorkOrderEquipmentStore | undefined;
   /** 时钟注入（测试确定性）。 */
   readonly now?: () => string;
 }
@@ -185,7 +187,7 @@ export class IssueService implements IssueSyncPort {
     private readonly domainEvents: IssueDomainEventStore,
     private readonly demandSource: IssueDemandSourcePort = EMPTY_ISSUE_DEMAND_PORT,
     private readonly material: IssueMaterialPort = NOOP_ISSUE_MATERIAL_PORT,
-    options: IssueServiceOptions = {},
+    private readonly options: IssueServiceOptions = {},
   ) {
     this.nowFn = options.now ?? DEFAULT_NOW;
   }
@@ -259,6 +261,12 @@ export class IssueService implements IssueSyncPort {
       return rejected('同步被拒：equipmentRefs 为空且非归拢同步（生成发料任务须携带设备维；归拢走 rollup=true）');
     }
 
+    if (this.options.equipmentSource) {
+      for (const ref of equipmentRefs) {
+        const equipment = await this.options.equipmentSource.find(tenant, ref);
+        if (!equipment || equipment.workOrderId !== payload.workOrderId || equipment.kind !== 'self-made') return rejected('设备不存在、不属于本工作令/租户或不是自制设备');
+      }
+    }
     const production = (await this.demandSource.demandLines(tenant, payload.workOrderId)).filter(
       (line) => line.origin === 'production',
     );
@@ -454,6 +462,24 @@ export class IssueService implements IssueSyncPort {
       }
     }
 
+    if (payload.lineKind === 'equipment') {
+      const supply = new Map<string, number>();
+      for (const line of await this.demandSource.demandLines(tenant, task.workOrderId)) {
+        if (line.kind !== 'equipment' || line.origin !== 'production' || line.itemId === null) continue;
+        supply.set(line.itemId, (supply.get(line.itemId) ?? 0) + line.useInventoryQty + line.inboundCompletedQty);
+      }
+      const held = new Map<string, number>();
+      for (const record of await this.records.list(tenant, { workOrderId: task.workOrderId, state: 'active' })) {
+        if (record.lineKind !== 'equipment') continue;
+        for (const line of record.lines) if (line.itemId !== null) held.set(line.itemId, (held.get(line.itemId) ?? 0) + line.thisQty);
+      }
+      const requested = new Map<string, number>();
+      for (const row of participating) if (row.taskLine.itemId !== null) requested.set(row.taskLine.itemId, (requested.get(row.taskLine.itemId) ?? 0) + row.thisQty);
+      for (const [itemId, qty] of requested) {
+        if (qty > Math.max(0, (supply.get(itemId) ?? 0) - (held.get(itemId) ?? 0))) return rejected(`外购设备物料 '${itemId}' 共享实收与利库剩余量不足，本次未发料`);
+      }
+    }
+
     // 快递单（发货头）一致性预检（纯读，被拒不占用 operationId）：同单号须发货头一致。
     let existingExpress: IssueExpress | null = null;
     if (payload.express !== null) {
@@ -518,6 +544,7 @@ export class IssueService implements IssueSyncPort {
         const receipt = await this.material.issueStock(tenant, {
           issueKey,
           workOrderId: task.workOrderId,
+          equipmentRef: task.equipmentRef,
           itemId: row.taskLine.itemId as string,
           allocations: (row.submit.allocations ?? []).map((allocation) => ({
             locationId: allocation.locationId,

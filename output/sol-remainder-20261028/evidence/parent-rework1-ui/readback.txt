@@ -1,0 +1,173 @@
+Browser tab: 2, Title: "Cadence", URL: "http://127.0.0.1:8181/listings/sheets?wo=wo-01a181e9-097e-73e8-b058-1c118d9178d8".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 76-77
+~			72 text 关联外购设备（可选）
+~			73 pop up button (collapsed, settable) 关联外购设备（可选）, Value: 请选择本工作令设备, ID: listing-equipment, Secondary Actions: Expand
+~					75 (selected) 请选择本工作令设备
++					100 PURCHASED-P · 外购成套泵组（1台）
+~			80 pop up button (collapsed, settable) 类目, Value: 设备采购清单, ID: add-line-kind, Secondary Actions: Expand
+~					83 零件清单
+~					86 (selected) 设备采购清单
+The focused UI element is 1 AXWebArea Cadence, URL: 127.0.0.1:8181/listings/sheets?wo=wo-01a181e9-097e-73e8-b058-1c118d9178d8
+
+Browser tab: 2, Title: "Cadence", URL: "http://127.0.0.1:8181/listings/sheets?wo=wo-01a181e9-097e-73e8-b058-1c118d9178d8".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~			92 text field (settable) 物料名称（可选）, ID: add-line-name
+~			96 stepper (settable) 需求数量, ID: add-line-qty
+~			99 button (disabled) 新增清单行
++			101 text 操作已生效。
+The focused UI element is 1 AXWebArea Cadence, URL: 127.0.0.1:8181/listings/sheets?wo=wo-01a181e9-097e-73e8-b058-1c118d9178d8
+
+Browser tab: 2, Title: "Cadence", URL: "http://127.0.0.1:8181/listings/sheets?wo=wo-01a181e9-097e-73e8-b058-1c118d9178d8".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
++			102 text 清单详情（含行） 点行选中后用下方表单修订数量；新增行用上方「新增清单行」表单。
++			103 definition list
++				104 container 类目
++					105 text 类目
++				106 text 设备采购清单
++				107 container 清单名称
++					108 text 清单名称
++				109 text 设备采购清单（wo-01a181e9-097e-73e8-b058-1c118d9178d8）
++				110 container 所属工作令
++					111 text 所属工作令
++				112 text wo-01a181e9-097e-73e8-b058-1c118d9178d8
++				113 container 行数
++					114 text 行数
++				115 text 2
++				116 container 创建时刻
++					117 text 创建时刻
++				118 text 2026-10-28 20:23
++			119 text 清单行（点行选中）
++			120 table
++				121 row
++					122 cell
++						123 text 行 id
++					124 cell
++						125 text 图号
++					126 cell
++						127 text 物料编码
++					128 cell
++						129 text 名称
++					130 cell
++						131 text 需求数量
++					132 cell
++						133 text 确认物料
++					134 cell
++						135 text 版本
++				136 row
++					137 cell ll-01a18276-ec24-7af3-88df-78241c06d318
++						138 text ll-01a18…d318
++					139 cell
++						140 text PUMP-P
++					141 cell
++						142 text DEVICE-ROLLUP-20261028
++					143 cell
++						144 text 外购成套泵组
++					145 cell
++						146 text 1
++					147 cell 01a18276-eb1c-72be-b4ab-97a24f5e9016
++						148 text 01a18276…9016
++					149 cell
++						150 text 1
++				151 row
++					152 cell ll-01a1829d-c407-7d4c-8e4d-678bb0afa10e
++						153 text ll-01a18…a10e
++					154 cell
++						155 text —
++					156 cell
++						157 text —
++					158 cell
++						159 text UI可选设备空值验收（隔离）
++					160 cell
++						161 text 1
++					162 cell
++						163 text —
++					164 cell
++						165 text 1
++			166 text 选中行 id
++			167 text field 选中行 id, ID: line-update-id
++			168 text 修订需求数量
++			169 stepper (settable) 修订需求数量, ID: line-update-qty
++			170 button (disabled) 修订行
+The focused UI element is 1 AXWebArea Cadence, URL: 127.0.0.1:8181/listings/sheets?wo=wo-01a181e9-097e-73e8-b058-1c118d9178d8
+
+After full reload:
+Browser tab: 2, Title: "Cadence", URL: "http://127.0.0.1:8181/listings/sheets?wo=wo-01a181e9-097e-73e8-b058-1c118d9178d8".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 76-77
+~			72 text 关联外购设备（可选）
+~			73 pop up button (collapsed, settable) 关联外购设备（可选）, Value: 请选择本工作令设备, ID: listing-equipment, Secondary Actions: Expand
++					100 PURCHASED-P · 外购成套泵组（1台）
+~			80 pop up button (collapsed, settable) 类目, Value: 设备采购清单, ID: add-line-kind, Secondary Actions: Expand
+~					82 选择类目…
+~					86 (selected) 设备采购清单
++			101 text 清单详情（含行） 点行选中后用下方表单修订数量；新增行用上方「新增清单行」表单。
++			102 definition list
++				103 container 类目
++					104 text 类目
++				105 text 设备采购清单
++				106 container 清单名称
++					107 text 清单名称
++				108 text 设备采购清单（wo-01a181e9-097e-73e8-b058-1c118d9178d8）
++				109 container 所属工作令
++					110 text 所属工作令
++				111 text wo-01a181e9-097e-73e8-b058-1c118d9178d8
++				112 container 行数
++					113 text 行数
++				114 text 2
++				115 container 创建时刻
++					116 text 创建时刻
++				117 text 2026-10-28 20:23
++			118 text 清单行（点行选中）
++			119 table
++				120 row
++					121 cell
++						122 text 行 id
++					123 cell
++						124 text 图号
++					125 cell
++						126 text 物料编码
++					127 cell
++						128 text 名称
++					129 cell
++						130 text 需求数量
++					131 cell
++						132 text 确认物料
++					133 cell
++						134 text 版本
++				135 row
++					136 cell ll-01a18276-ec24-7af3-88df-78241c06d318
++						137 text ll-01a18…d318
++					138 cell
++						139 text PUMP-P
++					140 cell
++						141 text DEVICE-ROLLUP-20261028
++					142 cell
++						143 text 外购成套泵组
++					144 cell
++						145 text 1
++					146 cell 01a18276-eb1c-72be-b4ab-97a24f5e9016
++						147 text 01a18276…9016
++					148 cell
++						149 text 1
++				150 row
++					151 cell ll-01a1829d-c407-7d4c-8e4d-678bb0afa10e
++						152 text ll-01a18…a10e
++					153 cell
++						154 text —
++					155 cell
++						156 text —
++					157 cell
++						158 text UI可选设备空值验收（隔离）
++					159 cell
++						160 text 1
++					161 cell
++						162 text —
++					163 cell
++						164 text 1
++			165 text 选中行 id
++			166 text field 选中行 id, ID: line-update-id
++			167 text 修订需求数量
++			168 stepper (settable) 修订需求数量, ID: line-update-qty
++			169 button (disabled) 修订行
+The focused UI element is 1 AXWebArea Cadence, URL: 127.0.0.1:8181/listings/sheets?wo=wo-01a181e9-097e-73e8-b058-1c118d9178d8

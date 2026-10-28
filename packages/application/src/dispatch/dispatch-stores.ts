@@ -36,6 +36,8 @@ export type OutsourcingPriceSource = 'lookup' | 'manual' | 'backfill';
  * 零件单带工艺属性快照（图号×工序×材料×尺寸随单——不回查 baseline，快照纪律）。
  */
 export interface DispatchOrder {
+  readonly equipmentRefs?: readonly string[];
+  readonly rollup?: boolean;
   /** dsp-<uuidv7>（模块 id 生成器；存储面按不透明串收）。 */
   readonly id: string;
   readonly tenant: TenantId;
@@ -71,6 +73,8 @@ export interface DispatchOrder {
 }
 
 export interface CreateDispatchOrderInput {
+  readonly equipmentRefs?: readonly string[];
+  readonly rollup?: boolean;
   readonly tenant: TenantId;
   readonly id: string;
   readonly workOrderId: string | null;

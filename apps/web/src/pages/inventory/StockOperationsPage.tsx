@@ -13,12 +13,14 @@
  * 保留为 e2e 断言锚点）。
  */
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { usePermissions } from '@refinedev/core';
+import { permissionCode, sessionHasPermission, toPermissionCodes } from '@smes/product-ui';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 // i18n 波 2：inventory namespace 绑定（zh-CN 权威源=原页面文案；业务数据与
 // 服务端 message 不翻译；namespace 注册与 shell init 由总控统一接线）。
 import { useTranslation } from 'react-i18next';
-import { issueStock, receiveStock, transferStock } from '../../data/inventoryApi';
-import { businessIdsOfOutcome, type CommandOutcomeView } from '../../data/commandClient';
+import { receiveOptions, issueStock, receiveStock, transferStock } from '../../data/inventoryApi';
+import { businessIdsOfOutcome, errorOutcomeOf, type CommandOutcomeView } from '../../data/commandClient';
 import { CommandOutcomeHint } from '../../components/ModuleTable';
 import { shortId } from '../../lib/format';
 import { Button } from '@/components/ui/button';
@@ -50,11 +52,15 @@ function MovementOutcomeHint({ outcome }: { readonly outcome: CommandOutcomeView
 }
 
 export function StockOperationsPage() {
+  const { data } = usePermissions({});
+  const codes = toPermissionCodes(data);
+  const allowed = (code: string) => sessionHasPermission(codes, permissionCode(code));
+  if (!['stock:receive', 'stock:issue', 'stock:transfer'].some(allowed)) return <p role="note">当前账号没有库存操作权限。</p>;
   return (
     <div className="flex flex-col gap-6">
-      <ReceiveCard />
-      <IssueCard />
-      <TransferCard />
+      {allowed('stock:receive') && <ReceiveCard />}
+      {allowed('stock:issue') && <IssueCard />}
+      {allowed('stock:transfer') && <TransferCard />}
     </div>
   );
 }
@@ -62,6 +68,7 @@ export function StockOperationsPage() {
 function ReceiveCard() {
   const queryClient = useQueryClient();
   const { t } = useTranslation('inventory');
+  const options = useQuery({ queryKey: ['inventory', 'receive-options'], queryFn: receiveOptions });
   const [kind, setKind] = useState<'inspection' | 'purchase' | 'production'>('production');
   const [itemId, setItemId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
@@ -87,14 +94,9 @@ function ReceiveCard() {
     onSuccess: (result) => {
       setOutcome(result);
       // UX-WH-06：数量与各项输入保留上次值（连续同类收发不重置），仅结果提示刷新。
-      if (result.committed) queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      if (result.committed) { setInspectionId(''); setItemId(''); queryClient.invalidateQueries({ queryKey: ['inventory'] }); }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -109,6 +111,7 @@ function ReceiveCard() {
         <CardDescription>{t('operations.receive.description')}</CardDescription>
       </CardHeader>
       <CardContent>
+        {options.isError && <p role="alert">入库选项加载失败，请刷新后重试。</p>}
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="recv-kind">{t('operations.receive.kind-label')}</Label>
@@ -120,11 +123,17 @@ function ReceiveCard() {
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="recv-item">{t('operations.receive.item-label')}</Label>
-            <Input id="recv-item" value={itemId} onChange={(e) => setItemId(e.target.value)} required />
+            <Select id="recv-item" value={itemId} onChange={(e) => setItemId(e.target.value)} disabled={kind === 'inspection'} required>
+              <option value="">请选择物料（图号不能代替物料）</option>
+              {(options.data?.items ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
+            </Select>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="recv-wh">{t('operations.receive.warehouse-label')}</Label>
-            <Input id="recv-wh" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} required />
+            <Select id="recv-wh" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} required>
+              <option value="">请选择入库仓库</option>
+              {(options.data?.warehouses ?? []).map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}
+            </Select>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="recv-qty">{t('operations.receive.quantity-label')}</Label>
@@ -133,7 +142,14 @@ function ReceiveCard() {
           {kind === 'inspection' && (
             <div className="flex flex-col gap-2">
               <Label htmlFor="recv-inspection">{t('operations.receive.inspection-label')}</Label>
-              <Input id="recv-inspection" value={inspectionId} onChange={(e) => setInspectionId(e.target.value)} required />
+              <Select id="recv-inspection" value={inspectionId} onChange={(e) => {
+                const release = options.data?.releases.find((row) => row.id === e.target.value);
+                setInspectionId(e.target.value); setItemId(release?.itemId ?? ''); setQuantity(String(release?.remainingQty ?? 1)); setOutcome(null);
+              }} required>
+                <option value="">请选择可入库的放行单</option>
+                {(options.data?.releases ?? []).map((release) => <option key={release.id} value={release.id}>{release.id} · 剩余 {release.remainingQty}</option>)}
+              </Select>
+              <p className="text-xs text-muted-foreground">仅列出已关联有效物料且尚有余量的放行单；无物料的单据须先由质检岗位处理。</p>
             </div>
           )}
           {kind === 'purchase' && (
@@ -204,12 +220,7 @@ function IssueCard() {
       // UX-WH-06：数量与各项输入保留上次值，仅结果提示刷新。
       if (result.committed) queryClient.invalidateQueries({ queryKey: ['inventory'] });
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -302,12 +313,7 @@ function TransferCard() {
       setOutcome(result);
       if (result.committed) queryClient.invalidateQueries({ queryKey: ['inventory'] });
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

@@ -1,6 +1,6 @@
 # Cadence 产品合同与 PM 管理约定
 
-版本：PM v0.3｜建立：2026-10-27｜更新：2026-10-28（Asia/Shanghai）｜产品与架构负责人、PM 文档维护：[本聊天](thread://01a17d85-16ec-7c42-a86d-7d42711031a3?hostId=local)
+版本：PM v0.4｜建立：2026-10-27｜更新：2026-10-28（Asia/Shanghai）｜产品与架构负责人、PM 文档维护：[本聊天](thread://01a17d85-16ec-7c42-a86d-7d42711031a3?hostId=local)
 
 本约定承接 Owner 本次“作为总架构师和产品负责人，把本项目的 PM 管理起来”的指令。采用 [OwlCodaE-PM](thread://01a11982-dddd-7300-a362-abfd5e0ed885?hostId=local) 的产品合同、生命周期地图、去重任务入口和事件更新方法；Cadence 的产品范围、执行责任与验收结论仍取本项目证据。
 
@@ -58,9 +58,11 @@ Cadence 是面向单件、小批量、按工作令组织生产的机加工与装
 | Owner 待决事项与决定 | [DECISIONS-QUEUE](DECISIONS-QUEUE.md) | 沿用 20 待裁、9 待追认及条件触发项；决定按原约定追加销账，不把建议或 PM 登记视作批准 |
 | 需求与实现的追溯 | PRD 增补、ADR、合同、原报告 | 原维护责任人更新；PM 指向准确章节和候选 |
 
-PM 维护者是本聊天；现有工程执行仍归 **Cadence ZCode 执行总控**。2026-10-28 收到 [M2-R1 DELIVERY §10](../output/m2-delivery-20261027/DELIVERY.md) 后，执行方已登记唯一控制会话为 `session_9e2b03feecb4bf840ee5e4097a74ab97`，并声明原 W1—W10 工程会话已结束、产出合并及候选冻结；这是本次交付责任声明，不是本 PM 对外部会话存活的实时查询。本次再接收开始时 161 文件匹配，但收尾发现四个产品文件又被改动，当前冻结已失效，需原总控说明新增范围并重新冻结。候选与裁决见 [ROADMAP](ROADMAP.md#pm-reacceptance-20261028)。后续修复保留原 writer，需要跨聊天消息时仍须绑定实际通道及该次授权。本 PM 不接管工程控制权。
+PM 维护者是本聊天；§11 及此前工程交付归 **Cadence ZCode 执行总控**，其唯一控制会话声明为 `session_9e2b03feecb4bf840ee5e4097a74ab97`；这不是本 PM 对外部会话存活的实时查询。2026-10-28 第三次接收已确认错误码末端修复、旧冻结到 0fbaff3 的 14 个变化归属，并按实际 31 个产品文件绑定有范围 ACCEPT；原清单自指／回执误计入由 PM 接收记录说明，工程原件保留。准确对象、完整哈希及业务未验边界见 [ROADMAP](ROADMAP.md#pm-third-acceptance-20261028)。先前 Owner 的快照提交授权已用于 0fbaff3，本轮接收不自动授予新的 commit／push／发布／部署权限。
 
-历史交接记载的 RunKit 控制目录在仓外：`/Users/yeemio/AI/gitrep/cadence-runkit` 与 `/Users/yeemio/AI/gitrep/cadence-runkit-s3`；本轮未读取其实时状态，PM 不初始化、迁移或写入它们。原工程链的提交、推送、部署或模型路由授权不自动转移到本聊天。
+2026-10-28 16:50 Owner 明确要求“剩下的你派sol完成吧”：本聊天承接这一轮已列剩余缺口的派工与最终接收，唯一产品 writer 为原生子代理 `/root/cadence_remaining`（Sol-6.1-high），范围见 [本轮执行边界](ROADMAP.md#pm-sol-remainder-20261028)。已冻结交付作为输入保留，不让 ZCode 与 Sol 并写同一修复；本次不转移整项目、发布或真实客户权限。运行验证使用隔离栈和隔离数据，常驻栈及共享库存不在修改范围。 本轮现已完成具名修复与隔离证据接收：105 产品路径聚合 `39fc1599…435e8`，主控裁决 [ACCEPT](../output/sol-remainder-20261028/PARENT-ACCEPTANCE.md)，writer 已停写。该接受限源码、分类业务与已记录的可见 UI；共享池多进程并发原子封顶、保留 UI/P2/P3 及原 M2 待决项仍开。Owner 随后回复“继续吧”，授权按已提议范围形成正式提交；本次提交仅封存准确候选与 PM／接收材料，不含 push、发布或部署。
+
+历史交接记载的 RunKit 控制目录在仓外：`/Users/yeemio/AI/gitrep/cadence-runkit` 与 `/Users/yeemio/AI/gitrep/cadence-runkit-s3`。本次定向核对确认它们分别绑定早期双线建设与 S3 移动呈现，不能冒用为本轮缺口修复记录；未初始化、迁移或写入它们。本轮采用单个有界 assignment 与原生回传，不另建项目主控账本。原工程链的提交、推送、部署授权不自动转移到本聊天。
 
 ### 更新触发与判定
 

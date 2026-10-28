@@ -64,6 +64,10 @@ export class InspectionsController {
     private readonly inspection: InspectionService,
   ) {}
 
+  @Get('material-options')
+  @RequirePermission('inspection:judge')
+  async materialOptions() { return { items: await this.inspection.materialOptions(this.tenantContext.current()) }; }
+
   @Post()
   @RequirePermission('inspection:judge')
   async create(@Req() request: AuthenticatedRequest, @Body() body: unknown): Promise<InspectionCommandResult> {

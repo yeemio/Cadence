@@ -126,6 +126,7 @@ export interface InventoryUseReserveReceipt {
 
 /** 利库预占指令（quantity = 目标预占总量；适配方按锚点既有活跃预占折差新建）。 */
 export interface InventoryUseReserveCommand {
+  readonly equipmentRef?: string | null;
   readonly workOrderId: string;
   readonly itemId: string;
   /** 目标预占总量（= min(Σ 需求, 利库供给基数)；≤ 需求且 ≤ 供给——不超占）。 */

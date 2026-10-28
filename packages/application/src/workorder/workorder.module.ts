@@ -1,3 +1,4 @@
+import { InMemoryWorkOrderEquipmentStore, type WorkOrderEquipmentStore } from './workorder-equipment.js';
 /**
  * WorkOrderModule —— 工作令模块（M2-W1，02-workorder.md 全生命周期环节）。
  *
@@ -80,6 +81,7 @@ export const WORKORDER_APPROVER_PORT = Symbol('smes.workorder.approverPort');
 export const WORKORDER_SERVICE_OPTIONS = Symbol('smes.workorder.serviceOptions');
 
 export interface WorkOrderModuleOptions {
+  readonly equipmentStore?: WorkOrderEquipmentStore | undefined;
   /** 工作令投影存储；缺省 = 内存实现（重启即失）。显式 undefined 同缺省。 */
   readonly orderStore?: WorkOrderStore | undefined;
   /** 附件事实存储；缺省 = 内存实现。 */
@@ -119,7 +121,7 @@ export interface WorkOrderModuleOptions {
 @Module({})
 export class WorkOrderModule {
   static register(options: WorkOrderModuleOptions = {}): DynamicModule {
-    const serviceOptions: Partial<WorkOrderServiceOptions> = options.serviceOptions ?? {};
+    const serviceOptions: Partial<WorkOrderServiceOptions> = { ...options.serviceOptions, equipmentStore: options.equipmentStore ?? new InMemoryWorkOrderEquipmentStore() };
     const providers: Provider[] = [
       { provide: WORKORDER_ORDER_STORE, useValue: options.orderStore ?? new InMemoryWorkOrderStore() },
       {

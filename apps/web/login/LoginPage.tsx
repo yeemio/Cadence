@@ -34,7 +34,7 @@ const DEMO_DEFAULT_PASSWORD = 'demo-password';
 
 export function LoginPage() {
   const { t } = useTranslation();
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);

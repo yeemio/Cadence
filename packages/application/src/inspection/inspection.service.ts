@@ -1,3 +1,4 @@
+import type { ItemStore } from '../masterdata/masterdata-stores.js';
 /**
  * InspectionService —— 质检用例编排（M2-W4）。
  *
@@ -162,6 +163,7 @@ export interface InspectionCommitted extends CommittedOutcome {
 export type InspectionCommandResult = InspectionCommitted | RejectedOutcome;
 
 export interface InspectionServiceOptions {
+  readonly itemLibrary?: Pick<ItemStore, 'find' | 'list'>;
   /** 质检单四态配置（缺省 DEFAULT_INSPECTION_FLOW_CONFIG；可整体替换 = 换合法集）。 */
   readonly inspectionConfig: ApprovalFlowConfig;
   /** 不合格处置三态配置（缺省 DEFAULT_NONCONFORM_FLOW_CONFIG）。 */
@@ -221,6 +223,7 @@ export class InspectionService implements InspectionIntakePort {
       revokeGuard: ports.revokeGuard ?? FAIL_CLOSED_INSPECTION_REVOKE_GUARD,
     };
     this.options = {
+      ...(options.itemLibrary === undefined ? {} : { itemLibrary: options.itemLibrary }),
       inspectionConfig: options.inspectionConfig ?? DEFAULT_INSPECTION_FLOW_CONFIG,
       nonconformConfig: options.nonconformConfig ?? DEFAULT_NONCONFORM_FLOW_CONFIG,
       closeTimeoutMs: options.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS,
@@ -229,6 +232,10 @@ export class InspectionService implements InspectionIntakePort {
       batchLimit: options.batchLimit ?? DEFAULT_INSPECTION_BATCH_LIMIT,
       ...(options.now === undefined ? {} : { now: options.now }),
     };
+  }
+
+  async materialOptions(tenant: TenantId) {
+    return (await this.options.itemLibrary?.list(tenant) ?? []).filter((item) => item.active).map(({ id, code, name }) => ({ id, code, name }));
   }
 
   private now(): string {
@@ -439,6 +446,18 @@ export class InspectionService implements InspectionIntakePort {
     };
   }
 
+  private async materialForJudgment(tenant: TenantId, order: InspectionOrder, selected: string | undefined, releases: boolean): Promise<InspectionOrder | string> {
+    if (selected !== undefined && order.itemId !== null && selected !== order.itemId) return '质检单已有物料关联，不可覆盖；请核对来源单据。';
+    if (selected !== undefined && order.itemId === null && order.state !== 'pending') return '仅未判定的质检单可补齐物料；请先按撤销流程处理，不能在复检时改绑。';
+    const itemId = order.itemId ?? selected ?? null;
+    if (this.options.itemLibrary !== undefined && (releases || selected !== undefined)) {
+      if (itemId === null) return '此质检单尚未关联物料，请在待检判定中选择有效物料后再放行；图号不能代替物料。';
+      const item = await this.options.itemLibrary.find(tenant, itemId);
+      if (item === null || !item.active) return '质检物料不存在或已停用，请选择本租户的有效物料。';
+    }
+    return { ...order, itemId };
+  }
+
   // ---- inspection.judge（合格/不合格数量 + 备注） ----
 
   private async judge(
@@ -446,7 +465,7 @@ export class InspectionService implements InspectionIntakePort {
     id: string,
   ): Promise<InspectionCommandResult> {
     const payload = parseJudgeInspectionPayload(envelope.command.payload);
-    const order = await this.orders.find(envelope.tenantId, InspectionId.create(id));
+    let order = await this.orders.find(envelope.tenantId, InspectionId.create(id));
     if (order === null) {
       return rejected(`租户 '${envelope.tenantId}' 内不存在质检单 '${id}'`);
     }
@@ -463,6 +482,9 @@ export class InspectionService implements InspectionIntakePort {
     if (order.state !== 'pending') {
       return rejected(`质检单 '${id}' 已处 '${order.state}'，仅待检单可判定（复检走 inspection.recheck.v1）`);
     }
+    const resolved = await this.materialForJudgment(envelope.tenantId, order, payload.itemId, payload.failedQty === 0 && payload.passedQty > 0);
+    if (typeof resolved === 'string') return rejected(resolved);
+    order = resolved;
     const quantityFault = this.validateJudgmentQuantities(payload, order, '判定');
     if (quantityFault !== null) {
       return rejected(quantityFault);
@@ -504,6 +526,7 @@ export class InspectionService implements InspectionIntakePort {
       // 不合格分支：判定字段落投影 + 自动创建不合格明细（open）——闭环追踪对象。
       const now = this.now();
       const judgment: JudgmentFields = {
+        ...(order.itemId === null ? {} : { itemId: order.itemId }),
         passedQty: payload.passedQty,
         failedQty: payload.failedQty,
         judgeRemark: payload.remark,
@@ -572,7 +595,7 @@ export class InspectionService implements InspectionIntakePort {
     id: string,
   ): Promise<InspectionCommandResult> {
     const payload = parseRecheckInspectionPayload(envelope.command.payload);
-    const order = await this.orders.find(envelope.tenantId, InspectionId.create(id));
+    let order = await this.orders.find(envelope.tenantId, InspectionId.create(id));
     if (order === null) {
       return rejected(`租户 '${envelope.tenantId}' 内不存在质检单 '${id}'`);
     }
@@ -589,6 +612,9 @@ export class InspectionService implements InspectionIntakePort {
     if (order.state !== 'failed') {
       return rejected(`质检单 '${id}' 已处 '${order.state}'，仅不合格单可复检`);
     }
+    const resolved = await this.materialForJudgment(envelope.tenantId, order, payload.itemId, payload.failedQty === 0 && payload.passedQty > 0);
+    if (typeof resolved === 'string') return rejected(resolved);
+    order = resolved;
     const quantityFault = this.validateJudgmentQuantities(payload, order, '复检');
     if (quantityFault !== null) {
       return rejected(quantityFault);
@@ -630,6 +656,7 @@ export class InspectionService implements InspectionIntakePort {
           runtime.state(),
           runtime.objectVersion(),
           {
+            ...(order.itemId === null ? {} : { itemId: order.itemId }),
             passedQty: payload.passedQty,
             failedQty: payload.failedQty,
             judgeRemark: payload.remark,
@@ -882,7 +909,9 @@ export class InspectionService implements InspectionIntakePort {
         return rejected(fault);
       }
       const order = await this.orders.find(tenant, InspectionId.create(line.inspectionId));
-      orders.push(order as InspectionOrder);
+      const resolved = await this.materialForJudgment(tenant, order as InspectionOrder, undefined, true);
+      if (typeof resolved === 'string') return rejected(`批量第 ${index + 1} 行：${resolved}`);
+      orders.push(resolved);
     }
 
     const anchorId = newInspectionBatchId();
@@ -1620,6 +1649,7 @@ export class InspectionService implements InspectionIntakePort {
     phase: InspectionJudgePhase,
   ): Promise<InspectionCommitted> {
     const judgment: JudgmentFields = {
+      ...(order.itemId === null ? {} : { itemId: order.itemId }),
       passedQty,
       failedQty: 0,
       judgeRemark: remark,

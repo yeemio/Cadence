@@ -1,3 +1,4 @@
+import type { WorkOrderEquipmentStore } from '../workorder/workorder-equipment.js';
 /**
  * ListingService —— 清单与采购用例编排（M2-W3，03-listing.md v1.0）。
  *
@@ -189,6 +190,9 @@ export interface ListingCommitted extends CommittedOutcome {
 export type ListingCommandResult = ListingCommitted | RejectedOutcome | IndeterminateOutcome;
 
 export interface ListingServiceOptions {
+  readonly equipmentSource?: WorkOrderEquipmentStore | undefined;
+  readonly canRelinkEquipment?: (tenant: TenantId, workOrderId: string, itemId: string | null) => Promise<boolean>;
+  readonly receivingWarehouses?: (tenant: TenantId) => Promise<readonly { readonly id: string; readonly code: string; readonly name: string }[]>;
   /** 订单五态配置（缺省 DEFAULT_PURCHASE_ORDER_FLOW_CONFIG；整体替换 = 换合法集/审核链层级）。 */
   readonly orderConfig: ApprovalFlowConfig;
   /** 申请三态配置（缺省 DEFAULT_PURCHASE_REQUEST_FLOW_CONFIG）。 */
@@ -260,6 +264,9 @@ export class ListingService {
       materialValidation: ports.materialValidation ?? LISTING_UNWIRED_MATERIAL_VALIDATION,
     };
     this.options = {
+      ...(options.equipmentSource === undefined ? {} : { equipmentSource: options.equipmentSource }),
+      ...(options.canRelinkEquipment === undefined ? {} : { canRelinkEquipment: options.canRelinkEquipment }),
+      ...(options.receivingWarehouses === undefined ? {} : { receivingWarehouses: options.receivingWarehouses }),
       orderConfig: options.orderConfig ?? DEFAULT_PURCHASE_ORDER_FLOW_CONFIG,
       requestConfig: options.requestConfig ?? DEFAULT_PURCHASE_REQUEST_FLOW_CONFIG,
       returnConfig: options.returnConfig ?? DEFAULT_PURCHASE_RETURN_FLOW_CONFIG,
@@ -267,6 +274,16 @@ export class ListingService {
       orderApprover: options.orderApprover ?? null,
       ...(options.now === undefined ? {} : { now: options.now }),
     };
+  }
+
+  private async validateEquipment(tenant: TenantId, workOrderId: string, kind: string, ref: string | null, origin: string): Promise<string | null> {
+    if (!this.options.equipmentSource) return null;
+    if (!ref) return kind !== 'equipment' && origin === 'production' ? '生产清单须先选择本工作令的自制设备；旧空设备行不会自动归属设备。' : null;
+    const equipment = await this.options.equipmentSource.find(tenant, ref);
+    if (!equipment || equipment.workOrderId !== workOrderId) return '设备不存在或不属于当前工作令/租户';
+    if (kind !== 'equipment' && equipment.kind !== 'self-made') return '零件、标准件和电气件只能关联本工作令的自制设备';
+    if (kind === 'equipment' && equipment.kind !== 'purchased') return '外购设备清单只能关联本工作令的外购设备';
+    return null;
   }
 
   private now(): string {
@@ -335,7 +352,7 @@ export class ListingService {
     const payload = parseListingImportPayload(envelope.command.payload);
     return payload.source === 'workorder'
       ? this.importFromWorkOrder(envelope, payload.workOrderId)
-      : this.importFromExcel(envelope, payload.workOrderId, payload.kind, payload.excel);
+      : this.importFromExcel(envelope, payload.workOrderId, payload.kind, payload.excel, payload.equipmentRef ?? null, payload.origin ?? 'production');
   }
 
   private async importFromWorkOrder(
@@ -421,8 +438,12 @@ export class ListingService {
     workOrderId: string,
     kind: ListingKind,
     excelSource: ExcelSource,
+    equipmentRef: string | null = null,
+    origin: 'production' | 'aftermarket' = 'production',
   ): Promise<ListingCommandResult> {
     const tenant = envelope.tenantId;
+    const equipmentFault = await this.validateEquipment(tenant, workOrderId, kind, equipmentRef, origin);
+    if (equipmentFault) return rejected(equipmentFault);
     const parsed = await this.ports.excel.parseListingImport(excelSource);
     const fileIssues = fileLevelIssues(parsed.issues);
     if (fileIssues.length > 0) {
@@ -496,6 +517,8 @@ export class ListingService {
           sheetId: sheet.id,
           workOrderId,
           kind,
+          equipmentRef,
+          origin,
           lineNo: startLineNo + index,
           drawingNo: row.drawingNo,
           code: row.code,
@@ -592,6 +615,11 @@ export class ListingService {
       );
     }
 
+    if (payload.equipmentRef !== undefined || payload.origin !== undefined) {
+      const fault = await this.validateEquipment(tenant, line.workOrderId, line.kind, payload.equipmentRef ?? line.equipmentRef ?? null, payload.origin ?? line.origin ?? 'production');
+      if (fault) return rejected(fault);
+      if (this.options.canRelinkEquipment && !(await this.options.canRelinkEquipment(tenant, line.workOrderId, line.itemId))) return rejected('此物料已有预占或发料关联，不能改绑设备或来源；请先按原流程撤销关联。');
+    }
     const recorded = await this.operations.record({
       tenant,
       operationId: envelope.operationId,
@@ -632,7 +660,7 @@ export class ListingService {
     const updatedRecord = updated as unknown as Record<string, unknown>;
     const fieldsRecord = fields as unknown as Record<string, unknown>;
     for (const key of [
-      'drawingNo', 'code', 'name', 'spec', 'itemId', 'requiredQty', 'neededBy',
+      'equipmentRef', 'origin', 'drawingNo', 'code', 'name', 'spec', 'itemId', 'requiredQty', 'neededBy',
       'validationStatus', 'candidateItemId', 'candidateItemCode', 'similarity', 'basis',
     ] as const) {
       if (fieldsRecord[key] !== undefined) {
@@ -668,8 +696,9 @@ export class ListingService {
     const tenant = envelope.tenantId;
     const scope = this.options.gapScopeKinds;
     const allLines = (await this.lines.listByWorkOrder(tenant, workOrderId)).filter((line) =>
-      (scope as readonly string[]).includes(line.kind),
+      (scope as readonly string[]).includes(line.kind) && line.origin !== 'aftermarket',
     );
+    if (this.options.equipmentSource && allLines.some((line) => line.kind !== 'equipment' && !line.equipmentRef)) return rejected('生产清单存在未关联设备的旧行，请先补齐真实关联后核查；不会自动补设备。');
     const resolved = allLines.filter((line) => line.itemId !== null);
     const itemIds = [...new Set(resolved.map((line) => line.itemId as string))];
     // 利库供给基数 = 跨仓可用 + 本令 issue 订单级锚活跃预占（本令已预占部分仍属
@@ -726,19 +755,25 @@ export class ListingService {
     // purchase.order.receive 入库指令先行）。目标量 = min(Σ需求, 供给基数)：
     // 适配方按锚点既有活跃预占折差新建（幂等收敛，重复核查不重复预占）；
     // 作用类目 = 发料可核销三类（equipment 不走预占账，见 GAP_RESERVE_SCOPE_KINDS）。
-    const demandTotals = new Map<string, number>();
+    const demandTotals = new Map<string, { itemId: string; equipmentRef: string | null; quantity: number }>();
     const reserveScope = GAP_RESERVE_SCOPE_KINDS;
     for (const line of resolved) {
       if (!(reserveScope as readonly string[]).includes(line.kind)) continue;
       const itemId = line.itemId as string;
-      demandTotals.set(itemId, (demandTotals.get(itemId) ?? 0) + line.requiredQty);
+      const equipmentRef = line.equipmentRef ?? null;
+      const key = JSON.stringify([equipmentRef, itemId]);
+      demandTotals.set(key, { itemId, equipmentRef, quantity: (demandTotals.get(key)?.quantity ?? 0) + line.requiredQty });
     }
     const reserveLines: InventoryUseReserveLineReceipt[] = [];
-    for (const itemId of [...demandTotals.keys()].sort()) {
-      const useTotal = Math.min(demandTotals.get(itemId) as number, supply.get(itemId) ?? 0);
+    const reservable = new Map(supply);
+    for (const key of [...demandTotals.keys()].sort()) {
+      const { itemId, equipmentRef, quantity } = demandTotals.get(key)!;
+      const useTotal = Math.min(quantity, reservable.get(itemId) ?? 0);
+      reservable.set(itemId, (reservable.get(itemId) ?? 0) - useTotal);
       if (useTotal <= 0) continue;
       const receipt = await this.ports.useReservation.reserveForWorkOrder(tenant, {
         workOrderId,
+        ...(equipmentRef === null ? {} : { equipmentRef }),
         itemId,
         quantity: useTotal,
         gapCheckId,
@@ -1800,6 +1835,8 @@ export class ListingService {
   }
 
   /** 采购明细行集 + 金额汇总（对账要点：Σ 已收数量 × 单价，未定价行计 0）。 */
+  async receivingWarehouseOptions(tenant: TenantId) { return this.options.receivingWarehouses?.(tenant) ?? []; }
+
   async purchaseDetails(tenant: TenantId, workOrderId?: string): Promise<PurchaseDetailRows> {
     const orders = await this.orders.list(
       tenant,
@@ -1868,7 +1905,7 @@ export class ListingService {
       readonly neededBy: string | null;
     }[]
   > {
-    const lines = await this.lines.listByWorkOrder(tenant, workOrderId);
+    const lines = (await this.lines.listByWorkOrder(tenant, workOrderId)).filter((line) => line.origin !== 'aftermarket');
     return lines
       .filter((line) => line.itemId !== null)
       .map((line) => ({

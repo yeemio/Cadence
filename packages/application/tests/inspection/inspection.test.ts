@@ -1,3 +1,4 @@
+import { InMemoryItemStore } from '../../src/masterdata/in-memory-masterdata-stores.js';
 /**
  * inspection 模块测试（M2-W4）：存储端口内存合同、四态/三态状态机全路径、
  * 四类来源自动建单（幂等）、判定（合格放行/不合格闭环明细）、复检、处置
@@ -100,6 +101,7 @@ function newHarness(
     readonly overdueAssignee?: typeof supervisor | null;
     readonly now?: () => string;
     readonly batchLimit?: number;
+    readonly itemLibrary?: InMemoryItemStore;
     /** 撤销闸门（缺省不注入 = service fail-closed 缺省；PERMISSIVE_* 见 ports）。 */
     readonly revokeGuard?: InspectionRevokeGuardPort;
   } = {},
@@ -130,6 +132,7 @@ function newHarness(
       ...(options.now === undefined ? { now: () => FIXED_NOW } : { now: options.now }),
       ...(options.closeTimeoutMs === undefined ? {} : { closeTimeoutMs: options.closeTimeoutMs }),
       ...(options.overdueAssignee === undefined ? {} : { overdueAssignee: options.overdueAssignee }),
+      ...(options.itemLibrary === undefined ? {} : { itemLibrary: options.itemLibrary }),
       ...(options.batchLimit === undefined ? {} : { batchLimit: options.batchLimit }),
     },
   );
@@ -1301,5 +1304,40 @@ describe('模块装配与权限码', () => {
       );
       expect(actual, `${String(method)} 权限码`).toBe(code);
     }
+  });
+});
+
+
+describe('放行物料完整性（sol remainder）', () => {
+  it('未知物料/缺失物料判定零写入；补齐物料与判定同次推进，放行事实使用该物料', async () => {
+    const library = new InMemoryItemStore();
+    const item = await library.create({ tenant: t1, code: 'RM-01', name: '隔离物料' });
+    const h = newHarness({ itemLibrary: library });
+    const receipt = await h.service.receiveSourceFact(t1, sourceFact({ itemId: null }));
+    const id = receipt.inspectionId!;
+    for (const itemId of [undefined, 'DWG-001']) {
+      const result = await h.service.execute(envelope('inspection.judge.v1', { passedQty: 10, failedQty: 0, itemId }, { expectedRevision: 1 }), id);
+      expect(result.status).toBe('rejected');
+      expect((await h.orders.find(t1, InspectionId.create(id)))?.state).toBe('pending');
+      expect(h.stockRelease.facts).toHaveLength(0);
+    }
+    const result = mustCommit(await h.service.execute(envelope('inspection.judge.v1', { itemId: item.id, passedQty: 10, failedQty: 0 }, { expectedRevision: 1 }), id));
+    expect(result.inspection?.itemId).toBe(item.id);
+    expect((await h.orders.find(t1, InspectionId.create(id)))?.itemId).toBe(item.id);
+    expect(h.stockRelease.facts.at(-1)?.itemId).toBe(item.id);
+  });
+
+  it('已有锚不可覆盖；跨租户物料拒绝；全不合格无需物料；批量缺锚整批不放行', async () => {
+    const library = new InMemoryItemStore();
+    const foreign = await library.create({ tenant: t2, code: 'RM-02', name: '外租户' });
+    const h = newHarness({ itemLibrary: library });
+    const anchored = await h.service.receiveSourceFact(t1, sourceFact());
+    expect((await h.service.execute(envelope('inspection.judge.v1', { itemId: foreign.id, passedQty: 10, failedQty: 0 }, { expectedRevision: 1 }), anchored.inspectionId!)).status).toBe('rejected');
+    const missing = await h.service.receiveSourceFact(t1, sourceFact({ sourceRefId: 'missing', itemId: null }));
+    expect((await h.service.execute(envelope('inspection.judge.v1', { itemId: foreign.id, passedQty: 10, failedQty: 0 }, { expectedRevision: 1 }), missing.inspectionId!)).status).toBe('rejected');
+    expect((await h.service.execute(envelope('inspection.judge-batch.v1', { lines: [{ inspectionId: missing.inspectionId, expectedRevision: 1 }] }), undefined)).status).toBe('rejected');
+    expect(h.stockRelease.facts).toHaveLength(0);
+    expect((await h.service.execute(envelope('inspection.judge.v1', { passedQty: 0, failedQty: 10 }, { expectedRevision: 1 }), missing.inspectionId!)).status).toBe('committed');
+    expect((await h.service.execute(envelope('inspection.recheck.v1', { itemId: foreign.id, passedQty: 10, failedQty: 0 }, { expectedRevision: 2 }), missing.inspectionId!)).status).toBe('rejected');
   });
 });

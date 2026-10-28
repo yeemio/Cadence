@@ -1,3 +1,4 @@
+import { WorkOrderEquipmentCard } from './WorkOrderEquipmentCard';
 /**
  * 工作令管理页（S2 批次）：九态主列表（状态过滤）+ 建令表单 + 行选中详情面板
  * （详情/项目进度/机加工进度/装配调试进度 + 流转/关闭/附件/齐套刷新操作）+
@@ -13,6 +14,7 @@
  * t()（zh-CN 权威源=本文案原文；业务数据与服务端 message 不翻译）。
  */
 import { useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 // i18n 波 2：workorder namespace 绑定（namespace 注册与 shell init 由总控统一接线）。
@@ -34,6 +36,7 @@ import {
 } from '../../data/workorderApi';
 import { getKitBoard } from '../../data/workorderApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, type TableColumn } from '../../components/ModuleTable';
 // D-WO-05：工作令详情挂图纸清单入口（钉版引用三态 + 图纸库跳转——行级改动）。
 import { WorkOrderDrawingsCard } from '../drawing/WorkOrderDrawingsCard';
@@ -126,8 +129,11 @@ function textOf(value: unknown): string {
 export function WorkOrdersPage() {
   const queryClient = useQueryClient();
   const { t } = useTranslation('workorder');
+  const { data: permissions } = usePermissions({});
+  const canCreate = sessionHasPermission(toPermissionCodes(permissions), permissionCode('workorder:write'));
   const [stateFilter, setStateFilter] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('wo'));
 
   // UX-PLAN-R2-04：用户候选池（datalist——手填兼容，无 user:read/无数据时
   // 静默回退纯手填，不阻断建单；候选只做提示，不改变提交载荷语义）。
@@ -230,7 +236,7 @@ export function WorkOrdersPage() {
 
       <KitBoardCard />
 
-      <Card className="max-w-2xl">
+      {canCreate && <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>{t('create.title')}</CardTitle>
           <CardDescription>
@@ -278,7 +284,7 @@ export function WorkOrdersPage() {
             </div>
           </form>
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   );
 }
@@ -330,11 +336,7 @@ function WorkOrderDetailPanel({
       setOutcome(result);
       if (result.committed) onChanged();
     },
-    onError: (error) => setOutcome({
-      committed: false,
-      status: 'error',
-      reason: error instanceof Error ? error.message : String(error),
-    }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleTransition(event: FormEvent<HTMLFormElement>) {
@@ -519,8 +521,9 @@ function WorkOrderDetailPanel({
           assembly={assemblyQuery}
         />
 
+        <WorkOrderEquipmentCard workOrderId={id} />
         {/* D-WO-05：图纸清单入口（消费 drawing 域端点；查看动作经图纸库留痕路径）。 */}
-        <WorkOrderDrawingsCard workOrderId={id} />
+        {sessionHasPermission(toPermissionCodes(permissionData), permissionCode('drawing:read')) && <WorkOrderDrawingsCard workOrderId={id} />}
       </CardContent>
     </Card>
   );

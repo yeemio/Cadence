@@ -12,12 +12,12 @@
  * i18n 波 1（ADR-0012）：主壳入口挂 common+menu 两 namespace（页面模块
  * namespace 波 2 再挂）；init 完成后再渲染（内联资源就绪，无 key 闪烁）。
  */
-import { StrictMode } from 'react';
+import { StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Refine } from '@refinedev/core';
 import routerProvider from '@refinedev/react-router';
-import { BrowserRouter, Route, Routes } from 'react-router';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router';
 import { createAuthProvider, browserTokenSessionStore } from './auth';
 import { authTransport } from './data/authApi';
 import { authInFlightCount } from './data/apiClient';
@@ -48,6 +48,13 @@ await initI18n([
   'inventory',
   'reporting',
 ]);
+
+// refine 在 SPA 内跳到登录路径时，必须整页进入独立的登录 bundle。
+function LoginRedirect() {
+  const location = useLocation();
+  useEffect(() => { window.location.replace(`/login${location.search}`); }, [location.search]);
+  return <p role="status">正在打开登录页…</p>;
+}
 
 const authProvider = createAuthProvider();
 
@@ -84,6 +91,7 @@ createRoot(document.getElementById('root') as HTMLElement).render(
           options={{ syncWithLocation: true, disableTelemetry: true }}
         >
           <Routes>
+            <Route path="/login" element={<LoginRedirect />} />
             <Route element={<ShellLayout />}>
               {menuRoutes.map((route) => {
                 const Page = PAGE_BY_CODE[route.code];

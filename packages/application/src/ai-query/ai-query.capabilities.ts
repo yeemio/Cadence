@@ -65,7 +65,7 @@ export function capabilityInfoOf(capabilityId: AiQueryCapabilityId): AiQueryCapa
  * 未联动），对账阶段校正。
  */
 export const DONE_QTY_CALIBER_NOTE =
-  '完成数量口径：进度事实为派工侧终态回填量——报工撤销不回滚 doneQty（两域未联动），口径暂按派工侧终态呈现，对账阶段校正。';
+  '完成数量口径：按派工完成时确认的数量统计；撤销报工不会自动扣回此数量，核对时需同时查看派工和报工记录。口径暂按派工侧终态呈现，对账阶段校正。';
 
 /** 交付倒计时口径注记（来源 workorder-progress.ts：初版口径，对账阶段校正）。 */
 export const DELIVERY_COUNTDOWN_CALIBER_NOTE = '交付倒计时为初版口径（对账阶段以活系统行为校正）。';
@@ -75,7 +75,7 @@ export const GAP_AVAILABLE_QTY_CALIBER_NOTE =
   '可用量口径：跨仓可用 + 本令 issue 订单级锚活跃预占（利库预占未接线时为纯可用量）。';
 
 /** 质检时间窗口径注记。 */
-export const INSPECTION_WINDOW_CALIBER_NOTE = '时间窗按判定时刻 judgedAt 过滤（左闭右开），状态取质检单当前态。';
+export const INSPECTION_WINDOW_CALIBER_NOTE = '时间窗按质检判定时刻过滤（包含起点，不包含终点），状态取质检单当前状态。';
 
 // ---- 质检时间澄清选项（id 稳定可重放；CONTRACT v1 §意图路由） ----
 

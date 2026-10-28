@@ -129,6 +129,8 @@ export function rowToListingSheet(row: SheetDbRow): ListingSheet {
 }
 
 interface LineDbRow {
+  readonly equipmentRef?: string | null;
+  readonly origin?: string;
   readonly id: string;
   readonly tenantId: string;
   readonly sheetId: string;
@@ -155,6 +157,8 @@ interface LineDbRow {
 
 export function rowToListingLine(row: LineDbRow): ListingLine {
   return {
+    equipmentRef: row.equipmentRef ?? null,
+    origin: row.origin === 'aftermarket' ? 'aftermarket' : 'production',
     id: row.id,
     tenant: TenantId.create(row.tenantId),
     sheetId: row.sheetId,
@@ -459,6 +463,8 @@ export class PgListingLineStore implements ListingLineStore {
               sheetId: input.sheetId,
               workOrderId: input.workOrderId,
               kind: input.kind,
+              equipmentRef: input.equipmentRef ?? null,
+              origin: input.origin ?? 'production',
               lineNo: input.lineNo,
               drawingNo: input.drawingNo,
               code: input.code,
@@ -532,6 +538,8 @@ export class PgListingLineStore implements ListingLineStore {
         ...(fields.name === undefined ? {} : { name: fields.name }),
         ...(fields.spec === undefined ? {} : { spec: fields.spec }),
         ...(fields.itemId === undefined ? {} : { itemId: fields.itemId }),
+        ...(fields.equipmentRef === undefined ? {} : { equipmentRef: fields.equipmentRef }),
+        ...(fields.origin === undefined ? {} : { origin: fields.origin }),
         ...(fields.requiredQty === undefined ? {} : { requiredQty: fields.requiredQty }),
         ...(fields.neededBy === undefined
           ? {}

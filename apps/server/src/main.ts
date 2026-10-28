@@ -449,6 +449,7 @@ async function bootstrap(): Promise<void> {
       costingPriceEntryStore: projectCostStoreHandle?.priceEntryStore,
       processMaterialLinkStore: listingStoreHandle?.processMaterialStore,
       workOrderStore: workOrderStoreHandle?.orderStore,
+      workOrderEquipmentStore: workOrderStoreHandle?.equipmentStore,
       workOrderAttachmentStore: workOrderStoreHandle?.attachmentStore,
       workOrderPartsStore: workOrderStoreHandle?.partsStore,
       workOrderKitStore: workOrderStoreHandle?.kitStore,

@@ -117,6 +117,8 @@ export class InMemoryListingSheetStore implements ListingSheetStore {
 // ---- 清单行（投影，乐观更新） ----
 
 interface LineRow {
+  equipmentRef?: string | null;
+  origin?: 'production' | 'aftermarket';
   readonly tenant: string;
   readonly id: string;
   readonly sheetId: string;
@@ -143,6 +145,8 @@ interface LineRow {
 
 function toLine(row: LineRow): ListingLine {
   return {
+    equipmentRef: row.equipmentRef ?? null,
+    origin: row.origin ?? 'production',
     id: row.id,
     tenant: TenantId.create(row.tenant),
     sheetId: row.sheetId,
@@ -194,6 +198,8 @@ export class InMemoryListingLineStore implements ListingLineStore {
         sheetId: input.sheetId,
         workOrderId: input.workOrderId,
         kind: input.kind,
+        equipmentRef: input.equipmentRef ?? null,
+        origin: input.origin ?? 'production',
         lineNo: input.lineNo,
         drawingNo: input.drawingNo,
         code: input.code,
@@ -281,6 +287,8 @@ export class InMemoryListingLineStore implements ListingLineStore {
     if (fields.candidateItemCode !== undefined) row.candidateItemCode = fields.candidateItemCode;
     if (fields.similarity !== undefined) row.similarity = fields.similarity;
     if (fields.basis !== undefined) row.basis = fields.basis;
+    if (fields.equipmentRef !== undefined) row.equipmentRef = fields.equipmentRef;
+    if (fields.origin !== undefined) row.origin = fields.origin;
     row.objectVersion += 1;
     row.updatedAt = new Date().toISOString();
     return toLine(row);

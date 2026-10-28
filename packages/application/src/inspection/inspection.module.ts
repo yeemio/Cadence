@@ -21,6 +21,8 @@
  *       todoStore: stores.todoStore,
  *     }),
  */
+import { InMemoryItemStore } from '../masterdata/in-memory-masterdata-stores.js';
+import type { ItemStore } from '../masterdata/masterdata-stores.js';
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { createInMemoryApprovalEventStore, type ApprovalEventStore } from '@smes/engine-flow';
 import { InMemoryTodoStore } from '../workbench/in-memory-workbench-stores.js';
@@ -62,6 +64,7 @@ export const INSPECTION_REVOKE_GUARD_PORT = Symbol('smes.inspection.revokeGuardP
 export const INSPECTION_SERVICE_OPTIONS = Symbol('smes.inspection.serviceOptions');
 
 export interface InspectionModuleOptions {
+  readonly itemLibrary?: ItemStore | undefined;
   /** 质检单投影存储；缺省 = 内存实现（重启即失）。显式 undefined 同缺省。 */
   readonly orderStore?: InspectionOrderStore | undefined;
   /** 不合格处置投影存储；缺省 = 内存实现。 */
@@ -90,7 +93,7 @@ export interface InspectionModuleOptions {
 @Module({})
 export class InspectionModule {
   static register(options: InspectionModuleOptions = {}): DynamicModule {
-    const serviceOptions: Partial<InspectionServiceOptions> = options.serviceOptions ?? {};
+    const serviceOptions: Partial<InspectionServiceOptions> = { ...options.serviceOptions, itemLibrary: options.itemLibrary ?? new InMemoryItemStore() };
     const providers: Provider[] = [
       { provide: INSPECTION_ORDER_STORE, useValue: options.orderStore ?? new InMemoryInspectionOrderStore() },
       {

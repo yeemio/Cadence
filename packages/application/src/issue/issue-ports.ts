@@ -72,6 +72,7 @@ export interface IssueStockAllocationReceipt {
 
 /** 出库指令（幂等键 = issueKey：实现方须按 issueKey 去重，重试不重复扣减）。 */
 export interface IssueStockCommand {
+  readonly equipmentRef?: string | null;
   readonly issueKey: string;
   readonly workOrderId: string;
   readonly itemId: string;

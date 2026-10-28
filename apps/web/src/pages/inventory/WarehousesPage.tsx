@@ -1,3 +1,5 @@
+import { usePermissions } from '@refinedev/core';
+import { permissionCode, sessionHasPermission, toPermissionCodes } from '@smes/product-ui';
 /**
  * 仓库与库位页（S2 批次）：仓库列表 + 建仓库（库位集，第一个为默认库位）+
  * 行选中仓库详情（含库位）。覆盖矩阵 #14 仓库与库位。
@@ -14,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { defineWarehouse, getWarehouseDetail, listWarehouses } from '../../data/inventoryApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState } from '../../components/ModuleTable';
 import { formatLocalDateTime } from '../../lib/format';
 import { Button } from '@/components/ui/button';
@@ -43,6 +46,8 @@ function locationColumns(t: TFunction) {
 }
 
 export function WarehousesPage() {
+  const { data: permissions } = usePermissions({});
+  const canWrite = sessionHasPermission(toPermissionCodes(permissions), permissionCode('warehouse:write'));
   const queryClient = useQueryClient();
   const { t } = useTranslation('inventory');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -76,12 +81,7 @@ export function WarehousesPage() {
         setLocationName('');
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -126,7 +126,7 @@ export function WarehousesPage() {
         </Card>
       )}
 
-      <Card className="max-w-2xl">
+      {canWrite && <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>{t('define.title')}</CardTitle>
           <CardDescription>{t('define.description')}</CardDescription>
@@ -165,7 +165,7 @@ export function WarehousesPage() {
             </div>
           </form>
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   );
 }

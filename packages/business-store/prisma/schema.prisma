@@ -861,6 +861,8 @@ model ListingLineRecord {
   id                String    @id @default(uuid(7))
   tenantId          String    @map("tenant_id")
   sheetId           String    @map("sheet_id")
+  equipmentRef String? @map("equipment_ref")
+  origin String @default("production")
   workOrderId       String    @map("work_order_id")
   kind              String
   lineNo            Int       @map("line_no")
@@ -1076,6 +1078,8 @@ model ProcessMaterialLinkRecord {
 model DispatchOrderRecord {
   id            String    @id @default(uuid(7))
   tenantId      String    @map("tenant_id")
+  equipmentRefs Json @default("[]") @map("equipment_refs")
+  rollup Boolean @default(false)
   workOrderId   String?   @map("work_order_id")
   /// 六类：part / outsourcing / assembly / electrical / aftermarket / oddjob。
   kind          String
@@ -2725,4 +2729,19 @@ model ColumnPreferenceRecord {
 
   @@unique([tenantId, userId, pageKey, tableKey])
   @@map("column_preferences")
+}
+
+/// 工作令产品设备清单；旧行不回填、不把车间设备资产当产品设备。
+model WorkOrderEquipmentRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  workOrderId String @map("work_order_id")
+  code String
+  name String
+  quantity Int
+  kind String
+  @@unique([tenantId, workOrderId, code])
+  @@unique([tenantId, workOrderId, name])
+  @@unique([tenantId, workOrderId, id])
+  @@map("work_order_equipment")
 }

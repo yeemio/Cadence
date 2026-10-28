@@ -17,6 +17,7 @@ import {
   rebuildCosting,
 } from '../../data/costingApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState, RowDetail } from '../../components/ModuleTable';
 import { formatStampColumn } from './timeFormat';
 import { Button } from '@/components/ui/button';
@@ -50,12 +51,7 @@ export function CostingPage() {
       setPublishOutcome(result);
       if (result.committed) queryClient.invalidateQueries({ queryKey: ['costing'] });
     },
-    onError: (error) =>
-      setPublishOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setPublishOutcome(errorOutcomeOf(error)),
   });
 
   // ---- 工作令成本查询 ----
@@ -295,9 +291,5 @@ function setOutcomeFromError(
   setter: (outcome: CommandOutcomeView | null) => void,
   error: unknown,
 ): void {
-  setter({
-    committed: false,
-    status: 'error',
-    reason: error instanceof Error ? error.message : String(error),
-  });
+  setter(errorOutcomeOf(error));
 }

@@ -1,3 +1,4 @@
+import { InMemoryWorkOrderEquipmentStore, type WorkOrderEquipmentStore } from '@smes/application';
 /**
  * 应用注册表（ADR-0004 机器形态）：读 MODULES_ENABLED 决定装配哪些模块、以什么顺序。
  * core 是必装基础层，注册表拒绝缺省；报价单的可选模块行 ↔ 本表条目一一对应。
@@ -274,6 +275,7 @@ export interface StorePorts {
   readonly baselineOperationLedger?: BaselineOperationLedger | undefined;
   /** 工作令投影存储（WorkOrderModule 注入点，M2 Wave-1）。 */
   readonly workOrderStore?: WorkOrderStore | undefined;
+  readonly workOrderEquipmentStore?: WorkOrderEquipmentStore | undefined;
   /** 工作令附件事实存储（WorkOrderModule 注入点）。 */
   readonly workOrderAttachmentStore?: WorkOrderAttachmentStore | undefined;
   /** 配件申请投影存储（WorkOrderModule 注入点）。 */
@@ -552,6 +554,7 @@ export const MODULE_DEFINITIONS: Record<
     // 零回归）。解析见 partsApprovalChainFromEnv 头注。
     const partsChain = partsApprovalChainFromEnv();
     return WorkOrderModule.register({
+      equipmentStore: stores.workOrderEquipmentStore,
       orderStore: stores.workOrderStore,
       attachmentStore: stores.workOrderAttachmentStore,
       partsStore: stores.workOrderPartsStore,
@@ -583,6 +586,11 @@ export const MODULE_DEFINITIONS: Record<
   // materialValidation 显式拒绝（导入命令接线前不可用，语义诚实），Wave-3 接线替换）
   listing: (stores, wiring) =>
     ListingModule.register({
+      serviceOptions: { equipmentSource: stores.workOrderEquipmentStore, canRelinkEquipment: async (tenant, workOrderId, itemId) => {
+        if ((await stores.inventoryReservationStore?.list(tenant, { status: 'active' }) ?? []).some((row) => row.refId === workOrderId && row.itemId === itemId)) return false;
+        for (const task of await stores.issueTaskStore?.list(tenant, { workOrderId }) ?? []) if ((await stores.issueTaskLineStore?.listByTask(tenant, task.id) ?? []).some((line) => line.itemId === itemId)) return false;
+        return true;
+      }, receivingWarehouses: async (tenant) => (await stores.inventoryWarehouseStore?.list(tenant) ?? []).map(({ id, code, name }) => ({ id, code, name })) },
       sheetStore: stores.listingSheetStore,
       lineStore: stores.listingLineStore,
       gapStore: stores.listingGapStore,
@@ -610,6 +618,7 @@ export const MODULE_DEFINITIONS: Record<
     }),
   inspection: (stores, wiring) =>
     InspectionModule.register({
+      itemLibrary: stores.itemStore,
       orderStore: stores.inspectionOrderStore,
       nonconformStore: stores.inspectionNonconformStore,
       operationStore: stores.inspectionOperationStore,
@@ -626,6 +635,7 @@ export const MODULE_DEFINITIONS: Record<
   // print 与 inventory 预占/放行/收货适配归跨模块接线增量——见 status.md 待办）
   inventory: (stores) =>
     InventoryModule.register({
+      itemLibrary: stores.itemStore,
       warehouseStore: stores.inventoryWarehouseStore,
       goodsShelfStore: stores.inventoryGoodsShelfStore,
       accountStore: stores.inventoryAccountStore,
@@ -649,11 +659,13 @@ export const MODULE_DEFINITIONS: Record<
       // （InventoryService.fallbackWarehouse 经 store findByCode），env 配错
       // code 得到"租户内不存在默认仓编码"明确拒绝，fail-visible 可诊断。
       serviceOptions: {
+        releaseCandidates: (tenant) => stores.inspectionOrderStore?.list(tenant, { state: 'passed' }) ?? Promise.resolve([]),
         defaultWarehouseCode: process.env['SMES_DEFAULT_WAREHOUSE_CODE'] || null,
       },
     }),
   dispatch: (stores, wiring) =>
     DispatchModule.register({
+      serviceOptions: { equipmentSource: stores.workOrderEquipmentStore, hasUnassignedProductionLines: async (tenant, workOrderId) => (await stores.listingLineStore?.listByWorkOrder(tenant, workOrderId) ?? []).some((line) => line.kind !== 'equipment' && line.origin !== 'aftermarket' && !line.equipmentRef) },
       // U6 #29：issue 装配时组合根在工厂实参里注入装饰态派工单存储
       //（advance→assigned 触发发料任务同步）；operation/domainEvent 两存储
       // 同经 wiringStores 共享面（aftercare-claim 须与 DispatchModule 同实例
@@ -777,6 +789,36 @@ export const MODULE_DEFINITIONS: Record<
   //   共享（buildAppModule 裁决同源）；reportPort ← wiring #30（reporting）。
   issue: (stores, wiring) =>
     IssueModule.register({
+      serviceOptions: { equipmentSource: stores.workOrderEquipmentStore },
+      demandSource: { demandLines: async (tenant, workOrderId) => {
+        const rows = await stores.listingLineStore?.listByWorkOrder(tenant, workOrderId) ?? [];
+        const orders = await stores.listingOrderStore?.list(tenant, { workOrderId }) ?? [];
+        // PO无清单行锚：仅按同令物料共享实收，不伪造逐行采购关系。
+        const received = new Map<string, number>();
+        for (const line of orders.flatMap((order) => order.lines)) received.set(line.itemId, (received.get(line.itemId) ?? 0) + line.receivedQty);
+        const heldBySource = new Map<string, number>();
+        const heldByItem = new Map<string, number>();
+        for (const record of await stores.issueRecordStore?.list(tenant, { workOrderId, state: 'active' }) ?? []) {
+          if (record.lineKind !== 'equipment') continue;
+          for (const line of record.lines) {
+            if (line.itemId === null) continue;
+            const key = JSON.stringify([line.itemId, line.sourceLineId]);
+            heldBySource.set(key, (heldBySource.get(key) ?? 0) + line.thisQty);
+            heldByItem.set(line.itemId, (heldByItem.get(line.itemId) ?? 0) + line.thisQty);
+          }
+        }
+        const remaining = new Map([...received].map(([item, qty]) => [item, Math.max(0, qty - (heldByItem.get(item) ?? 0))]));
+        const allocated = new Map<string, number>();
+        // 有效已发优先保留；新增行/重复同步只分剩余量，顺序由稳定来源ID确定。
+        for (const line of rows.filter((line) => line.kind === 'equipment' && line.origin !== 'aftermarket').sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
+          if (line.itemId === null) continue;
+          const held = heldBySource.get(JSON.stringify([line.itemId, line.id])) ?? 0;
+          const extra = Math.min(Math.max(0, line.requiredQty - held), remaining.get(line.itemId) ?? 0);
+          allocated.set(line.id, held + extra);
+          remaining.set(line.itemId, (remaining.get(line.itemId) ?? 0) - extra);
+        }
+        return rows.map((line) => ({ listingLineId: line.id, equipmentRef: line.kind === 'equipment' ? null : line.equipmentRef ?? null, kind: line.kind, moduleName: null, name: line.name, drawingNo: line.drawingNo, itemId: line.itemId, requiredQty: line.requiredQty, origin: line.origin ?? 'production', useInventoryQty: 0, inboundCompletedQty: allocated.get(line.id) ?? 0 }));
+      } },
       taskStore: stores.issueTaskStore,
       taskLineStore: stores.issueTaskLineStore,
       recordStore: stores.issueRecordStore,
@@ -923,6 +965,7 @@ export interface BuildAppModuleOptions {
   readonly baselineEventStore?: BaselineEventStore | undefined;
   readonly baselineOperationLedger?: BaselineOperationLedger | undefined;
   readonly workOrderStore?: WorkOrderStore | undefined;
+  readonly workOrderEquipmentStore?: WorkOrderEquipmentStore | undefined;
   readonly workOrderAttachmentStore?: WorkOrderAttachmentStore | undefined;
   readonly workOrderPartsStore?: PartsRequestStore | undefined;
   readonly workOrderKitStore?: KitCheckStore | undefined;
@@ -1202,6 +1245,7 @@ export function buildAppModule(
 
   // 物品主数据共享（M2 Wave-1）：baseline 物料校验的比对基准与 masterdata
   // 物品库必须是同一实例（零 DB 形态组合根裁决；PG 形态经 itemStore 注入同源）。
+  const sharedEquipmentStore = options.workOrderEquipmentStore ?? new InMemoryWorkOrderEquipmentStore();
   const sharedItemStore =
     options.itemStore ??
     (enabled.includes('masterdata') && enabled.includes('baseline')
@@ -1350,6 +1394,7 @@ export function buildAppModule(
         loginAttemptStore: sharedLoginAttemptStore,
         passwordPolicy: options.passwordPolicy,
         itemStore: sharedItemStore,
+        workOrderEquipmentStore: sharedEquipmentStore,
         resourceStore: options.resourceStore,
         customerStore: options.customerStore,
         supplierStore: options.supplierStore,
@@ -1373,7 +1418,7 @@ export function buildAppModule(
         workOrderDomainEventStore: wiringStores.workOrderEvents,
         workOrderMachineEventStore: options.workOrderMachineEventStore,
         listingSheetStore: options.listingSheetStore,
-        listingLineStore: options.listingLineStore,
+        listingLineStore: wiringStores.listingLines,
         listingGapStore: options.listingGapStore,
         listingProcessMaterialStore: options.processMaterialLinkStore,
         listingRequestStore: options.listingRequestStore,
@@ -1454,7 +1499,7 @@ export function buildAppModule(
         approvalFlowConfigStore: sharedApprovalFlowConfigStore,
         issueTaskStore: options.issueTaskStore,
         issueTaskLineStore: options.issueTaskLineStore,
-        issueRecordStore: options.issueRecordStore,
+        issueRecordStore: wiringStores.issueRecords,
         issueExpressStore: options.issueExpressStore,
         issueOperationStore: options.issueOperationStore,
         issueDomainEventStore: options.issueDomainEventStore,

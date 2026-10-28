@@ -10,13 +10,19 @@
  *  - 既有聚合上的命令（transition/close/verify/judge/assign/approve…）→ 聚合行
  *    objectVersion（列表/详情行携带；revisionOf 抽取，缺失即抛错阻断提交）。
  */
-import { request } from './apiClient';
+import { ApiError, request } from './apiClient';
 
 /** 命令三分结果的归一视图（committed/rejected/其他按不确定处理）。 */
 export interface CommandOutcomeView {
   readonly committed: boolean;
   readonly reason: string | null;
   readonly status: string;
+  /**
+   * 服务端拒绝的语义 code（i18n 波 2 接通，PM 2026-10-28 §10）：error 来源
+   * 透传 ApiError.code（非 ApiError / 缺 code 时无此键）；CommandOutcomeHint
+   * 在 en-US 下按白名单映射英文文案，未知 code 回落现状拼接。
+   */
+  readonly code?: string;
   /**
    * 命令端点原始响应体（UX-WH-02：committed 回执携带聚合视图——movement/
    * movements/warehouse 等，业务单号回显从中抽取；error 路径缺省无体）。
@@ -32,6 +38,22 @@ export class ModuleApiError extends Error {
     super(message);
     this.name = 'ModuleApiError';
   }
+}
+
+/**
+ * 捕获的 error → error 形态 outcome（i18n 波 2 接通，PM 2026-10-28 §10）：
+ * reason 提取与各页 onError 现状逐字一致（Error.message / String(error)），
+ * ApiError 携带语义 code 时透传（exactOptionalPropertyTypes 下缺 code 不落键）。
+ * 页面 onError 的 outcome 合成统一走本助手，避免 code 在转换处被丢弃。
+ */
+export function errorOutcomeOf(error: unknown): CommandOutcomeView {
+  const code = error instanceof ApiError ? error.code : undefined;
+  return {
+    committed: false,
+    status: 'error',
+    reason: error instanceof Error ? error.message : String(error),
+    ...(code !== undefined ? { code } : {}),
+  };
 }
 
 /** 生成幂等操作键：命令动词 + 随机 UUID（重试请由用户显式重发，不自动重造）。 */

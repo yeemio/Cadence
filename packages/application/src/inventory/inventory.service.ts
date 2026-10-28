@@ -131,6 +131,7 @@ import {
   newWarehouseId,
   uuidv7,
 } from './inventory-ids.js';
+import type { ItemStore } from '../masterdata/masterdata-stores.js';
 import { InMemoryGoodsShelfStore } from './in-memory-inventory-stores.js';
 
 // ---- 结果形状 ----
@@ -203,6 +204,9 @@ export interface InventoryServiceOptions {
    * 按 code 在**租户内**命令期解析（见 fallbackWarehouse）。
    */
   readonly defaultWarehouseCode: string | null;
+  /** 组合根与主数据共享同一物料库；命令期校验，不在启动时查库。 */
+  readonly releaseCandidates?: (tenant: TenantId) => Promise<readonly { readonly id: string }[]>;
+  readonly itemLibrary?: Pick<ItemStore, 'find' | 'list'>;
   /** 时钟注入（测试确定性）。 */
   readonly now?: () => string;
 }
@@ -238,6 +242,8 @@ export class InventoryService {
     goodsShelves?: GoodsShelfStore | undefined,
   ) {
     this.options = {
+      ...(options.releaseCandidates === undefined ? {} : { releaseCandidates: options.releaseCandidates }),
+      ...(options.itemLibrary === undefined ? {} : { itemLibrary: options.itemLibrary }),
       stocktakeConfig: options.stocktakeConfig ?? DEFAULT_STOCKTAKE_FLOW_CONFIG,
       shippingConfig: options.shippingConfig ?? DEFAULT_SHIPPING_FLOW_CONFIG,
       negativeStockPolicy: options.negativeStockPolicy ?? DEFAULT_NEGATIVE_STOCK_POLICY,
@@ -248,6 +254,21 @@ export class InventoryService {
     // （跨模块端口测试/u-wave wiring）12 参口径零破坏；缺省回落内存实现
     // （零 DB boot 语义），模块面 InventoryModule.register 恒显式注入。
     this.goodsShelves = goodsShelves ?? new InMemoryGoodsShelfStore();
+  }
+
+  async receiveOptions(tenant: TenantId) {
+    const items = (await this.options.itemLibrary?.list(tenant) ?? []).filter((item) => item.active).map(({ id, code, name }) => ({ id, code, name }));
+    const warehouses = (await this.warehouses.list(tenant)).map(({ id, code, name }) => ({ id, code, name }));
+    const releases = [];
+    for (const { id } of await this.options.releaseCandidates?.(tenant) ?? []) {
+      const facts = await this.releaseFacts.listByInspection(tenant, id);
+      const itemId = facts[0]?.itemId;
+      if (!itemId || facts.some((fact) => fact.itemId !== itemId) || !items.some((item) => item.id === itemId)) continue;
+      const received = await this.movements.list(tenant, { kind: 'inspection-in', sourceRefId: id });
+      const remainingQty = facts.reduce((sum, row) => sum + row.quantity, 0) - received.reduce((sum, row) => sum + row.quantity, 0);
+      if (remainingQty > 0) releases.push({ id, itemId, remainingQty });
+    }
+    return { items, warehouses, releases };
   }
 
   private now(): string {
@@ -859,6 +880,10 @@ export class InventoryService {
     tenant: TenantId,
     input: ReceiveStockInput,
   ): Promise<RejectedOutcome | { readonly locationId: string }> {
+    if (this.options.itemLibrary !== undefined) {
+      const item = await this.options.itemLibrary.find(tenant, input.itemId);
+      if (item === null || !item.active) return rejected('入库物料不存在或已停用，请选择本租户的有效物料；图号不能代替物料。');
+    }
     const warehouse = await this.warehouses.find(tenant, input.warehouseId);
     if (warehouse === null) {
       return rejected(`租户 '${tenant}' 内不存在仓库 '${input.warehouseId}'`);
@@ -877,9 +902,9 @@ export class InventoryService {
           `质检单 '${inspectionId}' 无放行事实（inspection 来源入库须先经放行——放行事实由 StockReleasePort 登记）`,
         );
       }
+      if (facts.some((fact) => fact.itemId === null)) return rejected('质检放行事实缺少物料关联，请先由质检岗位补齐来源物料，不能用图号入库。');
       const releasedTotal = facts.reduce((sum, fact) => sum + fact.quantity, 0);
       const receivedRows = await this.movements.list(tenant, {
-        itemId: input.itemId,
         kind: 'inspection-in',
         sourceRefId: inspectionId,
       });

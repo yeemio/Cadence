@@ -17,6 +17,7 @@ import { getLatestGapCheck, runGapCheck } from '../../data/listingApi';
 // M2-R1：工作令候选池数据源（只读复用工作令列表 API，不改其导出）。
 import { listWorkOrders } from '../../data/workorderApi';
 import type { CommandOutcomeView } from '../../data/commandClient';
+import { errorOutcomeOf } from '../../data/commandClient';
 import { CommandOutcomeHint, ModuleTable, QueryState } from '../../components/ModuleTable';
 // P2 横切批：时刻本地化/长 id 截断显示（UX-PLAN-07/08；行数据不动，title 悬停全文）。
 import { formatLocalDateTime, shortId } from '@/lib/format';
@@ -95,12 +96,7 @@ export function GapChecksPage() {
         queryClient.invalidateQueries({ queryKey: ['listing', 'gap-check'] });
       }
     },
-    onError: (error) =>
-      setOutcome({
-        committed: false,
-        status: 'error',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    onError: (error) => setOutcome(errorOutcomeOf(error)),
   });
 
   // M2-R1 换单清态：输入换到另一工作令时立即清掉上一单的核查快照与提示，

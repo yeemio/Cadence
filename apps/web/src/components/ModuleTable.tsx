@@ -12,6 +12,8 @@ import { useTranslation } from 'react-i18next';
 import { LoaderCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatCell, type CellFormat } from '@/lib/format';
+import { mappedErrorCodeCopy } from '@/lib/api-error-codes';
+import { ApiError } from '../data/apiClient';
 import type { CommandOutcomeView } from '../data/commandClient';
 
 /** 表格列配置（key = 行字段名，与后端投影行键一致）。 */
@@ -130,7 +132,10 @@ export function QueryState({
 }) {
   // i18n 波 2：加载/空态默认/错误前缀走 common（zh 值与原字面量逐字符一致，
   // e2e/断言锚点不变；en 骨架出英文）。
-  const { t } = useTranslation();
+  // i18n 波 2 接通（PM 2026-10-28 §10）：error 携带白名单内 ApiError code 且
+  // en-US 时出同码英文文案（与 ApiErrorHint 同形，不拼 message）；zh-CN 与
+  // 未知 code 维持「请求失败：message」现状逐字符不变。
+  const { t, i18n } = useTranslation();
   const emptyText = empty ?? t('common:query.empty-default');
   if (isPending) {
     return (
@@ -140,6 +145,18 @@ export function QueryState({
     );
   }
   if (error !== null && error !== undefined) {
+    const codeCopy = mappedErrorCodeCopy(
+      error instanceof ApiError ? error.code : undefined,
+      i18n.language,
+      t,
+    );
+    if (codeCopy !== null) {
+      return (
+        <p role="alert" className="text-sm text-destructive">
+          {codeCopy}
+        </p>
+      );
+    }
     return (
       <p role="alert" className="text-sm text-destructive">
         {t('common:query.request-failed', {
@@ -168,7 +185,10 @@ export function CommandOutcomeHint({
 }) {
   // i18n 波 2：四态文案走 common:outcome（zh 值与原字面量逐字符一致——
   // 「操作已生效。」等 e2e 断言锚点不变；en 骨架出英文）。
-  const { t } = useTranslation();
+  // i18n 波 2 接通（PM 2026-10-28 §10）：失败分支 outcome 透传的 code 命中
+  // 白名单且 en-US 时出同码英文文案（与 ApiErrorHint 同形）；zh-CN 与未知
+  // code 维持 lead＋「：」＋reason 现状原样。
+  const { t, i18n } = useTranslation();
   if (outcome.committed) {
     return (
       <p className="text-sm text-emerald-600 dark:text-emerald-400">
@@ -176,6 +196,14 @@ export function CommandOutcomeHint({
         {successDetail !== undefined && successDetail.length > 0 ? (
           <span className="text-muted-foreground">{successDetail}</span>
         ) : null}
+      </p>
+    );
+  }
+  const codeCopy = mappedErrorCodeCopy(outcome.code, i18n.language, t);
+  if (codeCopy !== null) {
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        {codeCopy}
       </p>
     );
   }

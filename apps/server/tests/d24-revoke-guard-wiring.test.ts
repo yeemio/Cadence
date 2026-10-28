@@ -25,6 +25,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import {
   BaselineService,
   InMemoryDispatchOrderStore,
+  InMemoryItemStore,
   InMemoryInspectionOrderStore,
   InMemoryReleaseFactStore,
   InMemoryStockMovementStore,
@@ -395,11 +396,14 @@ describe('D-24 #39 wiring 装配面', () => {
 
 describe('D-24 全链回归：组合形态撤销真实可用（inspection+inventory）', () => {
   it('判定→放行落共享 store→撤销 committed；补齐已入量后撤销被闸门①拦截', async () => {
+    const itemStore = new InMemoryItemStore();
+    const item = await itemStore.create({ tenant, code: 'ITEM-D24', name: '撤销守恒物料' });
     const releaseFacts = new InMemoryReleaseFactStore();
     const movements = new InMemoryStockMovementStore();
     const enabled = parseModulesEnabled('core,inspection,inventory');
     const app = await NestFactory.create(
       buildAppModule(enabled, {
+        itemStore,
         inventoryReleaseFactStore: releaseFacts,
         inventoryMovementStore: movements,
       }),
@@ -414,7 +418,7 @@ describe('D-24 全链回归：组合形态撤销真实可用（inspection+invent
     const receipt = await inspection.receiveSourceFact(tenant, {
       sourceType: 'report',
       sourceRefId: 'rpt-d24-boot',
-      itemId: 'item-d24',
+      itemId: item.id,
       drawingNo: 'DWG-D24',
       quantity: 7,
       workOrderId: 'wo-d24',

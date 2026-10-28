@@ -66,7 +66,9 @@ export function reportSubmitEnvelope(draft: ReportDraftSubmission): {
   };
 }
 
-export async function submitReportDraft(draft: ReportDraftSubmission): Promise<void> {
+export function submitReportDraft(draft: ReportDraftSubmission): Promise<void>;
+export function submitReportDraft(draft: ReportDraftSubmission, receipt: true): Promise<string | undefined>;
+export async function submitReportDraft(draft: ReportDraftSubmission, receipt?: true): Promise<string | undefined | void> {
   const result: unknown = await request('/reports', {
     method: 'POST',
     body: JSON.stringify(reportSubmitEnvelope(draft)),
@@ -75,7 +77,11 @@ export async function submitReportDraft(draft: ReportDraftSubmission): Promise<v
     throw new Error('报工端点响应形状非法（缺 status 字段）');
   }
   const outcome = result as { status?: unknown; reason?: unknown };
-  if (outcome.status === 'committed') return;
+  if (outcome.status === 'committed') {
+    const report = (result as { report?: { id?: string } }).report;
+    if (receipt) return report?.id;
+    return;
+  }
   if (outcome.status === 'rejected') {
     const reason = typeof outcome.reason === 'string' ? outcome.reason : '未知原因';
     throw new Error(`报工被拒绝：${reason}`);

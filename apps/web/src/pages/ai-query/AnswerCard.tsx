@@ -7,7 +7,7 @@
  * 渲染，先例 WorkOrdersPage M2-R1 入口门禁）。口径注记（caliberNotes）在
  * answer 级（合同 §Wire），随 summary 渲染——明显可辨，不静默吞掉。
  *
- * 零行纪律：rows 空不渲染成业务零值——明示「无记录行（查询有效、无记录）」；
+ * 零行纪律：rows 空明示「无记录行（查询有效、无记录）」；计数 0 属实
  * 截断（totalKnown=false）不总结为全量，徽标与 note 原样呈现。
  */
 import { useNavigate } from 'react-router';
@@ -18,6 +18,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /** 主体类别 → 详情跳转文案（路由拼装在页面层门禁后传入）。 */
+function displayTimeText(value: string): string {
+  return value.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z/g, (time) => formatLocalDateTime(time));
+}
+
 const SUBJECT_DETAIL_LABELS: Readonly<Record<AiQueryFactCardSubject['kind'], string>> = {
   workorder: '查看工作令',
   material: '查看缺口核查',
@@ -55,7 +59,7 @@ function MetricList({ card }: { readonly card: AiQueryFactCard }) {
         <div key={metric.key} className="flex flex-col gap-0.5">
           <dt className="text-xs text-muted-foreground">{metric.label}</dt>
           <dd className="font-mono text-sm break-all">
-            {metric.value}
+            {typeof metric.value === 'string' ? displayTimeText(metric.value) : metric.value}
             {metric.unit !== undefined && metric.unit.length > 0 ? (
               <span className="ml-0.5 text-xs text-muted-foreground">{metric.unit}</span>
             ) : null}
@@ -73,7 +77,7 @@ function RowsTable({ card }: { readonly card: AiQueryFactCard }) {
   if (rows.values.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        无记录行（查询有效、无记录——不是业务零值）
+        无记录行（查询有效、无记录）
       </p>
     );
   }
@@ -94,7 +98,7 @@ function RowsTable({ card }: { readonly card: AiQueryFactCard }) {
             <tr key={rowIndex} className="border-b last:border-b-0">
               {values.map((value, columnIndex) => (
                 <td key={columnIndex} className="py-2 pr-4 whitespace-nowrap">
-                  {value === null ? '—' : value}
+                  {value === null ? '—' : typeof value === 'string' ? displayTimeText(value) : value}
                 </td>
               ))}
             </tr>
@@ -117,7 +121,7 @@ function FactCardView({
   const href = detailHref(card.subject);
   const timeWindow =
     card.timeBasis.from !== undefined || card.timeBasis.to !== undefined
-      ? `${card.timeBasis.from ?? '…'} ~ ${card.timeBasis.to ?? '…'}`
+      ? `${formatLocalDateTime(card.timeBasis.from)} ~ ${formatLocalDateTime(card.timeBasis.to)}`
       : null;
   return (
     <Card>
@@ -129,7 +133,7 @@ function FactCardView({
         <p className="text-xs text-muted-foreground">
           主体：{card.subject.label}
           <span className="ml-2 rounded-sm bg-muted px-1.5 py-0.5" title={timeWindow ?? undefined}>
-            时间口径：{card.timeBasis.label}
+            时间口径：{displayTimeText(card.timeBasis.label)}
           </span>
         </p>
       </CardHeader>
@@ -139,8 +143,8 @@ function FactCardView({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-mono text-xs break-all text-muted-foreground">
             {card.sourceRefs.map((ref, index) => (
-              <span key={index} className="mr-3 inline-block">
-                来源 {ref.ref} · 取数 {formatLocalDateTime(ref.queryMoment)}
+              <span key={index} className="mr-3 inline-block" title={ref.ref}>
+                来源 {displayTimeText(ref.ref)} · 取数 {formatLocalDateTime(ref.queryMoment)}
               </span>
             ))}
           </p>
@@ -189,7 +193,7 @@ export function AnswerView({
       )}
       {allEmpty && (
         <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-          查询有效、无记录——以上为口径说明，未产生业务数值。
+          查询有效、当前无记录——计数类指标显示的 0 为实际业务数值。
         </p>
       )}
       {answer.factCards.map((card, index) => (

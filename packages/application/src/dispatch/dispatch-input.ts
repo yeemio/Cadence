@@ -175,6 +175,8 @@ export interface OutsourcingLinePayload {
 }
 
 export interface DispatchCreatePayload {
+  readonly equipmentRefs?: readonly string[];
+  readonly rollup?: boolean;
   readonly workOrderId: string | null;
   readonly kind: DispatchKind;
   readonly title: string | null;
@@ -202,6 +204,9 @@ export interface DispatchCreatePayload {
 export function parseDispatchCreatePayload(input: unknown): DispatchCreatePayload {
   const record = requireObject(input, 'dispatch.create 载荷');
   const kind = requireKind(record['kind'], '派工 kind');
+  const equipmentRefs = record['equipmentRefs'] === undefined ? undefined : record['equipmentRefs'];
+  if (equipmentRefs !== undefined && (!Array.isArray(equipmentRefs) || equipmentRefs.length > 100 || equipmentRefs.some((ref) => typeof ref !== 'string' || !ref.trim() || ref.length > 128) || new Set(equipmentRefs).size !== equipmentRefs.length)) throw new DispatchInputError('设备集合须为不重复的有效设备编号（最多100台）');
+  if (record['rollup'] !== undefined && typeof record['rollup'] !== 'boolean') throw new DispatchInputError('rollup 须为布尔值');
   const workOrderId = optionalBoundedString(record['workOrderId'], '工作令 workOrderId', 1, 128) ?? null;
   const title = optionalBoundedString(record['title'], '标题 title', 1, 256) ?? null;
   const drawingNo = optionalBoundedString(record['drawingNo'], '图号 drawingNo', 1, 128) ?? null;
@@ -232,6 +237,8 @@ export function parseDispatchCreatePayload(input: unknown): DispatchCreatePayloa
   }
 
   return {
+    ...(equipmentRefs === undefined ? {} : { equipmentRefs: equipmentRefs as string[] }),
+    ...(record['rollup'] === undefined ? {} : { rollup: record['rollup'] as boolean }),
     workOrderId,
     kind,
     title,

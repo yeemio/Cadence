@@ -183,6 +183,7 @@ export function MobilePartsApprovalPage() {
     enabled: accessible,
   });
 
+  const [notice, setNotice] = useState<string | null>(null);
   const [remarkInputs, setRemarkInputs] = useState<Record<string, string>>({});
   const decideMutation = useMutation({
     mutationFn: (input: { row: PartsRequestRowView; decision: Decision; remark: string }) =>
@@ -190,7 +191,8 @@ export function MobilePartsApprovalPage() {
         decision: input.decision,
         remark: input.remark,
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.committed) setNotice('审批已提交成功。');
       void queryClient.invalidateQueries({ queryKey: ['workorder', 'parts-requests'] });
     },
   });
@@ -220,6 +222,7 @@ export function MobilePartsApprovalPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}
       <Card>
         <CardHeader>
           <CardTitle>配件审批</CardTitle>
@@ -255,7 +258,7 @@ export function MobilePartsApprovalPage() {
             const busy = decideMutation.isPending && decideMutation.variables?.row.id === row.id;
             const remarkError = remarkInputs[`${row.id}::error`] ?? '';
             const gate = gates?.[row.id] ?? null;
-            const blockReason = rowApprovalBlock(row, gate, myUserId);
+            const blockReason = decideMutation.variables?.row.id === row.id && decideMutation.data?.committed ? null : rowApprovalBlock(row, gate, myUserId);
             const outcome =
               decideMutation.variables?.row.id === row.id && decideMutation.data !== undefined
                 ? approvalOutcomeCopy(decideMutation.data)
@@ -266,7 +269,7 @@ export function MobilePartsApprovalPage() {
                 className="flex flex-col gap-2 rounded-lg border bg-background px-3 py-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                  <span className={row.state === 'level2_review' || row.state === 'level3_review' ? 'rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-950' : 'rounded bg-muted px-1.5 py-0.5 text-xs'}>
                     {labelOf(PARTS_STATE_LABELS, row.state)}
                   </span>
                   <span className="font-mono text-xs text-muted-foreground">{row.id}</span>
