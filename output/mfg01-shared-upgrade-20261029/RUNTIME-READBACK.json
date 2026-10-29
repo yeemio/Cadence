@@ -1,0 +1,36 @@
+{
+  "3000": {
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "tenant": "default"
+    }
+  },
+  "8080": {
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "tenant": "default"
+    }
+  },
+  "cadence-server-1": {
+    "imageId": "sha256:d265803b4de25e5dd7586dfcfd85e72828fe64de7b515a316d0a62c90f48249c",
+    "commitLabel": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+    "running": true,
+    "health": "healthy"
+  },
+  "cadence-web-1": {
+    "imageId": "sha256:6e56314ca5b50816d6ed26380858a473fbb82c4ea7a0fc5c58a09673f539c394",
+    "commitLabel": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+    "running": true,
+    "health": "starting"
+  },
+  "html": {
+    "status": 200,
+    "sha256": "d523ca2a89b610a10a5b3febc6fe75777c6d943fe7bb32f9a1e5f1e634f3f50e"
+  },
+  "commit": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+  "candidate": "26c3e0c141aad45ac7b77352ff231def9614465eef35cffb0091a180851935e5",
+  "sourceBuild": "git archive exact commit; three image build EXIT0",
+  "sameHtmlAsContainer": true
+}

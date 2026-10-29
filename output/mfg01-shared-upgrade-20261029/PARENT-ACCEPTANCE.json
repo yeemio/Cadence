@@ -1,0 +1,236 @@
+{
+  "event": "shared-delta-0425ded-v1",
+  "verdict": "ACCEPT_BOUNDED_SHARED_UPGRADE_AND_DELTA",
+  "recordedAt": "2026-10-29 13:48 Asia/Shanghai",
+  "runtimeSourceCommit": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+  "candidateSha256": "26c3e0c141aad45ac7b77352ff231def9614465eef35cffb0091a180851935e5",
+  "scope": "Owner前三步：准确候选提交推送、共享测试升级、原报告差量复测",
+  "counts": {
+    "PASS": 11,
+    "PARTIAL": 6,
+    "OUT_OF_SCOPE": 1,
+    "UNVERIFIED": 1
+  },
+  "results": [
+    {
+      "id": "P0-01",
+      "status": "PASS",
+      "conclusion": "三资源冲突逐项409，草案不占用、运营批准后源派工assigned；旧assign入口409。共享不重复双进程强锁。",
+      "evidence": [
+        "s03-conflict-1.http",
+        "s03-conflict-2.http",
+        "s03-conflict-3.http",
+        "s03-draft-readback.http",
+        "s03-assigned.http"
+      ]
+    },
+    {
+      "id": "P0-02",
+      "status": "PASS",
+      "conclusion": "E07/E08发布承诺403；运营发布/重诺保留原与前次承诺，计划日期保持原合同可填。",
+      "evidence": [
+        "r1-18-promise-denied-mfg-e07.http",
+        "r1-18-promise-denied-mfg-e08.http",
+        "r1-20-repromise.http",
+        "r1-21-plan-date-preserved.http"
+      ]
+    },
+    {
+      "id": "P0-03",
+      "status": "PASS",
+      "conclusion": "生产/品质入库403，仓管判定403；仓管合法消费QC事实，职责分离。",
+      "evidence": [
+        "b14-inbound-denied-prod01.http",
+        "b14-inbound-denied-mfg-e10.http",
+        "b14-warehouse-judge-denied.http",
+        "r2-49-wh-consumes-release1.http"
+      ]
+    },
+    {
+      "id": "P0-04",
+      "status": "PASS",
+      "conclusion": "净额5万元E13复核→E02；同清单跨供方累计12.5万元→E01，E02越级403；净价未知和旧审批/未核价发出409。",
+      "evidence": [
+        "r2-35-finance-review1.http",
+        "r2-36-ops-approve1.http",
+        "r2-62-finance-review2.http",
+        "r2-63-under-authority-denied.http",
+        "r2-68-e01-approve2.http",
+        "r2-33-unknown-net-denied.http"
+      ]
+    },
+    {
+      "id": "P0-05",
+      "status": "PASS",
+      "conclusion": "本轮两PO仓管收货自动创建standard_purchase待检，回执含inspectionId；物理先待检后释放不双增。其他合法采购来源复用既有隔离证据。",
+      "evidence": [
+        "r2-40-physical-receipt1.http",
+        "r2-71-physical-receipt2.http",
+        "r2-46-pending-iq-source.http",
+        "r2-49-wh-consumes-release1.http"
+      ]
+    },
+    {
+      "id": "P0-06",
+      "status": "PASS",
+      "conclusion": "待检/隔离/未知不可用，QC事实不直接增合格库存，仓管释放physicalDelta0；准确重试、超额度与消费后撤判拒绝；最终10/8/2/占用8/可用0。",
+      "evidence": [
+        "r2-42-pending-not-issuable.http",
+        "r2-45-unknown-not-available.http",
+        "r2-48-qc-fact-not-auto-stock.http",
+        "r2-51-release-retry.http",
+        "r2-52-release-over-credit.http",
+        "r2-53-revoke-consumed-quality.http",
+        "b14-final-stock.http"
+      ]
+    },
+    {
+      "id": "P0-07",
+      "status": "PASS",
+      "conclusion": "故障及修好后仍禁放行，单签仍409；E02/E10独立签署后放行；新故障不能沿用旧签，重新双签后开工。",
+      "evidence": [
+        "r2-04-fault-blocks-production.http",
+        "r2-07-resolve-not-release.http",
+        "r2-09-single-sign-blocked.http",
+        "r2-16b-production-release.http",
+        "r2-20-old-signature-no-bypass.http",
+        "r2-24-start-after-new-signatures.http"
+      ]
+    },
+    {
+      "id": "P1-01",
+      "status": "PARTIAL",
+      "conclusion": "本次实际标准件领用2、撤销恢复原批次和占用、再领用2已证；完整RES/RTN业务单据状态机范围外。",
+      "evidence": [
+        "r2-94-confirm-standard.http",
+        "r2-95-after-standard-issue.http",
+        "r2-96-revoke-standard.http",
+        "r2-97-after-standard-revoke.http",
+        "r2-98-reconfirm-standard.http"
+      ]
+    },
+    {
+      "id": "P1-02",
+      "status": "PASS",
+      "conclusion": "50000元E05/E10两签；50000.01元需加E01，少签关闭拒绝；修订清空旧签、旧版409、末签准确重试。只证NC处置，不代表物理报废扣账。",
+      "evidence": [
+        "r2-126-disposed-source-0.http",
+        "r2-116-high-revision.http",
+        "r2-117-high-stale-sign.http",
+        "r2-120-old-close-partial.http",
+        "r2-124-high-e01-sign.http",
+        "r2-125-high-sign-idempotent.http"
+      ]
+    },
+    {
+      "id": "P1-03",
+      "status": "OUT_OF_SCOPE",
+      "conclusion": "CLM01未纳入，不用aftercare替代。",
+      "evidence": []
+    },
+    {
+      "id": "P1-04",
+      "status": "PARTIAL",
+      "conclusion": "新PO原价null和独立净额保留，旧seed PO前后JSON完全相同；PO A/B业务版与应付模型范围外。",
+      "evidence": [
+        "r2-37-approved-source1.http",
+        "history-before-po.http",
+        "history-after-po.http"
+      ]
+    },
+    {
+      "id": "P1-05",
+      "status": "PARTIAL",
+      "conclusion": "外协完成产生待检和冻结约束沿用已接收隔离证据，本次共享未新增外协样本；完整SCN09/公司独立验收/新财务模型范围外。",
+      "evidence": []
+    },
+    {
+      "id": "P1-06",
+      "status": "PASS",
+      "conclusion": "真实清单/图纸/工艺A绑定后仅SO02冻结B；冻结拒建和拒开工、工程不能代运营批准、解冻仍拒旧A；新B可开工，最终A/B/A。三源冻结沿用隔离证据；历史成本未验。",
+      "evidence": [
+        "r2-169-wo-a-applicability-1.http",
+        "ec13-freeze.http",
+        "ec13-frozen-create-denied.http",
+        "ec13-frozen-start-denied.http",
+        "ec13-engineer-approve-denied.http",
+        "ec13-stale-a-start-denied.http",
+        "ec13-b-start.http",
+        "ec13-final-bindings.http"
+      ]
+    },
+    {
+      "id": "P2-01",
+      "status": "PARTIAL",
+      "conclusion": "本次共享证承诺/重诺留原值；两次分批发货后曾迟交保留复用隔离证据，未在共享重放发货。",
+      "evidence": [
+        "r1-20-repromise.http"
+      ]
+    },
+    {
+      "id": "P2-02",
+      "status": "PARTIAL",
+      "conclusion": "同收货源隔离→返工处置→复检→仓管释放已证；新增完整IQ/IP/FQ及工艺批准返工路线范围外。",
+      "evidence": [
+        "r2-73-iq2-failed.http",
+        "r2-76-rework-disposal.http",
+        "r2-77-iq2-recheck.http",
+        "r2-79-wh-consumes-release2.http"
+      ]
+    },
+    {
+      "id": "P2-03",
+      "status": "PARTIAL",
+      "conclusion": "库位分布与仓库过滤200，隔离禁发409；独立SCRAP/客户物权处分列、任意路由别名未新增。",
+      "evidence": [
+        "b14-locations.http",
+        "r2-75-quarantine-no-out.http"
+      ]
+    },
+    {
+      "id": "P2-04",
+      "status": "PASS",
+      "conclusion": "主控以plan01打开真实旧seed工作令详情，无无权图纸读取卡/403；按原合同隐藏入口，未增加图纸读权。",
+      "evidence": [
+        "../ui/13-plan-workorder-visibility.txt"
+      ]
+    },
+    {
+      "id": "P2-05",
+      "status": "PASS",
+      "conclusion": "仓管完整PO列表403但最小收货投影200，两次合法收货自动建检成功。",
+      "evidence": [
+        "b14-warehouse-po-price-denied.http",
+        "b14-warehouse-minimal-receiving.http",
+        "r2-40-physical-receipt1.http"
+      ]
+    },
+    {
+      "id": "P2-06",
+      "status": "UNVERIFIED",
+      "conclusion": "主控已读旧seed工作令项目经理仍为user-factory-plan，新制造E职责独立；原配件申请审批执行链未重放，因此本项仍UNVERIFIED，不把保留映射当作新运营审批。",
+      "evidence": [
+        "../ui/13-plan-workorder-visibility.txt"
+      ]
+    }
+  ],
+  "ui": "ui/RESULT.json",
+  "workerEvidence": "retest/RESULT.json",
+  "rawHttpCount": 204,
+  "nativeWorker": "/root/shared_delta_retest",
+  "acceptanceOwner": "/root",
+  "independence": "same-family worker evidence, controller acceptance; no external/human-business acceptance claim",
+  "sourceChangedDuringRetest": false,
+  "oldDataPreserved": {
+    "tables": 107,
+    "rows": 1051,
+    "changedTables": 0
+  },
+  "unverified": [
+    "P2-06旧配件审批执行链",
+    "原报告指定WO/NC/IQ当前共享库404，原因未核定",
+    "PDF视觉",
+    "历史成本样本",
+    "M2整体/客户部署/真实客户业务"
+  ]
+}

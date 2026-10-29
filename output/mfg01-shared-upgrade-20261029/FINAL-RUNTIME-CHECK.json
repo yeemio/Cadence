@@ -1,0 +1,40 @@
+{
+  "candidate": "26c3e0c141aad45ac7b77352ff231def9614465eef35cffb0091a180851935e5",
+  "sourceHashesMatch": true,
+  "migrations": [
+    {
+      "name": "20261028093000_workorder_equipment_issue_chain",
+      "checksum": "2b807c9592c464f945f040865dcaa7c925a7ff0b82a3f7091868134a2e5a406a",
+      "localChecksumMatches": true
+    },
+    {
+      "name": "20261028093100_rls_equipment_replay",
+      "checksum": "1f90673a2a331a7c9ea2466cde9e2d4aa75f6b93b86f09eb954dee8f1ff862e8",
+      "localChecksumMatches": true
+    },
+    {
+      "name": "20261028180000_mfg_control_quality",
+      "checksum": "19a75dfc7cd858e709c1d001f84c3059ead06ec84052c9d249eaaec24f286885",
+      "localChecksumMatches": true
+    },
+    {
+      "name": "20261028180100_rls_mfg_replay",
+      "checksum": "85dfe2b99585202b5b4136273ff9437909df3eb192a6305b4b98024f82f9c4f9",
+      "localChecksumMatches": true
+    },
+    {
+      "name": "20261028182000_mfg_event_immutability",
+      "checksum": "195bf2620f8cb27f23d102199f5ae6da94645ea38befd643ada99134f3254902",
+      "localChecksumMatches": true
+    }
+  ],
+  "rls": {
+    "tables": 121,
+    "rls": 121,
+    "forceRls": 121
+  },
+  "containerHealth": {
+    "cadence-server-1": "healthy",
+    "cadence-web-1": "healthy"
+  }
+}

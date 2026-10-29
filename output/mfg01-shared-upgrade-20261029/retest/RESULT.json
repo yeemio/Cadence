@@ -1,0 +1,1334 @@
+{
+  "event": "shared-delta-0425ded-v1",
+  "status": "READY_FOR_CONTROLLER_ACCEPTANCE",
+  "worker": "/root/shared_delta_retest",
+  "commit": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+  "candidateSha256": "26c3e0c141aad45ac7b77352ff231def9614465eef35cffb0091a180851935e5",
+  "environment": {
+    "api": "http://localhost:3000",
+    "web": "http://localhost:8080",
+    "tenant": "default"
+  },
+  "identityEvidence": [
+    "../RUNTIME-READBACK.json",
+    "../IMAGE-IDENTITY.json",
+    "../ROLE-IDENTITIES.json"
+  ],
+  "results": [
+    {
+      "id": "P0-01",
+      "status": "PASS",
+      "conclusion": "三资源冲突逐项409，草案不占用、运营批准后源派工assigned；旧assign入口409。共享不重复双进程强锁。",
+      "evidence": [
+        "s03-conflict-1.http",
+        "s03-conflict-2.http",
+        "s03-conflict-3.http",
+        "s03-draft-readback.http",
+        "s03-assigned.http"
+      ]
+    },
+    {
+      "id": "P0-02",
+      "status": "PASS",
+      "conclusion": "E07/E08发布承诺403；运营发布/重诺保留原与前次承诺，计划日期保持原合同可填。",
+      "evidence": [
+        "r1-18-promise-denied-mfg-e07.http",
+        "r1-18-promise-denied-mfg-e08.http",
+        "r1-20-repromise.http",
+        "r1-21-plan-date-preserved.http"
+      ]
+    },
+    {
+      "id": "P0-03",
+      "status": "PASS",
+      "conclusion": "生产/品质入库403，仓管判定403；仓管合法消费QC事实，职责分离。",
+      "evidence": [
+        "b14-inbound-denied-prod01.http",
+        "b14-inbound-denied-mfg-e10.http",
+        "b14-warehouse-judge-denied.http",
+        "r2-49-wh-consumes-release1.http"
+      ]
+    },
+    {
+      "id": "P0-04",
+      "status": "PASS",
+      "conclusion": "净额5万元E13复核→E02；同清单跨供方累计12.5万元→E01，E02越级403；净价未知和旧审批/未核价发出409。",
+      "evidence": [
+        "r2-35-finance-review1.http",
+        "r2-36-ops-approve1.http",
+        "r2-62-finance-review2.http",
+        "r2-63-under-authority-denied.http",
+        "r2-68-e01-approve2.http",
+        "r2-33-unknown-net-denied.http"
+      ]
+    },
+    {
+      "id": "P0-05",
+      "status": "PASS",
+      "conclusion": "本轮两PO仓管收货自动创建standard_purchase待检，回执含inspectionId；物理先待检后释放不双增。其他合法采购来源复用既有隔离证据。",
+      "evidence": [
+        "r2-40-physical-receipt1.http",
+        "r2-71-physical-receipt2.http",
+        "r2-46-pending-iq-source.http",
+        "r2-49-wh-consumes-release1.http"
+      ]
+    },
+    {
+      "id": "P0-06",
+      "status": "PASS",
+      "conclusion": "待检/隔离/未知不可用，QC事实不直接增合格库存，仓管释放physicalDelta0；准确重试、超额度与消费后撤判拒绝；最终10/8/2/占用8/可用0。",
+      "evidence": [
+        "r2-42-pending-not-issuable.http",
+        "r2-45-unknown-not-available.http",
+        "r2-48-qc-fact-not-auto-stock.http",
+        "r2-51-release-retry.http",
+        "r2-52-release-over-credit.http",
+        "r2-53-revoke-consumed-quality.http",
+        "b14-final-stock.http"
+      ]
+    },
+    {
+      "id": "P0-07",
+      "status": "PASS",
+      "conclusion": "故障及修好后仍禁放行，单签仍409；E02/E10独立签署后放行；新故障不能沿用旧签，重新双签后开工。",
+      "evidence": [
+        "r2-04-fault-blocks-production.http",
+        "r2-07-resolve-not-release.http",
+        "r2-09-single-sign-blocked.http",
+        "r2-16b-production-release.http",
+        "r2-20-old-signature-no-bypass.http",
+        "r2-24-start-after-new-signatures.http"
+      ]
+    },
+    {
+      "id": "P1-01",
+      "status": "PARTIAL",
+      "conclusion": "本次实际标准件领用2、撤销恢复原批次和占用、再领用2已证；完整RES/RTN业务单据状态机范围外。",
+      "evidence": [
+        "r2-94-confirm-standard.http",
+        "r2-95-after-standard-issue.http",
+        "r2-96-revoke-standard.http",
+        "r2-97-after-standard-revoke.http",
+        "r2-98-reconfirm-standard.http"
+      ]
+    },
+    {
+      "id": "P1-02",
+      "status": "PASS",
+      "conclusion": "50000元E05/E10两签；50000.01元需加E01，少签关闭拒绝；修订清空旧签、旧版409、末签准确重试。只证NC处置，不代表物理报废扣账。",
+      "evidence": [
+        "r2-126-disposed-source-0.http",
+        "r2-116-high-revision.http",
+        "r2-117-high-stale-sign.http",
+        "r2-120-old-close-partial.http",
+        "r2-124-high-e01-sign.http",
+        "r2-125-high-sign-idempotent.http"
+      ]
+    },
+    {
+      "id": "P1-03",
+      "status": "OUT_OF_SCOPE",
+      "conclusion": "CLM01未纳入，不用aftercare替代。",
+      "evidence": []
+    },
+    {
+      "id": "P1-04",
+      "status": "PARTIAL",
+      "conclusion": "新PO原价null和独立净额保留，旧seed PO前后JSON完全相同；PO A/B业务版与应付模型范围外。",
+      "evidence": [
+        "r2-37-approved-source1.http",
+        "history-before-po.http",
+        "history-after-po.http"
+      ]
+    },
+    {
+      "id": "P1-05",
+      "status": "PARTIAL",
+      "conclusion": "外协完成产生待检和冻结约束沿用已接收隔离证据，本次共享未新增外协样本；完整SCN09/公司独立验收/新财务模型范围外。",
+      "evidence": []
+    },
+    {
+      "id": "P1-06",
+      "status": "PASS",
+      "conclusion": "真实清单/图纸/工艺A绑定后仅SO02冻结B；冻结拒建和拒开工、工程不能代运营批准、解冻仍拒旧A；新B可开工，最终A/B/A。三源冻结沿用隔离证据；历史成本未验。",
+      "evidence": [
+        "r2-169-wo-a-applicability-1.http",
+        "ec13-freeze.http",
+        "ec13-frozen-create-denied.http",
+        "ec13-frozen-start-denied.http",
+        "ec13-engineer-approve-denied.http",
+        "ec13-stale-a-start-denied.http",
+        "ec13-b-start.http",
+        "ec13-final-bindings.http"
+      ]
+    },
+    {
+      "id": "P2-01",
+      "status": "PARTIAL",
+      "conclusion": "本次共享证承诺/重诺留原值；两次分批发货后曾迟交保留复用隔离证据，未在共享重放发货。",
+      "evidence": [
+        "r1-20-repromise.http"
+      ]
+    },
+    {
+      "id": "P2-02",
+      "status": "PARTIAL",
+      "conclusion": "同收货源隔离→返工处置→复检→仓管释放已证；新增完整IQ/IP/FQ及工艺批准返工路线范围外。",
+      "evidence": [
+        "r2-73-iq2-failed.http",
+        "r2-76-rework-disposal.http",
+        "r2-77-iq2-recheck.http",
+        "r2-79-wh-consumes-release2.http"
+      ]
+    },
+    {
+      "id": "P2-03",
+      "status": "PARTIAL",
+      "conclusion": "库位分布与仓库过滤200，隔离禁发409；独立SCRAP/客户物权处分列、任意路由别名未新增。",
+      "evidence": [
+        "b14-locations.http",
+        "r2-75-quarantine-no-out.http"
+      ]
+    },
+    {
+      "id": "P2-04",
+      "status": "UNVERIFIED",
+      "conclusion": "计划员无权图纸卡隐藏属于主控UI读回，本执行者不操作浏览器，不扩大图纸权限。",
+      "evidence": []
+    },
+    {
+      "id": "P2-05",
+      "status": "PASS",
+      "conclusion": "仓管完整PO列表403但最小收货投影200，两次合法收货自动建检成功。",
+      "evidence": [
+        "b14-warehouse-po-price-denied.http",
+        "b14-warehouse-minimal-receiving.http",
+        "r2-40-physical-receipt1.http"
+      ]
+    },
+    {
+      "id": "P2-06",
+      "status": "UNVERIFIED",
+      "conclusion": "本次不改旧项目经理审批映射或账号权限；新制造链真实E角色已证，原配件审批样本/旧审批流未重放。",
+      "evidence": []
+    }
+  ],
+  "counts": {
+    "PASS": 10,
+    "PARTIAL": 6,
+    "OUT_OF_SCOPE": 1,
+    "UNVERIFIED": 2
+  },
+  "history": [
+    {
+      "key": "wo",
+      "path": "/workorder/work-orders/wo-01a181f2-3c2b-7cbd-a86d-d1d2c3001dc0",
+      "beforeStatus": 404,
+      "afterStatus": 404,
+      "responseJsonEqual": true,
+      "conclusion": "UNVERIFIED_404"
+    },
+    {
+      "key": "po",
+      "path": "/purchase/orders/po-seed-factory-01",
+      "beforeStatus": 200,
+      "afterStatus": 200,
+      "responseJsonEqual": true,
+      "conclusion": "UNCHANGED"
+    },
+    {
+      "key": "nc",
+      "path": "/inspection/nonconformities/nc-01a17d8b-e091-7783-82ed-c007b5c81061",
+      "beforeStatus": 404,
+      "afterStatus": 404,
+      "responseJsonEqual": true,
+      "conclusion": "UNVERIFIED_404"
+    },
+    {
+      "key": "iq",
+      "path": "/inspection/orders/insp-01a181f9-834f-73c2-96c2-81ca6e991c6b",
+      "beforeStatus": 404,
+      "afterStatus": 404,
+      "responseJsonEqual": true,
+      "conclusion": "UNVERIFIED_404"
+    }
+  ],
+  "samples": "UI-SAMPLES.json",
+  "finalStock": {
+    "levels": [
+      {
+        "itemId": "01a1862a-f094-70cf-95f0-0c1ebaa9bd3c",
+        "warehouseId": "wh-seed-main",
+        "qtyOnHand": 10,
+        "qtyReserved": 8,
+        "qualifiedQty": 8,
+        "pendingQty": 0,
+        "quarantineQty": 0,
+        "unknownQty": 2,
+        "effectiveReservedQty": 8,
+        "unbackedReservedQty": 0,
+        "availableQty": 0
+      }
+    ]
+  },
+  "completedPhases": [
+    "01-setup",
+    "02-schedule-drafts",
+    "03-schedule-approve",
+    "04-commitment",
+    "05-purchase-first",
+    "06-quality-first",
+    "07-purchase-second",
+    "08-quality-second",
+    "09-issue",
+    "10c-restart-continue",
+    "11-scrap",
+    "12-ec-setup",
+    "13-ec-freeze",
+    "14-boundaries"
+  ],
+  "harnessFailures": [
+    {
+      "file": "10-restart-failure.json",
+      "cause": "Same synthetic dispatch already had an approved schedule; correct API409",
+      "resolution": "Only synthetic prior schedule canceled via legal API once"
+    },
+    {
+      "file": "10b-restart-continue-failure.json",
+      "cause": "Continuation local planned reference not persisted; no next HTTP request",
+      "resolution": "Controller approved state.productionDraft and declared board in10c; resumed from r2-16b"
+    }
+  ],
+  "productFailures": [],
+  "originalReportSha256": "33554549c62878eafbb9004d48b67d7349f0a31e2a12f519e400419b7df4408e",
+  "http": [
+    {
+      "file": "01-board-role.http",
+      "status": 200,
+      "sha256": "b443643a63b71cf2ab440aa3f1f85c20e5136fc7bbc47f20029a5d7778d8cf98"
+    },
+    {
+      "file": "02-admin-no-duty.http",
+      "status": 403,
+      "sha256": "4a426ad777ef048b012a805f44073ce6679d427b4fa95e5a213f73f3f6633842"
+    },
+    {
+      "file": "03-purch-old-no-duty.http",
+      "status": 403,
+      "sha256": "0ec596dddd19ade3d67b97c0e804fc3cf0b7357917b3fdbbfbd36cfcf5b6e96b"
+    },
+    {
+      "file": "04-wo-SO01.http",
+      "status": 201,
+      "sha256": "9f7550389a07d3f4e3a1ac200c504af7458769af4b77b5d26d22aaa9f5fd7748"
+    },
+    {
+      "file": "04-wo-SO02.http",
+      "status": 201,
+      "sha256": "aac39863884410d853a9675c99069f60333d7b9b13d5f92d414b7d43b2b7ec3b"
+    },
+    {
+      "file": "04-wo-SO03.http",
+      "status": 201,
+      "sha256": "3c853a91daea346d62ff410fe1fce866f721d4769080cbeaba408b74658e8b42"
+    },
+    {
+      "file": "05-process.http",
+      "status": 201,
+      "sha256": "90706b9196aca88de83aecdb363051568880f4b8463a4a92ff7a076fc010dc76"
+    },
+    {
+      "file": "06-machine-A.http",
+      "status": 201,
+      "sha256": "e62f521d32cbcd4d0cb10c537fee06b80e61ed72cf837904568ca443c8055950"
+    },
+    {
+      "file": "06-machine-B.http",
+      "status": 201,
+      "sha256": "29233a201174a25d31559035e22f4530eec74f590a8c77fc17dc8642c178a9a2"
+    },
+    {
+      "file": "07-tool-A.http",
+      "status": 201,
+      "sha256": "fb8311441cebe0b92dd9296d08295c73a444ab3e92ad235f94c9d66eb0bb7394"
+    },
+    {
+      "file": "07-tool-B.http",
+      "status": 201,
+      "sha256": "8e66357fa09b80118dd9a6e6958323a312cc1d13779ef6a6b08c8c555a15a6e0"
+    },
+    {
+      "file": "08-actual-sources.http",
+      "status": 200,
+      "sha256": "c4932f6d733a44477e9f4f36d88e7a32e50672a3ee23053731f26617f71f8ab5"
+    },
+    {
+      "file": "09-skill.http",
+      "status": 201,
+      "sha256": "ae8776d7b5c2dca926ea639fffa0d7587dc8194bbc4a8eea6901fc1973afeb27"
+    },
+    {
+      "file": "10-dispatch-0.http",
+      "status": 201,
+      "sha256": "8fb999c4d357bd6ea8ff12d5e14709df6c12f0cc542341ef40568c32e127d382"
+    },
+    {
+      "file": "10-dispatch-1.http",
+      "status": 201,
+      "sha256": "067b9804dcb8c2f5aa3d656d35728f7172e6386a5ca06d246b08bbe837830485"
+    },
+    {
+      "file": "10-dispatch-2.http",
+      "status": 201,
+      "sha256": "1399a4c647a779ef7718139a1f58a953ca326a94eb32b5ac42af4d7c79cd8f71"
+    },
+    {
+      "file": "b14-final-reservations.http",
+      "status": 200,
+      "sha256": "ec72551434f18653c0c7719615a482762d419ec2e0694c8219c25d55e7486d8a"
+    },
+    {
+      "file": "b14-final-stock.http",
+      "status": 200,
+      "sha256": "af7b430af3b621e52df936374ceddac5f991b6ab15da23d1e0c5b4bf96efcce5"
+    },
+    {
+      "file": "b14-inbound-denied-mfg-e10.http",
+      "status": 403,
+      "sha256": "7c59b408c8d24935f53253bbc95790fb14c9a4c566233e7c34465671661d3a6c"
+    },
+    {
+      "file": "b14-inbound-denied-prod01.http",
+      "status": 403,
+      "sha256": "7c59b408c8d24935f53253bbc95790fb14c9a4c566233e7c34465671661d3a6c"
+    },
+    {
+      "file": "b14-locations.http",
+      "status": 200,
+      "sha256": "836df9167fb3b47db48c0e001cc72bcaa5c3e36a027d0db8f85ae9aeb31db20b"
+    },
+    {
+      "file": "b14-warehouse-judge-denied.http",
+      "status": 403,
+      "sha256": "7c59b408c8d24935f53253bbc95790fb14c9a4c566233e7c34465671661d3a6c"
+    },
+    {
+      "file": "b14-warehouse-minimal-receiving.http",
+      "status": 200,
+      "sha256": "f54eb29c117d49052bd0110cbfc9945226c47fe6bdd891404a236ae119dbe908"
+    },
+    {
+      "file": "b14-warehouse-po-price-denied.http",
+      "status": 403,
+      "sha256": "32aa9c605b289101c2bf8510dd901a911d5e7818816a85556ad6f3fd81396e52"
+    },
+    {
+      "file": "ec12-process.http",
+      "status": 201,
+      "sha256": "875f658d986449c9b3369060f503095f427bfffca1dacd2f9731272e9f3491b1"
+    },
+    {
+      "file": "ec12-skill.http",
+      "status": 201,
+      "sha256": "57644d128353ae84f941d665a90e507e29e114d38145d3a6874578deaf35aab0"
+    },
+    {
+      "file": "ec13-a-current.http",
+      "status": 200,
+      "sha256": "912d28e84ffd760b8aef46121e2d6063b40cdd4cf9e546765b09e9d12daebec0"
+    },
+    {
+      "file": "ec13-a-job.http",
+      "status": 201,
+      "sha256": "93c3811dc2420869c779f0e7643dfd30a6dc04ef3d248c3e16f0787dde60b913"
+    },
+    {
+      "file": "ec13-a-release.http",
+      "status": 201,
+      "sha256": "1c743d000af8aee0d072aa433c690be4174da41474fad52165b932a0be77823e"
+    },
+    {
+      "file": "ec13-a-schedule.http",
+      "status": 201,
+      "sha256": "b73b7a6e1f9e1996345d4457872e016c50a0b0d4fa97d33390004321835b7912"
+    },
+    {
+      "file": "ec13-b-current.http",
+      "status": 200,
+      "sha256": "9d833e2b1331f4c5a4b9ed3d44be54a7068b0542b308d8fc4b9cbd524a8fa16a"
+    },
+    {
+      "file": "ec13-b-job.http",
+      "status": 201,
+      "sha256": "8ba9b48494fa0c46373d8f101d97d50da1dfbba24e17ed66982a9c334d3781e0"
+    },
+    {
+      "file": "ec13-b-release.http",
+      "status": 201,
+      "sha256": "5f506c67274d9b281a5ae81947e0a7fb94fe16f97f99272dfe04be5f4c61d6d0"
+    },
+    {
+      "file": "ec13-b-schedule.http",
+      "status": 201,
+      "sha256": "4dc9c0b9e30be16e4181af26465b75d824e8e190f91ff284211a68b910f4a21f"
+    },
+    {
+      "file": "ec13-b-sources.http",
+      "status": 200,
+      "sha256": "c0cc59260a67c9747bfb7c7c3719f8c040dff2053174a5089ab4c589760db3a0"
+    },
+    {
+      "file": "ec13-b-start.http",
+      "status": 201,
+      "sha256": "ff8b14bff65da2e7343526757926fa6f3c3c9587dd1915fc76535145e795d08d"
+    },
+    {
+      "file": "ec13-drawing-b.http",
+      "status": 201,
+      "sha256": "ef26d686684c423afe02330cbfcff8ac19a9b4af062736b41413d4d8d94c237c"
+    },
+    {
+      "file": "ec13-engineer-approve-denied.http",
+      "status": 403,
+      "sha256": "913a88586663478a7f636d06087f9deb8ea57e965acd91c435f663ca1b56670e"
+    },
+    {
+      "file": "ec13-final-bindings.http",
+      "status": 200,
+      "sha256": "ad68787d9f83c15e51b93839fbbb29c6ffdef824aba83fab2fc9d54ead15e894"
+    },
+    {
+      "file": "ec13-freeze.http",
+      "status": 201,
+      "sha256": "ec9adb8fd11d351026445691a671eb842bbfd1fe13483e1befd0b7bd3a890b39"
+    },
+    {
+      "file": "ec13-frozen-create-denied.http",
+      "status": 409,
+      "sha256": "bf9600537e3d1409c58518400af8deaf11ddcf94679664b44bed3e7d66a43711"
+    },
+    {
+      "file": "ec13-frozen-start-denied.http",
+      "status": 409,
+      "sha256": "bf9600537e3d1409c58518400af8deaf11ddcf94679664b44bed3e7d66a43711"
+    },
+    {
+      "file": "ec13-ops-approve.http",
+      "status": 201,
+      "sha256": "fb7eac6922ebd8d5defda1c56fd099d2ea7ad85bbf9c95646c94d031f533d3b0"
+    },
+    {
+      "file": "ec13-routing-b.http",
+      "status": 201,
+      "sha256": "022e04ab3060857b0960b612a549a95a183a318c1dfc423e9fac69c7bb460b7e"
+    },
+    {
+      "file": "ec13-stale-a-start-denied.http",
+      "status": 409,
+      "sha256": "4018fec8d1b410f82d64a430dc90fc35424511098d8124012d8a6d3c8c7c974d"
+    },
+    {
+      "file": "history-after-iq.http",
+      "status": 404,
+      "sha256": "a3567ca33fd8749353fa3fb879986b7f12e42e03cb7d66057e7d6362afea839a"
+    },
+    {
+      "file": "history-after-nc.http",
+      "status": 404,
+      "sha256": "5eef63c43fbd0bad56fa9feb02a7e933503af02c559b411d341f564a82688c6c"
+    },
+    {
+      "file": "history-after-po.http",
+      "status": 200,
+      "sha256": "bdb759d2ab165aff360d1b53dc9188717cf0e1d63816a399135e2d8733da0182"
+    },
+    {
+      "file": "history-after-wo.http",
+      "status": 404,
+      "sha256": "95babfc5e6681275e630da0368113e5a26b7eb536d03df9b1eb6ab8d58a6ded8"
+    },
+    {
+      "file": "history-before-iq.http",
+      "status": 404,
+      "sha256": "7951242a3beb49842f5cbcf52b48c8bc7e517f45ed1884110fddf090d767b367"
+    },
+    {
+      "file": "history-before-nc.http",
+      "status": 404,
+      "sha256": "9fb9f19bcedba1fa5f5db7bcfacf6896ef19eea6642b9ae3decdd6fab816df97"
+    },
+    {
+      "file": "history-before-po.http",
+      "status": 200,
+      "sha256": "011a8186cc045f967ad588952a2daf3ffadc7b8801aba385a8eca2ff0b9975d5"
+    },
+    {
+      "file": "history-before-wo.http",
+      "status": 404,
+      "sha256": "52697ba34bf680b9a2acf6d71b802d46897a3b778f7ba3588fe78d316468de81"
+    },
+    {
+      "file": "p07-wrong-review-duty.http",
+      "status": 403,
+      "sha256": "a195bbce44107df5fabbaa803a74fcce2a8095b4bac3efe5ead92af7d7af9a60"
+    },
+    {
+      "file": "q06-pending-reservations.http",
+      "status": 200,
+      "sha256": "a87cd81d5d95bec330c88c992e2bcfc7ca973d24fe43f57bda5657f2328e9e9d"
+    },
+    {
+      "file": "r1-03-other-skill.http",
+      "status": 201,
+      "sha256": "0f93fb7d534152b906463c545db9a5a7aae6742585dc59dd5f89619cf9cd0a83"
+    },
+    {
+      "file": "r1-04-old-assign-blocked.http",
+      "status": 409,
+      "sha256": "76b450bac2e22808ce526b4897205a2bd7edf71e174ca81443ee871c9687ed0c"
+    },
+    {
+      "file": "r1-05-schedule-0.http",
+      "status": 201,
+      "sha256": "9846ceee699f342b0fb45baa3a851ad23d8823449fa2ca10c18ee3d43e15a55f"
+    },
+    {
+      "file": "r1-05-schedule-1.http",
+      "status": 201,
+      "sha256": "bb39d07d6e35fb8285e9240de9d6782c336907d3381a5f847b59accc7bce5604"
+    },
+    {
+      "file": "r1-05-schedule-2.http",
+      "status": 201,
+      "sha256": "4418f41ee0ebf0ab74f24b0b2e892853ebee8e7caa2af65d8759edc0ad45917b"
+    },
+    {
+      "file": "r1-05-schedule-3.http",
+      "status": 201,
+      "sha256": "9ddd999d76dc3eee54ea3b6dc4670bfd71300b958aa717be802d98e6123f6ba5"
+    },
+    {
+      "file": "r1-18-promise-denied-mfg-e07.http",
+      "status": 403,
+      "sha256": "bb74c9fd8a906fbd91cca931e4ee6eea70554121d7ef846328e9f3cb76593b9d"
+    },
+    {
+      "file": "r1-18-promise-denied-mfg-e08.http",
+      "status": 403,
+      "sha256": "d50f77fa466cd7e48a5f6a15e222deab2f6aaf7ca7a39392fdf3e068b6ed4823"
+    },
+    {
+      "file": "r1-19-original-promise.http",
+      "status": 201,
+      "sha256": "f769798763fd8ecb18025e5c779fea5cec9fbc2ac83a27d2fbca5d85fb7a74ae"
+    },
+    {
+      "file": "r1-20-repromise.http",
+      "status": 201,
+      "sha256": "aae15a90d28d6a6ecd6ab3eb835f4bc260ac584fa157e5c1dc7bb2835b1b9251"
+    },
+    {
+      "file": "r1-21-plan-date-preserved.http",
+      "status": 200,
+      "sha256": "57fa010a3257c4b8bdd67af46c0f5e9987eccde61a1072b2099dd8b21a40db04"
+    },
+    {
+      "file": "r2-01-production-draft.http",
+      "status": 201,
+      "sha256": "251d1071f21c22b65d1c25c2419c0a4a3ad14ac4091c8e9bd96ccb5a9d29f95e"
+    },
+    {
+      "file": "r2-02-report-fault.http",
+      "status": 201,
+      "sha256": "de318d9aca77a52e420344828f224b5f1ce51408c3e187046d6416acdcd42aab"
+    },
+    {
+      "file": "r2-03-fault-source.http",
+      "status": 200,
+      "sha256": "3e82fa553f95f998ff0dadfb83fd8f5cc396191850c6a560adf6e4cebe8d875b"
+    },
+    {
+      "file": "r2-04-fault-blocks-production.http",
+      "status": 409,
+      "sha256": "09d3d7e54833675109c29360fb160454091ef95ed6566441ee6d9e80d2948753"
+    },
+    {
+      "file": "r2-05-repair-complete.http",
+      "status": 201,
+      "sha256": "78c4bad1de736a1c5b3d70a38448e74708fb444e32acbd772dc64a648200159d"
+    },
+    {
+      "file": "r2-06-repair-restart-source.http",
+      "status": 200,
+      "sha256": "35fd5da09b91afa8d8bdf0fa2afaddd0284713d0de37e4a6ed79132f96040015"
+    },
+    {
+      "file": "r2-07-resolve-not-release.http",
+      "status": 409,
+      "sha256": "09d3d7e54833675109c29360fb160454091ef95ed6566441ee6d9e80d2948753"
+    },
+    {
+      "file": "r2-08-ops-sign.http",
+      "status": 201,
+      "sha256": "d00be033193d6ec7db948eb9a093e134e7b612ce6372b727a1b97a31cf08e055"
+    },
+    {
+      "file": "r2-09-single-sign-blocked.http",
+      "status": 409,
+      "sha256": "09d3d7e54833675109c29360fb160454091ef95ed6566441ee6d9e80d2948753"
+    },
+    {
+      "file": "r2-10-wrong-duty-denied.http",
+      "status": 403,
+      "sha256": "7773b443c61fbf82b6c3b9daf8dd4f31e8b19d1c3c670b9f2f01841e3377b63d"
+    },
+    {
+      "file": "r2-100-issue-movement-ledger.http",
+      "status": 200,
+      "sha256": "acb6fd19eb0d1671dd0effa45edfc6b2d71730fe8bd5c26d1fa21e24b75515c0"
+    },
+    {
+      "file": "r2-101-quality-lot-ledger.http",
+      "status": 200,
+      "sha256": "0b7d84e978814684779c7970f13a8759d5dbafc039f139066197b58fbbd84803"
+    },
+    {
+      "file": "r2-109-scrap-inspection-0.http",
+      "status": 201,
+      "sha256": "07b942e7ecde7043d1fd16444df8c6a6fa7b32f03a1cb6cf17b90d8270cced63"
+    },
+    {
+      "file": "r2-109-scrap-inspection-1.http",
+      "status": 201,
+      "sha256": "28a9aa0a5f38150c39e4ce40f6147c699cadb58dc47ccf12b3c7271cb6636a4e"
+    },
+    {
+      "file": "r2-110-scrap-failure-0.http",
+      "status": 201,
+      "sha256": "761f9fbfa00c85860e2676725f1825830093caefb03b1b89104f4f6c02fa3989"
+    },
+    {
+      "file": "r2-110-scrap-failure-1.http",
+      "status": 201,
+      "sha256": "4b057280a6da77e0c00ffbbaf7a45d457eeb4cecdda74f5841cf59413199d090"
+    },
+    {
+      "file": "r2-111-old-scrap-disposal-0.http",
+      "status": 409,
+      "sha256": "ad9ac916ec3da5d1936fffddc387a2e2c99e51c7975a9ed3816cca2f134b510e"
+    },
+    {
+      "file": "r2-111-old-scrap-disposal-1.http",
+      "status": 409,
+      "sha256": "10d2840d6d1c8643aa73b9718666ac5e951ed9e28ad5d5029bfbb11afd7017b6"
+    },
+    {
+      "file": "r2-112-unknown-loss-0.http",
+      "status": 409,
+      "sha256": "8d0722817f6815f706bc01e787256acbf75e128e2ef3030ad0373e45c102d627"
+    },
+    {
+      "file": "r2-112-unknown-loss-1.http",
+      "status": 409,
+      "sha256": "536f83aa60345ca08b1e3cc52d67bcb245637c76db24f347d0e741afa61c6831"
+    },
+    {
+      "file": "r2-113-scrap-request-0.http",
+      "status": 201,
+      "sha256": "bff0f5b1e099b955ea166d7fcdfd474181002b2b31c16bbda26835c6b653c45c"
+    },
+    {
+      "file": "r2-113-scrap-request-1.http",
+      "status": 201,
+      "sha256": "0a284095d383995062e21c7a517ce23d0b292ab4bddeca1d5e8fbbc25971b615"
+    },
+    {
+      "file": "r2-114-low-unneeded-role.http",
+      "status": 403,
+      "sha256": "41f15396a0238012b12cc09da08290be0a8956ccfb78df09ed668e0bf31aacea"
+    },
+    {
+      "file": "r2-115-high-first-engineering.http",
+      "status": 201,
+      "sha256": "70b42dd26c5d23c514d81890cba2979117f538ece263f09a5727cdefb60e4d9f"
+    },
+    {
+      "file": "r2-116-high-revision.http",
+      "status": 201,
+      "sha256": "f8f20994977baaee00319ad6afe95ba0379feb13ea96ed7d150eefd767cc807c"
+    },
+    {
+      "file": "r2-117-high-stale-sign.http",
+      "status": 409,
+      "sha256": "4daa9fff633f511fd7e469a641389383fc06a3e2bc1a44675f799f57bb7a60c8"
+    },
+    {
+      "file": "r2-118-sign-0-mfg-e05.http",
+      "status": 201,
+      "sha256": "223232c6bea7e7bdcfdfb61e7467f6d1b6700a2c9afe16ddb8aee39e55234a50"
+    },
+    {
+      "file": "r2-118-sign-0-mfg-e10.http",
+      "status": 201,
+      "sha256": "9a07446a75900f8f6347270ea6c5f2f9e740007723ed6cd50c14c050a4c7790f"
+    },
+    {
+      "file": "r2-118-sign-1-mfg-e05.http",
+      "status": 201,
+      "sha256": "00f0ca26499169529102cb7d3d917539d1daa40cbae7a8ac7580fa4c4b761c9d"
+    },
+    {
+      "file": "r2-118-sign-1-mfg-e10.http",
+      "status": 201,
+      "sha256": "37b62c757dc296ebf866ec541dbb66c9b79405a9e463a31da1eea9c9173e638e"
+    },
+    {
+      "file": "r2-119-high-two-signs-still-open.http",
+      "status": 200,
+      "sha256": "bbeb240811ab949485baf598c59608245ee4b3a658dfd1e2d1c744e8a4a9ba03"
+    },
+    {
+      "file": "r2-120-old-close-partial.http",
+      "status": 409,
+      "sha256": "5b4fd24e1081af0489c9d35dfa9ef907febef2298dd0dfa64843dd3e2574d213"
+    },
+    {
+      "file": "r2-124-high-e01-sign.http",
+      "status": 201,
+      "sha256": "be11cdc63483b734c6060e19815c3d87ecad7e345bda7aeb3c6457d1d1120789"
+    },
+    {
+      "file": "r2-125-high-sign-idempotent.http",
+      "status": 201,
+      "sha256": "b0da4b94bd2494c693fff53dbf25ed8359d93aea58753d1f4530bae439c42ccb"
+    },
+    {
+      "file": "r2-126-disposed-source-0.http",
+      "status": 200,
+      "sha256": "c929b972408adcf711edce329de7ddca17a49341496403e97f90291a627c4e61"
+    },
+    {
+      "file": "r2-126-disposed-source-1.http",
+      "status": 200,
+      "sha256": "c95d6e9b3c1604556b92edcf2199f80c0131b3ef1d5070250f1796f4196756d9"
+    },
+    {
+      "file": "r2-127-close-approved-0.http",
+      "status": 201,
+      "sha256": "34a256bd4ade133218d3bf91e2dd117c9febb4b1df4e934fbf70d4523aad6962"
+    },
+    {
+      "file": "r2-127-close-approved-1.http",
+      "status": 201,
+      "sha256": "d0f64db8e885f980d0bda76cbc56bd5871b9bc1d6e9001ec2154d22396f8951b"
+    },
+    {
+      "file": "r2-15-quality-sign.http",
+      "status": 201,
+      "sha256": "1795efa4a9eeba4c79e096ceccc3768c0e32d64df147136fb69d2c3f80994dab"
+    },
+    {
+      "file": "r2-16-production-release.http",
+      "status": 409,
+      "sha256": "e93835542901f102b94fda9c4e4313dff3009a9e96a58ae7cfe9bc83a2db2149"
+    },
+    {
+      "file": "r2-163-ec-part-item.http",
+      "status": 201,
+      "sha256": "9b09912eb22ef4b1aa92ae5ab8b4a2af3107023a33fc68d22cb8b036bc4fee12"
+    },
+    {
+      "file": "r2-164-ec-product-equipment-1.http",
+      "status": 201,
+      "sha256": "4c5fc582356838a76a56d1d6bb06a1d01e3faab0b3ecee409943770d5eb504f8"
+    },
+    {
+      "file": "r2-164-ec-product-equipment-2.http",
+      "status": 201,
+      "sha256": "5fa464d5b08b0b63a00ddce5a5432ed9a4457eb464243e6d7cd6121521481bb9"
+    },
+    {
+      "file": "r2-165-ec-part-listing-0.http",
+      "status": 201,
+      "sha256": "bf05e6de94691bcf24c389f0ac2a064aeeb40883e572590503fc5320e259e8d1"
+    },
+    {
+      "file": "r2-165-ec-part-listing-1.http",
+      "status": 201,
+      "sha256": "e317c7fe667835d6178dcea937f6b2b1b5f94e4aa062ef716e9222845e8aa118"
+    },
+    {
+      "file": "r2-165-ec-part-listing-2.http",
+      "status": 201,
+      "sha256": "a851ffbe2def3257aa5b3fbc46bdb42beebb9da21f914a7b708e72ed3e66edc7"
+    },
+    {
+      "file": "r2-166-drawing-a.http",
+      "status": 201,
+      "sha256": "8629ace905c9e0ae5fc0530ed0f33b1f0c1d40cbdd3dbece410159fee6c85cca"
+    },
+    {
+      "file": "r2-167-routing-a.http",
+      "status": 201,
+      "sha256": "c4ff0c34aa942ada6ebe6baaec131edb60b2b49329d8bad717fb60f539d5dd27"
+    },
+    {
+      "file": "r2-168-ec-real-version-sources.http",
+      "status": 200,
+      "sha256": "83990df2e86da27a30c8f355eb4a1aa2ecbf1faa3ef6eadbe1482c0e7d3ad0ef"
+    },
+    {
+      "file": "r2-169-wo-a-applicability-0.http",
+      "status": 201,
+      "sha256": "b5d7a1725899f5bd3a751868f5e76f5e25c269b8b06f5003d12d7469eb31939e"
+    },
+    {
+      "file": "r2-169-wo-a-applicability-1.http",
+      "status": 201,
+      "sha256": "0bd318c7706a7fb459a6a8fbc7d2c534d791343fe558f2acf526a5f8927c51e9"
+    },
+    {
+      "file": "r2-169-wo-a-applicability-2.http",
+      "status": 201,
+      "sha256": "08882a8576fcf8f67a8b1e0ebc5218a9cf15bc50d19b36176fcb79c3312fb12e"
+    },
+    {
+      "file": "r2-16a-cancel-previous-synthetic-schedule.http",
+      "status": 201,
+      "sha256": "ec3446ae7d0c787138f2aa848eed9bbbdc2f069324d9ecaf24d3994606551db4"
+    },
+    {
+      "file": "r2-16b-production-release.http",
+      "status": 201,
+      "sha256": "316608ca1e2726b07393a47e97012eab654bae9d6ca9b546cb0b06e8b9806293"
+    },
+    {
+      "file": "r2-17-new-fault.http",
+      "status": 201,
+      "sha256": "6fbcb15eb6d4c395b994fbb4c2a855da26a4b17c3cb81ac4f39077ba38b8127f"
+    },
+    {
+      "file": "r2-18-new-fault-source.http",
+      "status": 200,
+      "sha256": "21993917666863d466f8ed85e8d4a32217ffd8aabd9200174dd4b01071b68e48"
+    },
+    {
+      "file": "r2-19-before-start.http",
+      "status": 200,
+      "sha256": "6be7da6820a99f9cfbec76ead3f8a47fe0c4ed4a25289d9a1510b4464f696dc4"
+    },
+    {
+      "file": "r2-20-old-signature-no-bypass.http",
+      "status": 409,
+      "sha256": "1c3497fa3125fc47ce1c1dc759092b04f6afc63a7b01172211d6d1737d23c160"
+    },
+    {
+      "file": "r2-21-next-repair.http",
+      "status": 201,
+      "sha256": "a42af5e6dff9ab0523e425e7db3a2accddf566ffa4fb96de9168dcc621c33637"
+    },
+    {
+      "file": "r2-22-next-repair-source.http",
+      "status": 200,
+      "sha256": "b8bb15c071d32b64381beb17629bf37341f128c46f47b3abc72c5b6de851e038"
+    },
+    {
+      "file": "r2-23-next-sign-mfg-e02.http",
+      "status": 201,
+      "sha256": "e91ce0f32853512ae59e0b98d8366d9af71c0a8503afd8cf4493103778390497"
+    },
+    {
+      "file": "r2-23-next-sign-mfg-e10.http",
+      "status": 201,
+      "sha256": "9fcfcd98ac003d3756d8e3986979d4598acb5e4b6a4a29b3ec5b5fe3723572bf"
+    },
+    {
+      "file": "r2-24-start-after-new-signatures.http",
+      "status": 201,
+      "sha256": "a6f76d67eca20df4116139388823162444cc770b8ea147c88155b8e834a70338"
+    },
+    {
+      "file": "r2-25-quality-item.http",
+      "status": 201,
+      "sha256": "c2496fea17bce6d91abca95cbe90bc1de6a690b0bfdd9c89dd31f301832bf7e6"
+    },
+    {
+      "file": "r2-26-product-equipment.http",
+      "status": 201,
+      "sha256": "d753d2e4fe00ed0b445b8b650060e8305aa6c81b310527d84c42c7df9280dd57"
+    },
+    {
+      "file": "r2-27-standard-listing.http",
+      "status": 201,
+      "sha256": "1f93828f14ff0b939bed78288a198c4a3f7f03e78ef603fd61c5201d0d4dbc04"
+    },
+    {
+      "file": "r2-28-initial-gap.http",
+      "status": 201,
+      "sha256": "d62caa1ba632de6b3e999f18c7b25e7c1e42045cd847a8a037783a711072b8fa"
+    },
+    {
+      "file": "r2-29-source-request1.http",
+      "status": 201,
+      "sha256": "b6b090b6bfcff9641093d02be7d48da76057d89ad6de460ccb9a11f4ee0ce7d7"
+    },
+    {
+      "file": "r2-30-source-po1.http",
+      "status": 201,
+      "sha256": "6257426ca7b19958b65ee1d79fcccf1250a62dc2e64775f782449288c5a7c097"
+    },
+    {
+      "file": "r2-31-old-approve-denied.http",
+      "status": 409,
+      "sha256": "06e6a85f81143c3affc0ce9aa71b02c9baf895a13850bae248a64166806ac701"
+    },
+    {
+      "file": "r2-32-no-net-issue-denied.http",
+      "status": 409,
+      "sha256": "ae8e9b6f5a50d6cb98cefec7cbb6172bdc05caee04fb4eb4a885ad625db025f3"
+    },
+    {
+      "file": "r2-33-unknown-net-denied.http",
+      "status": 409,
+      "sha256": "2d612cb5f5ed4a4e05245dd46ae016e81afdf549d7c693971517c1e719f10a7f"
+    },
+    {
+      "file": "r2-34-net-quote1.http",
+      "status": 201,
+      "sha256": "136041a1d780bb598669be589d9d48397d26ba8a36f8208b55c1aacfa1db6eef"
+    },
+    {
+      "file": "r2-35-finance-review1.http",
+      "status": 201,
+      "sha256": "ad02748119f113aa4c33b61096f8605128dcd191e3ddb0fca842467741eb8b4a"
+    },
+    {
+      "file": "r2-36-ops-approve1.http",
+      "status": 201,
+      "sha256": "33315063e95c64152f1c2624070627021aa916750133fe8f6b722f1c83e72504"
+    },
+    {
+      "file": "r2-37-approved-source1.http",
+      "status": 200,
+      "sha256": "94caa54599026d4c4e2ec6e527e6afd016749019c0f9d631865879ef97f14afe"
+    },
+    {
+      "file": "r2-38-issue-po1.http",
+      "status": 201,
+      "sha256": "9ea31c06324120ee00c85a649a065658c196881dbeae950ba54c54816403e80c"
+    },
+    {
+      "file": "r2-39-receive-warehouses.http",
+      "status": 200,
+      "sha256": "0db09725cc8cd677c508ebd6edcebe2ce2709dccba7cffb4a60a4ce97697ef04"
+    },
+    {
+      "file": "r2-40-physical-receipt1.http",
+      "status": 201,
+      "sha256": "7f7357986132d3d859819114dfd446e58f44cf708579a46c3d1a48a52081a4ee"
+    },
+    {
+      "file": "r2-41-pending-stock.http",
+      "status": 200,
+      "sha256": "ca4cf1e5d7d9a91af23aa0795a9d719c91cbbfd05af6bc41a518d3402b7119d0"
+    },
+    {
+      "file": "r2-42-pending-not-issuable.http",
+      "status": 409,
+      "sha256": "5757e94c8d8dae9f6170f712d9446b073305ad00319c5741ddafb307ce3c6112"
+    },
+    {
+      "file": "r2-43-pending-not-kit.http",
+      "status": 201,
+      "sha256": "cbd039575093b9a9b35cc6492be3bf0dfec4bb232a71ba8508fcf0a8a7eb75ed"
+    },
+    {
+      "file": "r2-44-old-production-unknown.http",
+      "status": 201,
+      "sha256": "a4bc09e299564eff44044e834db82321a45aa241dacaa5f634c03a3468017f3e"
+    },
+    {
+      "file": "r2-45-unknown-not-available.http",
+      "status": 200,
+      "sha256": "f326c58e832c868641a3743b49bb0e0ddc052688957373283689627591f2ceee"
+    },
+    {
+      "file": "r2-46-pending-iq-source.http",
+      "status": 200,
+      "sha256": "7f1e509923784f4f1e5f497bcf1ce3bab16280a9fe9df951ff2cee2d487417ed"
+    },
+    {
+      "file": "r2-47-quality-judge1.http",
+      "status": 201,
+      "sha256": "7bfcac54cc63002ca751583e4b32714f1b9ff4df5ab91124a4da9fef1ba59726"
+    },
+    {
+      "file": "r2-48-qc-fact-not-auto-stock.http",
+      "status": 200,
+      "sha256": "f326c58e832c868641a3743b49bb0e0ddc052688957373283689627591f2ceee"
+    },
+    {
+      "file": "r2-49-wh-consumes-release1.http",
+      "status": 201,
+      "sha256": "cf0e60053e1d0daca9769e0b466cad8704d6dd9d42bad6e747246d7606920167"
+    },
+    {
+      "file": "r2-50-qualified-stock.http",
+      "status": 200,
+      "sha256": "a267208f270ce2a3f208cb97eeae706064cc88ebf516189ba0d362cbe13795f7"
+    },
+    {
+      "file": "r2-51-release-retry.http",
+      "status": 201,
+      "sha256": "5cc163c056a3d85cfe8a528cf654d136af6da088dc4c4e9e14225d86fec9b93e"
+    },
+    {
+      "file": "r2-52-release-over-credit.http",
+      "status": 409,
+      "sha256": "87a5001adbcf4e7ad728ef93f33846eaf7f4965a86789ff0728ad8fb25b8d112"
+    },
+    {
+      "file": "r2-53-revoke-consumed-quality.http",
+      "status": 409,
+      "sha256": "4ca237f5de72ecf5e66bc9b54d608a8ceebb1c583092fbb7ea46d9112560218b"
+    },
+    {
+      "file": "r2-54-rebuilt-gap.http",
+      "status": 201,
+      "sha256": "809fa9f792c4437aefdc4fdc82fbb1682503dc672028a6b3ac29a08462c71e24"
+    },
+    {
+      "file": "r2-55-source-request2.http",
+      "status": 201,
+      "sha256": "731d25e1ed1ff02585090a8c396c182259781a5357d5da5f30974f99509e77b7"
+    },
+    {
+      "file": "r2-56-source-po2.http",
+      "status": 201,
+      "sha256": "e4cb933d87ac4ea77042e6f256e999854253797b0323ce6b23474f64fee4c41b"
+    },
+    {
+      "file": "r2-57-net-quote2.http",
+      "status": 201,
+      "sha256": "1c71e8206cf656a5c1f1ac3f1a67a4d4f4b418d53af3421c6882b350223a7e90"
+    },
+    {
+      "file": "r2-62-finance-review2.http",
+      "status": 201,
+      "sha256": "a934afd8a417de04041aa407f2148d9d52d20730d080c9bf7138a534e9709329"
+    },
+    {
+      "file": "r2-63-under-authority-denied.http",
+      "status": 403,
+      "sha256": "a195bbce44107df5fabbaa803a74fcce2a8095b4bac3efe5ead92af7d7af9a60"
+    },
+    {
+      "file": "r2-68-e01-approve2.http",
+      "status": 201,
+      "sha256": "6ad2f84c51bf5748d98ca2dfab35561597c23fc00249fdac1042c41378b03133"
+    },
+    {
+      "file": "r2-69-approved-po2-source.http",
+      "status": 200,
+      "sha256": "b09f47630b0dea215790d552e55d546f2a721e501274bc6281172abc00674a67"
+    },
+    {
+      "file": "r2-70-issue-po2.http",
+      "status": 201,
+      "sha256": "96286cefe6e917a7a6a3a93fbf679fe22f9bae80de5847e8e40df6e319dead45"
+    },
+    {
+      "file": "r2-71-physical-receipt2.http",
+      "status": 201,
+      "sha256": "a02cc695c20781d30f998b5b5f28f420c5a5b52812d0fce7ed716d9eeeed35db"
+    },
+    {
+      "file": "r2-72-iq2-source.http",
+      "status": 200,
+      "sha256": "004f523ac75132b7d81ebbf06d3d69db649505779614cbbeeff08acb6cb4d512"
+    },
+    {
+      "file": "r2-73-iq2-failed.http",
+      "status": 201,
+      "sha256": "17cfe4d405f0b585a0bdc66dc4bf9807d26ea916d22db2e7da7a3bfdb2ccc505"
+    },
+    {
+      "file": "r2-74-quarantine-stock.http",
+      "status": 200,
+      "sha256": "0c66dc00b0e73efea2ddc0d49c0bb69794742f25af6e8a8c29c7d70b581eab68"
+    },
+    {
+      "file": "r2-75-quarantine-no-out.http",
+      "status": 409,
+      "sha256": "9ef270d2ad3ec915d252000ffe6504641e461fbbda9f16e021504c2adad0d7df"
+    },
+    {
+      "file": "r2-76-rework-disposal.http",
+      "status": 201,
+      "sha256": "2211f0749b28baea1262e9e6ed11dbd4b635909ab25e2b90284b76da68a7efc0"
+    },
+    {
+      "file": "r2-77-iq2-recheck.http",
+      "status": 201,
+      "sha256": "0edb1b622c9084f899761a74084deca2fa6468dfa2f31f300ba7eae6ca9d1fc7"
+    },
+    {
+      "file": "r2-78-recheck-awaits-wh.http",
+      "status": 200,
+      "sha256": "2c7d03b3eb6be3b5b6598579f8ab4e92e40d647941b9d57e4e58e14b6d3ea91f"
+    },
+    {
+      "file": "r2-79-wh-consumes-release2.http",
+      "status": 201,
+      "sha256": "2696d339d10c418fbc358f1af913ea7a65ae0c3da136d6493bf365d2eb2230b0"
+    },
+    {
+      "file": "r2-80-two-batches-quality.http",
+      "status": 200,
+      "sha256": "347273d37ad8aa95fe1e71886b2b64915bed8b4a58051a41629b22e5add5205b"
+    },
+    {
+      "file": "r2-81-qualified-gap-reserve.http",
+      "status": 201,
+      "sha256": "db7976c3140279f27175f7315384a6418c0447727404dce8be2372bb3d7d205b"
+    },
+    {
+      "file": "r2-82-qualified-reservations.http",
+      "status": 200,
+      "sha256": "daece737fd653a89218d5ddee55699dcf6ed1a13afc2aa1987fb2b85d6a7b009"
+    },
+    {
+      "file": "r2-83-reservation-ledger.http",
+      "status": 200,
+      "sha256": "f8f201e2e35913abbe98136522a063e8da51d9d02dbc2ef2ac95ee3128b99f54"
+    },
+    {
+      "file": "r2-84-assembly-process.http",
+      "status": 201,
+      "sha256": "682c77c12395fa140e62a545908872afa4fa2ce9e118765ef44668903ace37ac"
+    },
+    {
+      "file": "r2-85-assembly-skill.http",
+      "status": 201,
+      "sha256": "6c9578b22c5f453623659e71be931345c00ab1493f526c0e3ff4914c0a73299c"
+    },
+    {
+      "file": "r2-86-kit-source-wo.http",
+      "status": 200,
+      "sha256": "db99a76385ece0acf963258cadd6575e3a71b9d1fa63e4f6b02b693a69ffbc83"
+    },
+    {
+      "file": "r2-87-qualified-kit.http",
+      "status": 201,
+      "sha256": "da8f44e186fcc7d0cb2f32680d4c13c793f8c6ff49108b44a06034b5dd7f700c"
+    },
+    {
+      "file": "r2-88-assembly-dispatch.http",
+      "status": 201,
+      "sha256": "143c6bafe09dbccca7a73bd7270fbaa97027f6d3007112244fa654092774cb65"
+    },
+    {
+      "file": "r2-89-assembly-schedule.http",
+      "status": 201,
+      "sha256": "eb35261176f35563ae74fdfff90f9f5de8819099e5a39b08979dd3ce66edf60e"
+    },
+    {
+      "file": "r2-90-assembly-release.http",
+      "status": 201,
+      "sha256": "9c2432aad09ce51cd1c9c5e26aaced86632a7d17203437dbd279ccf58e05cd70"
+    },
+    {
+      "file": "r2-91-generated-tasks.http",
+      "status": 200,
+      "sha256": "2d96ee2efd2e01e8a9bb5fb8bea1d89ffe6abab5e52f273d07f15507ad96e2b6"
+    },
+    {
+      "file": "r2-92-issue-task-detail.http",
+      "status": 200,
+      "sha256": "da85d80d60db42b5ffc09a5da0549a8e1abb6d108a976200209805c26160d4cb"
+    },
+    {
+      "file": "r2-93-stock-location.http",
+      "status": 200,
+      "sha256": "1bb7e690029db22cc894ced7089db8f9c6056bbb56f723e76867c3da54965e91"
+    },
+    {
+      "file": "r2-94-confirm-standard.http",
+      "status": 201,
+      "sha256": "c5895dca15b1281c1dee90439f0aae6f53aa24aad2a21c0880e3084b52fdc8ac"
+    },
+    {
+      "file": "r2-95-after-standard-issue.http",
+      "status": 200,
+      "sha256": "0ec20d80d5b1df80c401e7d99250b904b7e9f2483be0521868af4751c5a07f78"
+    },
+    {
+      "file": "r2-96-revoke-standard.http",
+      "status": 201,
+      "sha256": "071c83f822d0a1f31753d2bed17159c595c31d9fa14f91a13a2bc15d0ea947d2"
+    },
+    {
+      "file": "r2-97-after-standard-revoke.http",
+      "status": 200,
+      "sha256": "6ce928828afd8e2feac3aa4c4bc6733fc1fd68f6920abc98a20bddfce63c4cce"
+    },
+    {
+      "file": "r2-98-reconfirm-standard.http",
+      "status": 201,
+      "sha256": "7697c753d7b630db0ef76fe669148017be454eb25b9de29ae4e7adc75a8f8942"
+    },
+    {
+      "file": "r2-99-after-reconfirm.http",
+      "status": 200,
+      "sha256": "0ec20d80d5b1df80c401e7d99250b904b7e9f2483be0521868af4751c5a07f78"
+    },
+    {
+      "file": "s03-approve-second.http",
+      "status": 201,
+      "sha256": "7cac4c063b7307691651da2b8123bafd99c275fe72c4adb68cf351a8b3c817dc"
+    },
+    {
+      "file": "s03-approve.http",
+      "status": 201,
+      "sha256": "8feeb16580b53f128968b02e9eeb81281004378c534e2fa096c9d8f25e79c80d"
+    },
+    {
+      "file": "s03-assigned.http",
+      "status": 200,
+      "sha256": "4ac3f847e74aef4bf1ec82f2c6acda22f1c57f47b1905516747df89ac30858bc"
+    },
+    {
+      "file": "s03-cancel-first.http",
+      "status": 201,
+      "sha256": "129f090e6febff7062319890aa4f60760c7a54cdb62922b7cf53c5be5b4990a1"
+    },
+    {
+      "file": "s03-conflict-1.http",
+      "status": 409,
+      "sha256": "de13c3d484ce6037ed673f9841efc058641dc6404676c79a6cce365fe9585a20"
+    },
+    {
+      "file": "s03-conflict-2.http",
+      "status": 409,
+      "sha256": "985ebed2d4c789dcdf40401c4685bb2744706689a7e460c739e5353c23a18104"
+    },
+    {
+      "file": "s03-conflict-3.http",
+      "status": 409,
+      "sha256": "1f3f644f971a67cbb8e8095f88397bbb351d5c5f0d5ac7182c0152a915b58d0c"
+    },
+    {
+      "file": "s03-draft-readback.http",
+      "status": 200,
+      "sha256": "e0b039e7b1b9f624969c537f8ba674d6cbc45d32ea8aa46840fee1b58661b3d0"
+    }
+  ],
+  "unverified": [
+    "Parent visible UI acceptance",
+    "Original report WO/NC/IQ objects return404 in this shared volume",
+    "Original report did not bind commit/data volume;404 cause not inferred",
+    "Full RES/RTN,CLM01,PO business version/AP,SCN09,full IQ/IP/FQ,historical cost",
+    "No new shared dual-process/fault-injection/RLS exercise; accepted isolated evidence reused"
+  ],
+  "boundary": "Worker evidence only; controller retains deployment/runtime/overall product acceptance"
+}

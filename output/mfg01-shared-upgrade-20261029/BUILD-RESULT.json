@@ -1,0 +1,20 @@
+[
+  {
+    "kind": "server",
+    "exit": 0,
+    "seconds": 81.7,
+    "log": "build-server.log"
+  },
+  {
+    "kind": "migrate",
+    "exit": 0,
+    "seconds": 19.2,
+    "log": "build-migrate.log"
+  },
+  {
+    "kind": "web",
+    "exit": 0,
+    "seconds": 30.8,
+    "log": "build-web.log"
+  }
+]

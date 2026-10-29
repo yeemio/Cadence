@@ -1,0 +1,8 @@
+{
+  "file": "recovery/shared-before-upgrade.dump",
+  "bytes": 437970,
+  "sha256": "9559058c4d6fe75a875db43ee772d3b241a516be3c0d598fb7ae322de7109a74",
+  "archiveListReadable": true,
+  "restoreRehearsal": false,
+  "oldImagesRetained": true
+}

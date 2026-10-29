@@ -1,0 +1,100 @@
+{
+  "recordedAt": "2026-10-29 13:48 Asia/Shanghai",
+  "commit": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+  "candidate": "26c3e0c141aad45ac7b77352ff231def9614465eef35cffb0091a180851935e5",
+  "url": "http://localhost:8080",
+  "operator": "/root",
+  "tool": "Codex visible in-app browser",
+  "businessSubmissions": 0,
+  "mobileViewport": "390x844; reset after capture",
+  "desktopScreenshot": "1280x720",
+  "checks": [
+    {
+      "items": "P0-01",
+      "result": "PASS",
+      "observation": "计划可保存草案，运营选中草案可见批准/取消控件",
+      "evidence": [
+        "01-plan-schedule.txt",
+        "03-operations-approval.txt"
+      ]
+    },
+    {
+      "items": "P0-02/P2-01",
+      "result": "PASS",
+      "observation": "计划承诺只读；运营有发布/重诺，历史原承诺与本版分列",
+      "evidence": [
+        "02-plan-commitment-readonly.txt",
+        "04-operations-commitment.txt"
+      ]
+    },
+    {
+      "items": "P0-04",
+      "result": "PASS",
+      "observation": "同需求两PO净额5000000/7500000分，后单财务与总经理为不同人",
+      "evidence": [
+        "05-finance-net-approval.txt"
+      ]
+    },
+    {
+      "items": "P1-06",
+      "result": "PASS",
+      "observation": "三个真实工作令A/B/A，SO02图纸/工艺v2",
+      "evidence": [
+        "06-engineering-aba.txt"
+      ]
+    },
+    {
+      "items": "P1-02",
+      "result": "PASS",
+      "observation": "超过50000元的报废列出E05/E10/E01三方签名",
+      "evidence": [
+        "07-scrap-three-signatures.txt"
+      ]
+    },
+    {
+      "items": "P0-07",
+      "result": "PASS",
+      "observation": "当前故障版本列出E02/E10独立签署",
+      "evidence": [
+        "08-restart-two-signatures.txt"
+      ]
+    },
+    {
+      "items": "P2-05",
+      "result": "PASS",
+      "observation": "仓管可选实际PO及行/仓，不需要完整价格读权；旧来源不足有明确提示",
+      "evidence": [
+        "09-warehouse-receiving.txt"
+      ]
+    },
+    {
+      "items": "P0-06/P2-03",
+      "result": "PASS",
+      "observation": "桌面与移动在手10/合格8/未知2/有效占用8/可用0，待检隔离均0",
+      "evidence": [
+        "10-warehouse-quality-stock.txt",
+        "12-mobile-quality-stock.txt"
+      ]
+    },
+    {
+      "items": "P0-03/P0-06",
+      "result": "PASS",
+      "observation": "质检放行声明职责分离，当前全部耗尽，选项不再列旧单",
+      "evidence": [
+        "11-release-credit-exhausted.txt"
+      ]
+    },
+    {
+      "items": "P2-04/P2-06",
+      "result": "PASS",
+      "observation": "plan01工作令详情无无权图纸读卡，旧项目经理仍user-factory-plan；不替代旧配件审批链实测",
+      "evidence": [
+        "13-plan-workorder-visibility.txt"
+      ]
+    }
+  ],
+  "unverified": [
+    "PDF visual inspection remains unverified; previous identical viewer failure not retried",
+    "Original parts-approval execution not replayed"
+  ]
+}

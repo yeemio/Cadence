@@ -1,0 +1,14 @@
+{
+  "server": {
+    "id": "sha256:d265803b4de25e5dd7586dfcfd85e72828fe64de7b515a316d0a62c90f48249c",
+    "commitLabel": "0425ded838a87b8aeab3cfc300097a985bde2bd2"
+  },
+  "migrate": {
+    "id": "sha256:a98f6e2400926b9c650b93c88a530a7c4f4ea96b5964d2002e1cbe31136b5fea",
+    "commitLabel": "0425ded838a87b8aeab3cfc300097a985bde2bd2"
+  },
+  "web": {
+    "id": "sha256:6e56314ca5b50816d6ed26380858a473fbb82c4ea7a0fc5c58a09673f539c394",
+    "commitLabel": "0425ded838a87b8aeab3cfc300097a985bde2bd2"
+  }
+}

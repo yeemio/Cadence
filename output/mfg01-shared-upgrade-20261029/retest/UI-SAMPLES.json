@@ -1,0 +1,56 @@
+{
+  "prefix": "MFG-DELTA-20261029",
+  "workOrders": [
+    "wo-01a1862a-ce7a-7cd8-81cf-3f2b042692c1",
+    "wo-01a1862a-ce8a-76d3-8451-b2a86ea1f23f",
+    "wo-01a1862a-ce98-7b5b-81a8-67368cecb368"
+  ],
+  "standardItem": {
+    "id": "01a1862a-f094-70cf-95f0-0c1ebaa9bd3c",
+    "tenant": "default",
+    "code": "MFG-DELTA-20261029-STANDARD",
+    "name": "MFG-DELTA-20261029质量态库存标准件",
+    "spec": null,
+    "unit": "件",
+    "category": "标准件",
+    "active": true,
+    "initialPriceMinor": null
+  },
+  "purchaseOrders": [
+    "po-01a1862a-f15a-7f22-b321-1f63b64166a8",
+    "po-01a1862b-1873-7b2f-ac05-1aea370852be"
+  ],
+  "automaticInspections": [
+    "insp-01a1862b-1613-7652-9306-657cdd7a1f69",
+    "insp-01a1862b-1aa9-7d2d-8170-e5e5399b35ee"
+  ],
+  "issueTask": "01a1862b-1e44-71cd-a5d0-a4d3ec6607a4",
+  "revokedIssueRecord": "irc-01a1862b-1eee-772f-9937-285ba89aab8b",
+  "activeIssueRecord": "irc-01a1862b-1f25-7b75-a055-209493073c62",
+  "scrapNCs": [
+    "nc-01a1862c-b686-7c07-a3a5-d9e9726a34fb",
+    "nc-01a1862c-b820-745a-966f-26321ea85e8d"
+  ],
+  "scrapControls": [
+    "mfg-c324fbc2-e6a2-4459-a7ed-65105fc54415",
+    "mfg-e12be1cd-2e9b-49da-85c7-19cab4838f52"
+  ],
+  "restart": "mfg-030302a2-bef3-4158-8213-f8b1b19e7441",
+  "engineeringChange": "mfg-a7d08081-6952-4884-a406-abf745dc8870",
+  "engineeringVersions": [
+    "A",
+    "B",
+    "A"
+  ],
+  "uiRoutes": [
+    "/manufacturing",
+    "/workorders",
+    "/inventory/stock",
+    "/inventory/warehouses",
+    "/m/stock",
+    "/purchase/receiving",
+    "/inspections",
+    "/inspections/nonconformities"
+  ],
+  "uiStatus": "SAMPLES_READY_FOR_PARENT_READ_ONLY_VISUAL_ACCEPTANCE"
+}
