@@ -165,4 +165,17 @@ export const RLS_TABLES: readonly RlsTableSpec[] = [
   // 守恒测试触发补登 + 全量重放迁移 20261027090100——107 表快照）
   tenantTable('login_attempts'),
   tenantTable('work_order_equipment'),
+  tenantTable('mfg_schedules'),
+  tenantTable('mfg_commitments'),
+  tenantTable('mfg_procurements'),
+  tenantTable('mfg_restarts'),
+  tenantTable('mfg_scraps'),
+  tenantTable('mfg_engineering_changes'),
+  tenantTable('mfg_demands'),
+  tenantTable('mfg_qualifications'),
+  tenantTable('mfg_source_bindings'),
+  tenantTable('mfg_control_events'),
+  tenantTable('stock_quality_lots'),
+  tenantTable('stock_quality_reservations'),
+  tenantTable('stock_quality_events'),
 ];

@@ -94,6 +94,11 @@ describe('fetchMyHours：GET /hours/my HTTP 形状与解析', () => {
 });
 
 describe('fetchStockLevels：GET /inventory/stock HTTP 形状与解析', () => {
+  it('仓库筛选与物料一同传递，避免总表混入其它仓', async () => {
+    respond({ levels: [] });
+    await fetchStockLevels(' item-A ', ' warehouse-B ');
+    expect(calls[0]?.url).toBe('/inventory/stock?itemId=item-A&warehouseId=warehouse-B');
+  });
   it('itemId trim + 查询参数编码 + Bearer + 视图解析', async () => {
     respond({
       levels: [

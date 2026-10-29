@@ -18,7 +18,7 @@ import { Check, Copy } from 'lucide-react';
 // 服务端 message 不翻译；namespace 注册与 shell init 由总控统一接线）。
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { fetchLocationBalances, fetchMovements, fetchStockLevels } from '../../data/inventoryApi';
+import { fetchLocationBalances, fetchMovements, fetchReservations, fetchStockLevels } from '../../data/inventoryApi';
 import { ModuleTable, QueryState } from '../../components/ModuleTable';
 // P2 横切批：长 id 截断显示（UX-WH-10；行数据不动，title 悬停全文）。
 import { formatLocalDateTime, shortId } from '../../lib/format';
@@ -66,7 +66,7 @@ export function StockLevelsPage() {
 
   const levelsQuery = useQuery({
     queryKey: ['inventory', 'stock', filters],
-    queryFn: () => fetchStockLevels(filters.itemId),
+    queryFn: () => fetchStockLevels(filters.itemId, filters.warehouseId),
   });
   const balancesQuery = useQuery({
     queryKey: ['inventory', 'locations', filters],
@@ -77,12 +77,14 @@ export function StockLevelsPage() {
     queryFn: () => fetchMovements(filters),
   });
 
+  const reservationsQuery = useQuery({ queryKey: ['inventory', 'reservations', filters], queryFn: () => fetchReservations(filters) });
+
   return (
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle>{t('levels.title')}</CardTitle>
-          <CardDescription>{t('levels.description')}</CardDescription>
+          <CardDescription>物理总量分为待检、合格、隔离、未知；可用量 = 合格 − 有效合格占用。历史无证余额不默认合格。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -107,7 +109,13 @@ export function StockLevelsPage() {
                 { key: 'itemId', label: t('levels.columns.item'), mono: true, format: 'shortId' },
                 { key: 'warehouseId', label: t('levels.columns.warehouse'), mono: true, format: 'shortId' },
                 { key: 'qtyOnHand', label: t('levels.columns.on-hand') },
-                { key: 'qtyReserved', label: t('levels.columns.reserved') },
+                { key: 'pendingQty', label: '待检' },
+                { key: 'qualifiedQty', label: '合格' },
+                { key: 'quarantineQty', label: '隔离' },
+                { key: 'unknownQty', label: '未知（无质量证据）' },
+                { key: 'effectiveReservedQty', label: '有效合格占用' },
+                { key: 'unbackedReservedQty', label: '缺合格批次依据的历史占用' },
+                { key: 'qtyReserved', label: '原账预占（含历史）' },
                 { key: 'availableQty', label: t('levels.columns.available') },
               ]}
               rows={(levelsQuery.data ?? []).map((level) => ({ ...level }))}
@@ -115,6 +123,12 @@ export function StockLevelsPage() {
           </QueryState>
         </CardContent>
       </Card>
+
+      <Card><CardHeader><CardTitle>库存预占追溯</CardTitle><CardDescription>建立预占不改变现存量；核销时现存量与预占同减；释放未用预占不增加实物库存。此处只读，不是新增解除或退料单据。</CardDescription></CardHeader><CardContent>
+        <QueryState isPending={reservationsQuery.isPending} error={reservationsQuery.error} isEmpty={reservationsQuery.data?.length === 0} empty="没有匹配的预占记录。">
+          <ModuleTable columns={[{ key: 'reservationKey', label: '预占键', mono: true }, { key: 'itemId', label: '物料', format: 'shortId' }, { key: 'warehouseId', label: '仓库', format: 'shortId' }, { key: 'quantity', label: '原预占量' }, { key: 'remaining', label: '未核销量' }, { key: 'statusLabel', label: '状态' }, { key: 'refType', label: '来源类型' }, { key: 'refId', label: '来源单据', format: 'shortId' }]} rows={(reservationsQuery.data ?? []).map((r) => ({ ...r, statusLabel: ({ active: '占用中', consumed: '已核销', released: '已释放' } as Record<string, string>)[String(r['status'])] ?? r['status'] }))} />
+        </QueryState>
+      </CardContent></Card>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card>

@@ -1,0 +1,165 @@
+{
+  "candidateSha256": "e2823a9924cdd98f47302b2ac76cc5199b27507e26b56c3d7d12ccdd48046f90",
+  "policy": "Affected checks only; prior accepted 105-path/v1 evidence retained, no full old business rerun. Raw failures never rewritten.",
+  "commands": [
+    {
+      "command": "pnpm --filter @smes/application exec vitest run tests/manufacturing-inspection-source.test.ts tests/manufacturing-quality-credit.test.ts tests/inventory/inventory.test.ts tests/listing/receipt-inspection-intake.test.ts tests/listing/listing.test.ts tests/dispatch/dispatch.test.ts tests/issue/issue.test.ts tests/reporting/reporting.test.ts --reporter=dot",
+      "log": "final-application-focused.log",
+      "exit": 0,
+      "tests": 206
+    },
+    {
+      "command": "pnpm --filter @smes/server exec vitest run tests/app-registry.test.ts tests/d24-revoke-guard-wiring.test.ts tests/equipment-receipt-pool.test.ts tests/u-wave-wiring.test.ts --reporter=dot",
+      "log": "final-server-focused.log",
+      "exit": 0,
+      "tests": 46
+    },
+    {
+      "command": "pnpm --filter @smes/business-store exec vitest run tests/rls-session.test.ts tests/rls-session-wiring.test.ts tests/inventory-rls-raw.test.ts tests/rls-policy.test.ts tests/rls-conformance.test.ts tests/schema-conformance.test.ts --reporter=dot",
+      "log": "final-store-focused.log",
+      "exit": 1,
+      "passed": 116,
+      "failed": 1,
+      "cause": "Old cross-tenant reuse test conflicts with authorized rejection guarantee. Corrected test only; see final-approved-two-fixes.log."
+    },
+    {
+      "command": "pnpm --filter @smes/product-ui run typecheck && pnpm --filter @smes/product-ui exec vitest run tests/inventory.test.ts --reporter=dot && pnpm --filter @smes/web run typecheck && pnpm --filter @smes/web exec vitest run tests/menu.test.ts tests/mobile-api.test.ts tests/mobile.test.ts tests/mobile-ops.test.ts tests/listing-api.test.ts --reporter=dot",
+      "logs": [
+        "final-web-ui-prefix.stdout.log",
+        "final-web-ui-focused.log"
+      ],
+      "exit": 1,
+      "productUiTestsPassed": 5,
+      "webTestsPassed": 44,
+      "webTestsFailed": 1,
+      "cause": "New manufacturing menu code duplicated existing group; corrected entry and assembly reference, kept original group. Prefix stdout captured separately because initial shell redirect applied only to final command."
+    },
+    {
+      "command": "pnpm --filter @smes/application run typecheck && pnpm --filter @smes/application run build && pnpm --filter @smes/business-store run typecheck && pnpm --filter @smes/business-store run build && pnpm --filter @smes/server run typecheck && pnpm --filter @smes/server run build && pnpm --filter @smes/web run build && pnpm boundary && pnpm boundary:selftest",
+      "log": "final-build-types-boundary.log",
+      "exit": 0
+    },
+    {
+      "command": "pnpm --filter @smes/business-store exec vitest run tests/rls-session.test.ts --reporter=dot && pnpm --filter @smes/business-store run typecheck && pnpm --filter @smes/web exec vitest run tests/menu.test.ts --reporter=dot && pnpm --filter @smes/web run typecheck && pnpm --filter @smes/web run build",
+      "log": "final-approved-two-fixes.log",
+      "exit": 0,
+      "storeTests": 16,
+      "menuTests": 10,
+      "note": "Parent-authorized final narrow rework; other same-byte green checks reused."
+    }
+  ],
+  "businessProofs": [
+    {
+      "log": "restart-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "purchase-first.log",
+      "exit": 0
+    },
+    {
+      "log": "quality-continue.log",
+      "exit": 0
+    },
+    {
+      "log": "purchase-second.log",
+      "exit": 0
+    },
+    {
+      "log": "quality-second.log",
+      "exit": 0
+    },
+    {
+      "log": "issue-quality-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "shipping-commitment-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "scrap-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "historical-net-setup.log",
+      "exit": 0
+    },
+    {
+      "log": "ec-receipt-setup.log",
+      "exit": 0
+    },
+    {
+      "log": "historical-net-finish.log",
+      "exit": 0
+    },
+    {
+      "log": "ec-version-setup.log",
+      "exit": 0
+    },
+    {
+      "log": "ec-three-source-continue.log",
+      "exit": 0
+    },
+    {
+      "log": "rls-restricted-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "qa-credit-physical-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "qa-credit-neutral-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "ec-freeze-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "ec-unfreeze-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "two-process-proof.log",
+      "exit": 0
+    },
+    {
+      "log": "restart-after.log",
+      "exit": 0
+    }
+  ],
+  "reusedAndRecovered": [
+    "tx-proof-corrected.log real shared-PG adapter propagation; original tx-proof.log retained failure",
+    "schedule-proof.log real injected event failure fully rolled back; schedule-recovery.log completes race after first harness error",
+    "commitment-proof.log wrote actual promises; saved HTTP r1-21 parent verified order.plannedDeliveryAt and original/previous/current promises; no re-publication",
+    "quality-first.log pending/no-issue/gap-zero before fifth harness failure; saved r2-43 + quality-continue.log recover without receipt replay",
+    "preservation-before.json exactly equals preservation-after.json for all 108 preexisting tables immediately after isolated migration"
+  ],
+  "failureHistory": {
+    "harnessResponseOrInvocation": 5,
+    "pureCheckCommandSelection": 1,
+    "pureCheckCommandLog": "product-ui-quality-build.log",
+    "businessFamiliesRepairedByParentApproval": [
+      "EC resolution was reading nonexistent inspection.workOrderId",
+      "Historical release facts were treated as current credit and non-receipt path skipped neutral guard"
+    ],
+    "candidateCloseoutRework": [
+      "Cross-tenant test contract update",
+      "New menu identity collision"
+    ],
+    "normalContractRejection": "r2-170 duplicate active part/operation 409 retained, existing own dispatch completed normally before continuing",
+    "nonNavigationProbe": "final-web.headers 404 for Accept */* correctly reached API; final-web-navigation.headers uses real document Accept text/html and returns200"
+  },
+  "unverified": [
+    "Parent visible IAB for new seven-tab workflow and desktop/mobile quality presentation",
+    "No historical cost snapshot sample existed in isolated DB; no cost-row rewrite verified by implementation boundary and pre-migration preservation only. Historical report and outsourcing quote were compared as actual full objects."
+  ],
+  "noRerun": [
+    "Migrations and initial 108-table preservation",
+    "Earlier tx proof",
+    "Already green 206 application/46 server suites after last menu/test-only correction",
+    "Original accepted 105 paths and v1 six UI readbacks"
+  ]
+}

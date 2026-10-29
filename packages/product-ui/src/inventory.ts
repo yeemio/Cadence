@@ -17,13 +17,19 @@ import type { PermissionCode } from './permissions.js';
 /** 库存读取权限码（与 apps/server GET /inventory/stock 端点同码）。 */
 export const STOCK_READ: PermissionCode = permissionCode('stock:read');
 
-/** 实时库存行视图（可用量口径：availableQty = qtyOnHand − qtyReserved）。 */
+/** 实时库存：可用量由服务端按合格减有效占用计算；旧响应缺质量分账时不虚填0。 */
 export interface StockLevelView {
   readonly itemId: string;
   readonly warehouseId: string;
   readonly qtyOnHand: number;
   readonly qtyReserved: number;
   readonly availableQty: number;
+  readonly pendingQty?: number;
+  readonly qualifiedQty?: number;
+  readonly quarantineQty?: number;
+  readonly unknownQty?: number;
+  readonly effectiveReservedQty?: number;
+  readonly unbackedReservedQty?: number;
 }
 
 export class InventoryViewError extends Error {
@@ -69,6 +75,7 @@ export function parseStockLevelsResponse(input: unknown): readonly StockLevelVie
       qtyOnHand: requireFiniteQty(item['qtyOnHand'], 'qtyOnHand'),
       qtyReserved: requireFiniteQty(item['qtyReserved'], 'qtyReserved'),
       availableQty: requireFiniteQty(item['availableQty'], 'availableQty'),
+      ...Object.fromEntries(['pendingQty','qualifiedQty','quarantineQty','unknownQty','effectiveReservedQty','unbackedReservedQty'].filter(key=>item[key]!==undefined).map(key=>[key,requireFiniteQty(item[key],key)])),
     };
   });
 }

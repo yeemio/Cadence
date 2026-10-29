@@ -191,6 +191,14 @@ interface IssueStockInput {
   readonly remark: string | null;
 }
 
+export interface InventoryQualityControl {
+  run<T>(tenant: TenantId, actor: string, operationId: string, payload: Record<string, unknown>, action: () => Promise<T>): Promise<T>;
+  levels(tenant: TenantId, warehouseId?: string, itemId?: string): Promise<readonly StockLevelView[]>;
+  receivedInspection(tenant: TenantId, inspectionId: string): Promise<number>;
+  remainingInspection(tenant: TenantId, inspectionId: string): Promise<number>;
+  availableAt(tenant: TenantId, warehouseId: string, itemId: string, locationId: string, reservationKey?: string | null): Promise<number>;
+}
+
 export interface InventoryServiceOptions {
   /** 盘点四态配置（缺省 DEFAULT_STOCKTAKE_FLOW_CONFIG；整体替换 = 换合法集）。 */
   readonly stocktakeConfig: ApprovalFlowConfig;
@@ -224,6 +232,11 @@ function rejected(reason: string): RejectedOutcome {
 
 export class InventoryService {
   private readonly options: InventoryServiceOptions;
+  private quality: InventoryQualityControl | undefined;
+  bindQualityControl(control: InventoryQualityControl): void { this.quality = control; }
+  private mutate<T>(tenant: TenantId, actor: string, operationId: string, payload: Record<string, unknown>, action: () => Promise<T>): Promise<T> {
+    return this.quality ? this.quality.run(tenant, actor, operationId, payload, action) : action();
+  }
   private readonly goodsShelves: GoodsShelfStore;
 
   constructor(
@@ -265,7 +278,7 @@ export class InventoryService {
       const itemId = facts[0]?.itemId;
       if (!itemId || facts.some((fact) => fact.itemId !== itemId) || !items.some((item) => item.id === itemId)) continue;
       const received = await this.movements.list(tenant, { kind: 'inspection-in', sourceRefId: id });
-      const remainingQty = facts.reduce((sum, row) => sum + row.quantity, 0) - received.reduce((sum, row) => sum + row.quantity, 0);
+      const remainingQty = this.quality ? await this.quality.remainingInspection(tenant, id) : facts.reduce((sum, row) => sum + row.quantity, 0) - received.reduce((sum, row) => sum + row.quantity, 0);
       if (remainingQty > 0) releases.push({ id, itemId, remainingQty });
     }
     return { items, warehouses, releases };
@@ -301,7 +314,13 @@ export class InventoryService {
 
   // ---- 命令入口（smes.command.v1 分发） ----
 
-  async execute(
+  async execute(envelope: CommandEnvelope<InventoryCommand>, pathId?: string): Promise<InventoryCommandResult> {
+    const kind = envelope.command.kind;
+    if (!kind.startsWith('stock.') && kind !== 'stocktake.approve-adjust.v1' && !kind.startsWith('shipping.')) return this.executeUnchecked(envelope, pathId);
+    return this.mutate(envelope.tenantId, String(envelope.issuedBy), String(envelope.operationId), { ...(envelope.command.payload as Record<string, unknown>), commandKind: kind }, () => this.executeUnchecked(envelope, pathId));
+  }
+
+  private async executeUnchecked(
     envelope: CommandEnvelope<InventoryCommand>,
     pathId?: string,
   ): Promise<InventoryCommandResult> {
@@ -1103,7 +1122,7 @@ export class InventoryService {
       const account = await this.accounts.find(tenant, input.itemId, input.warehouseId);
       const onHand = account?.qtyOnHand ?? 0;
       const reserved = account?.qtyReserved ?? 0;
-      const available = onHand - reserved;
+      const available = this.quality ? (await this.quality.levels(tenant, input.warehouseId, input.itemId))[0]?.availableQty ?? 0 : onHand - reserved;
       if (!this.allowNegative && available < input.quantity) {
         return rejected(
           `可用量不足：物料 '${input.itemId}' @仓库 '${input.warehouseId}' 可用量 ${available}（总量 ${onHand} − 预占 ${reserved}）< 出库 ${input.quantity}`,
@@ -1119,7 +1138,7 @@ export class InventoryService {
       input.locationId,
       input.quantity,
       warehouse.defaultLocationId,
-      { allowNegative: this.allowNegative },
+      { allowNegative: this.allowNegative, qualified: true, reservationKey: input.reservationKey },
     );
     if (deduction === null) {
       const where = input.locationId === null ? '（FIFO 全仓）' : `（库位 '${input.locationId}'）`;
@@ -1246,12 +1265,12 @@ export class InventoryService {
     locationId: string | null,
     quantity: number,
     defaultLocationId: string,
-    opts?: { readonly allowNegative?: boolean },
+    opts?: { readonly allowNegative?: boolean; readonly qualified?: boolean; readonly reservationKey?: string | null },
   ): Promise<Map<string, number> | null> {
-    const allowNegative = opts?.allowNegative ?? false;
+    const allowNegative = this.quality && opts?.qualified ? false : opts?.allowNegative ?? false;
     if (locationId !== null) {
       const balance = await this.balances.find(tenant, warehouseId, locationId, itemId);
-      const available = balance?.qty ?? 0;
+      const available = Math.min(balance?.qty ?? 0, opts?.qualified && this.quality ? await this.quality.availableAt(tenant, warehouseId, itemId, locationId, opts.reservationKey) : Infinity);
       if (available < quantity && !allowNegative) return null;
       return new Map([[locationId, quantity]]);
     }
@@ -1262,7 +1281,8 @@ export class InventoryService {
     let remaining = quantity;
     for (const row of rows) {
       if (remaining <= 0) break;
-      const take = Math.min(row.qty, remaining);
+      const eligible = opts?.qualified && this.quality ? await this.quality.availableAt(tenant, warehouseId, itemId, row.locationId, opts.reservationKey) : row.qty;
+      const take = Math.min(row.qty, eligible, remaining);
       plan.set(row.locationId, (plan.get(row.locationId) ?? 0) + take);
       remaining -= take;
     }
@@ -2102,12 +2122,18 @@ export class InventoryService {
     return { shelf, locations };
   }
 
+  /** 预占只读追溯；与库存查询按同租户/仓/物料过滤。 */
+  async stockReservations(tenant: TenantId, warehouseId?: string, itemId?: string) {
+    return (await this.reservations.list(tenant)).filter((row) => (!warehouseId || row.warehouseId === warehouseId) && (!itemId || row.itemId === itemId));
+  }
+
   /** 实时库存（可用量口径；可用量=总量−预占，机器计算非存储列）。 */
   async stockLevels(
     tenant: TenantId,
     warehouseId?: string,
     itemId?: string,
   ): Promise<readonly StockLevelView[]> {
+    if (this.quality) return this.quality.levels(tenant, warehouseId, itemId);
     const accounts = await this.accounts.list(tenant, {
       ...(warehouseId === undefined ? {} : { warehouseId }),
       ...(itemId === undefined ? {} : { itemId }),
@@ -2210,12 +2236,12 @@ export class InventoryService {
     tenant: TenantId,
     itemIds: readonly string[],
   ): Promise<ReadonlyMap<string, number>> {
-    const accounts = await this.accounts.list(tenant);
+    const accounts = this.quality ? await this.quality.levels(tenant) : await this.accounts.list(tenant);
     const available = new Map<string, number>();
     for (const itemId of itemIds) available.set(itemId, 0);
     for (const account of accounts) {
       if (!available.has(account.itemId)) continue;
-      const value = Math.max(0, account.qtyOnHand - account.qtyReserved);
+      const value = "availableQty" in account ? Number(account.availableQty) : Math.max(0, account.qtyOnHand - account.qtyReserved);
       available.set(account.itemId, (available.get(account.itemId) ?? 0) + value);
     }
     return available;
@@ -2232,6 +2258,7 @@ export class InventoryService {
       readonly warehouseId?: string;
     },
   ): Promise<{ readonly received: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }> {
+    return this.mutate(tenant, 'u-system-inventory', String(command.receiptKey), {commandKind: 'receivePurchaseStock'}, async () => {
     let warehouseId = command.warehouseId;
     if (warehouseId === null || warehouseId === undefined) {
       const fallback = await this.fallbackWarehouse(
@@ -2274,6 +2301,7 @@ export class InventoryService {
       return { received: false, refusedReason: `入库不确定：${outcome.reason}` };
     }
     return { received: true, ...(outcome.duplicate === true ? { duplicate: true } : {}) };
+    });
   }
 
   /** workorder PartsIssuePort 面配件出库（requestId 幂等——issueKey 锚点）。 */
@@ -2287,6 +2315,7 @@ export class InventoryService {
       readonly warehouseId?: string;
     },
   ): Promise<{ readonly issued: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }> {
+    return this.mutate(tenant, 'u-system-inventory', String(command.requestId), {commandKind: 'issuePartsStock'}, async () => {
     let warehouseId = command.warehouseId;
     if (warehouseId === null || warehouseId === undefined) {
       const fallback = await this.fallbackWarehouse(
@@ -2331,6 +2360,7 @@ export class InventoryService {
       return { issued: false, refusedReason: `出库不确定：${outcome.reason}` };
     }
     return { issued: true, ...(outcome.duplicate === true ? { duplicate: true } : {}) };
+    });
   }
 
   /** inspection StockReleasePort 面放行事实登记（直连通道；事件通道为兜底）。 */
@@ -2376,6 +2406,7 @@ export class InventoryService {
       readonly refId: string;
     },
   ): Promise<{ readonly reserved: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }> {
+    return this.mutate(tenant, 'u-system-inventory', String(command.reservationKey), {commandKind: 'reserveStock'}, async () => {
     let warehouseId = command.warehouseId;
     if (warehouseId === null || warehouseId === undefined) {
       const fallback = await this.fallbackWarehouse(
@@ -2400,7 +2431,8 @@ export class InventoryService {
     const account = await this.accounts.find(tenant, command.itemId, warehouseId);
     const onHand = account?.qtyOnHand ?? 0;
     const reserved = account?.qtyReserved ?? 0;
-    if (!this.allowNegative && onHand - reserved < command.quantity) {
+    const available = this.quality ? (await this.quality.levels(tenant, warehouseId, command.itemId))[0]?.availableQty ?? 0 : onHand - reserved;
+    if ((!this.allowNegative || this.quality) && available < command.quantity) {
       return {
         reserved: false,
         refusedReason: `可用量不足：${command.itemId}@${warehouseId} 可用量 ${onHand - reserved} < 预占 ${command.quantity}`,
@@ -2423,6 +2455,7 @@ export class InventoryService {
       return { reserved: true, duplicate: true };
     }
     return { reserved: true };
+    });
   }
 
   /** 释放：未用退回（qtyReserved −= q；全量释放 quantity=null）。 */
@@ -2431,6 +2464,7 @@ export class InventoryService {
     reservationKey: string,
     quantity: number | null,
   ): Promise<{ readonly released: boolean; readonly refusedReason?: string }> {
+    return this.mutate(tenant, 'u-system-inventory', String(reservationKey), {commandKind: 'releaseReservation'}, async () => {
     const reservation = await this.reservations.findByKey(tenant, reservationKey);
     if (reservation === null || reservation.status !== 'active') {
       return { released: false, refusedReason: `预占 '${reservationKey}' 不存在或已 ${reservation?.status ?? '不存在'}` };
@@ -2442,6 +2476,7 @@ export class InventoryService {
     const releaseQty = quantity === null ? reservation.remaining : quantity;
     await this.accounts.adjust(tenant, reservation.itemId, reservation.warehouseId, 0, -releaseQty);
     return { released: true };
+    });
   }
 
   // ---- 私有辅助 ----

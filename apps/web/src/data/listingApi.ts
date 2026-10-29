@@ -282,3 +282,6 @@ export async function exportPurchaseDetails(workOrderId?: string | undefined): P
 }
 
 export const receivingWarehouseOptions = () => fetchRows('/purchase/receiving-warehouses', 'warehouses');
+
+/** 收货动作自己的最小订单读面（无价格/审批信息）。 */
+export function listReceivingOrders() { return fetchRows('/purchase/receiving-orders', 'orders'); }

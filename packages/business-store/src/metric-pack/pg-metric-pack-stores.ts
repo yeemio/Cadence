@@ -639,7 +639,7 @@ export function connectMetricPackStore(options: MetricPackStoreOptions = {}): Me
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
   // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   const activationStore = new PgMetricPackActivationStore(client);
   const eventStore = new PgMetricPackDomainEventStore(client);
   const operationStore = new PgMetricPackOperationLedger(client);
@@ -677,7 +677,7 @@ export function connectMetricSourceBundle(
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
   // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     sources: {
       'workorder-attachment-facts': new PgWorkOrderAttachmentMetricSource(client, tenant),

@@ -2662,3 +2662,7 @@ export type {
 } from './ai-query/ai-query-ports.js';
 
 export * from './workorder/workorder-equipment.js';
+export * from './manufacturing/manufacturing-ports.js';
+export * from './manufacturing/manufacturing.service.js';
+export * from './manufacturing/manufacturing-quality.js';
+export * from './manufacturing/manufacturing-guard.js';

@@ -245,19 +245,20 @@ describe('withRlsTenantSession $transaction 接管（D-8 修复：桩客户端�
     expect(stub.commits).toEqual(['commit']);
   });
 
-  it('runWithRlsTenant 包裹的交互式事务：SET 的是该租户；事务中段切租户不再重设（租户冻结于事务开启时刻）', async () => {
+  it('runWithRlsTenant 包裹的交互式事务：SET 原租户一次，事务中段切租户拒绝且整单回滚', async () => {
     const stub = install();
     const ext = stub.captured;
-    await runWithRlsTenant(TenantId.create('t-a'), () =>
+    await expect(runWithRlsTenant(TenantId.create('t-a'), () =>
       ext.client.$transaction(async () => {
         await runWithRlsTenant(TenantId.create('t-other'), () =>
           ext.query.$allModels.$allOperations({ model: 'userRecord', operation: 'findMany', args: {} }),
         );
       }),
-    );
+    )).rejects.toThrow('跨租户不能沿用业务事务连接');
     expect(stub.sets).toHaveLength(1); // 事务级 SET 一次，回调内不重设
     expect(stub.sets[0]?.params).toEqual([TENANT_SESSION_VAR, 't-a']);
-    expect(stub.ops).toHaveLength(1); // 切租户上下文里的操作仍同句柄执行
+    expect(stub.ops).toHaveLength(0);
+    expect(stub.commits).toEqual(['rollback']);
   });
 
   it('回调抛错：整批回滚语义交给底层（rollback），ALS 句柄出界即失效——后续独立操作恢复自开事务', async () => {

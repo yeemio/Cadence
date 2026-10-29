@@ -210,7 +210,7 @@ export function connectAttachmentObjectStorage(
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     // SP-3：signingKey 透传进 PgObjectStorage（此前构造未透传——env 固化形态
     // 经组合根注入；undefined 同缺省 = 随机密钥，零 DB/未设 env 行为不变）。

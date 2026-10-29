@@ -89,7 +89,7 @@ describe('schema 骨架', () => {
     expect(schemaText).toMatch(/generator\s+client\s*\{/);
   });
 
-  it('一百零八张表齐全（M1 十三表 + baseline P1 五表（M2-W2）+ workorder 六表（M2-W1）+ inspection 四表（M2-W4）+ listing 八表（M2-W3）+ dispatch 四表（M2-W6）+ inventory 十一表（M2-W5）+ reporting 四表（M2-W7）+ baseline P2/P3 四表（M2-W7）+ hours 三表（M2-W6）+ costing 四表（M2-W6）+ payroll 四表（M3）+ metric-pack 两表（M3）+ drawing 四表（M3）+ maintenance 四表（M3）+ backfill 六表（S1）+ S5 能力子集三表（T 波）+ issue 五表（U1）+ attachment 单表（U3）+ process-material 单表（U4）+ aftercare claim 两表（U5）+ project cost 三表（U7）+ attachment objects 单表（fix-wave-4 W4-2）+ machining daily stats 单表（A8/A10 首波）+ 列显隐偏好单表（fix-wave-6 6b-3）+ 货架/货架库位两表（fix-wave-6 6b-1 B3））', () => {
+  it('一百二十一张表齐全（M1 十三表 + baseline P1 五表（M2-W2）+ workorder 六表（M2-W1）+ inspection 四表（M2-W4）+ listing 八表（M2-W3）+ dispatch 四表（M2-W6）+ inventory 十一表（M2-W5）+ reporting 四表（M2-W7）+ baseline P2/P3 四表（M2-W7）+ hours 三表（M2-W6）+ costing 四表（M2-W6）+ payroll 四表（M3）+ metric-pack 两表（M3）+ drawing 四表（M3）+ maintenance 四表（M3）+ backfill 六表（S1）+ S5 能力子集三表（T 波）+ issue 五表（U1）+ attachment 单表（U3）+ process-material 单表（U4）+ aftercare claim 两表（U5）+ project cost 三表（U7）+ attachment objects 单表（fix-wave-4 W4-2）+ machining daily stats 单表（A8/A10 首波）+ 列显隐偏好单表（fix-wave-6 6b-3）+ 货架/货架库位两表（fix-wave-6 6b-1 B3））', () => {
     expect(models.has('WorkOrderRecord')).toBe(true);
     expect(models.has('BusinessEventRecord')).toBe(true);
     expect(models.has('OutboxRecord')).toBe(true);
@@ -221,7 +221,20 @@ describe('schema 骨架', () => {
     expect(models.has('LoginAttemptRecord')).toBe(true);
     // 本轮真实工作令设备表：107 → 108。
     expect(models.has('WorkOrderEquipmentRecord')).toBe(true);
-    expect(models.size).toBe(108);
+    expect(models.has('ManufacturingScheduleRecord')).toBe(true);
+    expect(models.has('ManufacturingCommitmentRecord')).toBe(true);
+    expect(models.has('ManufacturingProcurementRecord')).toBe(true);
+    expect(models.has('ManufacturingRestartRecord')).toBe(true);
+    expect(models.has('ManufacturingScrapRecord')).toBe(true);
+    expect(models.has('ManufacturingEngineeringRecord')).toBe(true);
+    expect(models.has('ManufacturingDemandRecord')).toBe(true);
+    expect(models.has('ManufacturingQualificationRecord')).toBe(true);
+    expect(models.has('ManufacturingBindingRecord')).toBe(true);
+    expect(models.has('ManufacturingEventRecord')).toBe(true);
+    expect(models.has('StockQualityLotRecord')).toBe(true);
+    expect(models.has('StockQualityReservationRecord')).toBe(true);
+    expect(models.has('StockQualityEventRecord')).toBe(true);
+    expect(models.size).toBe(121);
   });
 
   it('ADR-0005：全表 tenant_id（非空、snake_case 映射）', () => {

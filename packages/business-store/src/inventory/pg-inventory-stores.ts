@@ -1548,7 +1548,7 @@ export function connectInventoryStore(options: InventoryStoreOptions = {}): Inve
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
   // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     warehouseStore: new PgWarehouseStore(client),
     goodsShelfStore: new PgGoodsShelfStore(client),

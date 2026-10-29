@@ -713,7 +713,7 @@ export function connectStandardReportsSources(
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     sources: {
       'stock-movement-facts': new PgInventoryMovementsMetricSource(client, tenant),

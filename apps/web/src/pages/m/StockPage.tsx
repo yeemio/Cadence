@@ -1,7 +1,7 @@
 /**
  * 移动库存查询页（M5 首波，stock:read；功能拆解 128~133 移动仓储的查询
  * 呈现面）：扫码/输码 → GET /inventory/stock?itemId= 实时库存可用量读回
- * （availableQty = qtyOnHand − qtyReserved，服务端机器计算口径）。移动端
+ * （availableQty = 合格数量 − 有效合格占用，最低为 0，服务端机器计算口径）。移动端
  * 与桌面逻辑面同径（后端不设镜像端点，呈现归 M5 PWA——控制器注释口径）。
  *
  * 查询语义：进页加载全量（itemId 过滤缺省 = 全部物料行）；扫码自动填入
@@ -63,7 +63,7 @@ export function MobileStockPage() {
       <Card>
         <CardHeader>
           <CardTitle>库存查询</CardTitle>
-          <CardDescription>扫物料条码或手填物料 id，读回各仓库实时可用量。</CardDescription>
+          <CardDescription>可用量仅合格减有效占用；待检、隔离和未知余额不可用。扫码查询各仓库数量。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex gap-2">
@@ -149,7 +149,7 @@ export function MobileStockPage() {
       <Card>
         <CardHeader>
           <CardTitle>实时库存</CardTitle>
-          <CardDescription>可用量 = 总量 − 预占（服务端机器计算，实时口径）。</CardDescription>
+          <CardDescription>可用量 = 合格数量 − 有效合格占用，最低为 0（服务端机器计算，实时口径）。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {!accessible ? (
@@ -180,6 +180,7 @@ export function MobileStockPage() {
                 <span className="truncate text-xs text-muted-foreground">
                   仓库 <span className="font-mono">{level.warehouseId}</span>
                 </span>
+                {level.qualifiedQty !== undefined && <span className="text-xs text-muted-foreground">合格 {level.qualifiedQty} · 待检 {level.pendingQty ?? '—'} · 隔离 {level.quarantineQty ?? '—'} · 未知 {level.unknownQty ?? '—'}</span>}
               </div>
               <div className="flex shrink-0 items-baseline gap-2">
                 <span className="text-xl font-semibold tabular-nums">{level.availableQty}</span>

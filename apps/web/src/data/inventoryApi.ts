@@ -8,12 +8,8 @@ import type { StockLevelView } from '@smes/product-ui';
 import { request } from './apiClient';
 
 /** GET /inventory/stock → 实时库存（可用量口径；itemId 省略 = 全部物料）。 */
-export async function fetchStockLevels(itemId?: string): Promise<readonly StockLevelView[]> {
-  const query =
-    itemId !== undefined && itemId.trim().length > 0
-      ? `?itemId=${encodeURIComponent(itemId.trim())}`
-      : '';
-  return parseStockLevelsResponse(await request(`/inventory/stock${query}`));
+export async function fetchStockLevels(itemId?: string, warehouseId?: string): Promise<readonly StockLevelView[]> {
+  return parseStockLevelsResponse(await request(`/inventory/stock${queryString([['itemId', itemId], ['warehouseId', warehouseId]])}`));
 }
 
 // ---- 管理面（S2 批次；端点形状按 inventory.controllers.ts 实态） ----
@@ -271,3 +267,7 @@ export interface ReceiveOptions {
   readonly releases: readonly { id: string; itemId: string; remainingQty: number }[];
 }
 export async function receiveOptions(): Promise<ReceiveOptions> { return await request('/inventory/receive-options') as ReceiveOptions; }
+
+export function fetchReservations(params: { warehouseId?: string; itemId?: string } = {}) {
+  return fetchRows(`/inventory/stock/reservations${queryString([['warehouseId', params.warehouseId], ['itemId', params.itemId]])}`, 'reservations');
+}

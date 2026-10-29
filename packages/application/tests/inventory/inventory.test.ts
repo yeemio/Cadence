@@ -632,6 +632,9 @@ describe('可用量恒等式（可用量=总量−预占，全程机器校验）
     expect(released.released).toBe(true);
     level = (await h.service.stockLevels(t1, ids.wh1, 'item-100'))[0];
     expect(level).toMatchObject({ qtyOnHand: 15, qtyReserved: 1, availableQty: 14 });
+    expect(await h.service.stockReservations(t1, ids.wh1, 'item-100')).toEqual(expect.arrayContaining([expect.objectContaining({ reservationKey: 'rsv-dispatch-1', status: 'consumed', remaining: 0 }), expect.objectContaining({ reservationKey: 'rsv-dispatch-2', status: 'active', remaining: 1 })]));
+    expect(await h.service.stockReservations(t1, ids.wh2, 'item-100')).toEqual([]);
+    expect(await h.service.stockReservations(t2, ids.wh1, 'item-100')).toEqual([]);
   });
 
   it('直扣出库守卫：可用量不足硬拒绝（负库存默认策略）且不落任何账', async () => {

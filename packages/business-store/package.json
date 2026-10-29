@@ -110,6 +110,10 @@
     "./column-preferences": {
       "types": "./dist/column-preferences/index.d.ts",
       "default": "./dist/column-preferences/index.js"
+    },
+    "./manufacturing": {
+      "types": "./dist/manufacturing/index.d.ts",
+      "default": "./dist/manufacturing/index.js"
     }
   },
   "scripts": {

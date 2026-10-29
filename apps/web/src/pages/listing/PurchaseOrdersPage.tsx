@@ -17,6 +17,7 @@ import {
 import { permissionCode, sessionHasPermission, toPermissionCodes } from '@smes/product-ui';
 import type { CommandOutcomeView } from '../../data/commandClient';
 import { errorOutcomeOf, postCommand, revisionOf } from '../../data/commandClient';
+import { ReceiptInspectionHint } from '../../components/ReceiptInspectionHint';
 import { CommandOutcomeHint, ModuleTable, QueryState, type TableColumn } from '../../components/ModuleTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -483,7 +484,7 @@ function OrderDetailCard({
             退货回退
           </Button>
         </div>
-        {outcome !== null && <CommandOutcomeHint outcome={outcome} />}
+        {outcome !== null && <><CommandOutcomeHint outcome={outcome} /><ReceiptInspectionHint outcome={outcome} /></>}
       </CardContent>
     </Card>
   );

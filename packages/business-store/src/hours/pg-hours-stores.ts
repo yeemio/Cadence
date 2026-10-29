@@ -395,7 +395,7 @@ export function connectHoursStore(options: HoursStoreOptions = {}): HoursStoreHa
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
   // RLS session 接线（ESCALATION-2 收尾）：门控与机制/取舍见 ../rls-session.ts 文件头。
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   const stores: HoursStores = {
     entries: new PgLaborEntryStore(client),
     months: new PgLaborLedgerMonthStore(client),

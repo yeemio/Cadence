@@ -1,0 +1,38 @@
+{
+  "candidate": "e2823a9924cdd98f47302b2ac76cc5199b27507e26b56c3d7d12ccdd48046f90",
+  "expectedCandidate": "e2823a9924cdd98f47302b2ac76cc5199b27507e26b56c3d7d12ccdd48046f90",
+  "pathCount": 76,
+  "sourceHashMismatches": [],
+  "unlistedProductChanges": [],
+  "listedNotChanged": [],
+  "compiledFileCount": 80,
+  "compiledMismatches": [],
+  "servedHtmlSha256": "540cdf00e78f3ea97b0da6156c3fe954867ab2815583267ed66e64dd4dc63268",
+  "matchesBuiltIndex": true,
+  "migrationSnapshotsEqual": true,
+  "restartSnapshotsEqual": true,
+  "preservationTopKeys": [
+    "aftercare_claim_lines",
+    "aftercare_claims",
+    "approval_cases",
+    "approval_events",
+    "approval_flow_configs",
+    "approval_records",
+    "attachment_objects",
+    "attachments",
+    "audit_logs",
+    "baseline_command_operations"
+  ],
+  "restartTopKeys": [
+    "mfg-e02",
+    "mfg-e05",
+    "mfg-e10",
+    "mfg-e08",
+    "mfg-e13",
+    "standard",
+    "part",
+    "receipt",
+    "report",
+    "po"
+  ]
+}

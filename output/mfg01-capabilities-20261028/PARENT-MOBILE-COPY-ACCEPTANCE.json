@@ -1,0 +1,14 @@
+{
+  "candidate": "26c3e0c141aad45ac7b77352ff231def9614465eef35cffb0091a180851935e5",
+  "pathCount": 76,
+  "exactDelta": [
+    "apps/web/src/pages/m/StockPage.tsx"
+  ],
+  "sourceHashesMatch": true,
+  "api44BindingUnchanged": true,
+  "web36HashesMatch": true,
+  "servedHtmlSha256": "d523ca2a89b610a10a5b3febc6fe75777c6d943fe7bb32f9a1e5f1e634f3f50e",
+  "servedStatus": 200,
+  "ui": "parent-ui/RESULT.json",
+  "reusedParentIdentity": "PARENT-IDENTITY.json"
+}

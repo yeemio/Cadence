@@ -140,6 +140,11 @@ describe('收货→三类采购质检来源投递（RQ-019 域层端口）', () 
       ],
     });
 
+    const projection = await h.service.receivingOrders(t1);
+    expect(projection).toHaveLength(1);
+    expect(projection[0]?.lines.map((line) => line.inspectionKind)).toEqual(['standard_purchase', 'nonstandard_purchase']);
+    expect(JSON.stringify(projection)).not.toMatch(/unitPriceMinor|buyer|requestIds|remark/);
+    expect(await h.service.receivingOrders(TenantId.create('other'))).toEqual([]);
     const received = mustCommit(
       await h.service.execute(
         envelope('purchase.order.receive.v1', { lines: [{ lineNo: 1, receivedQty: 8 }, { lineNo: 2, receivedQty: 3 }] }, { expectedRevision: 4, actor: buyer }),
@@ -147,6 +152,7 @@ describe('收货→三类采购质检来源投递（RQ-019 域层端口）', () 
       ),
     );
     expect(received.purchaseOrder?.state).toBe('received');
+    expect(received.receiptInspections).toEqual([expect.objectContaining({ lineNo: 1, kind: 'standard_purchase', status: 'created', inspectionId: 'insp-1' }), expect.objectContaining({ lineNo: 2, kind: 'nonstandard_purchase', status: 'created', inspectionId: 'insp-2' })]);
     expect(h.intake.facts.map((entry) => entry.fact)).toEqual([
       {
         sourceType: 'receipt',
@@ -186,6 +192,7 @@ describe('收货→三类采购质检来源投递（RQ-019 域层端口）', () 
       ),
     );
     expect(bare.purchaseOrder?.state).toBe('received');
+    expect(bare.receiptInspections).toEqual([expect.objectContaining({ lineNo: 1, status: 'unclassified', inspectionId: null, reason: expect.stringContaining('未关联唯一类别') })]);
 
     // 歧义：同物料被两类申请承接（standard + equipment 同 itemId）——多 kind 不投。
     const requestIdA = await createRequest(h.service, { kind: 'standard', itemId: 'item-amb', quantity: 5 });
@@ -201,6 +208,7 @@ describe('收货→三类采购质检来源投递（RQ-019 域层端口）', () 
       ),
     );
     expect(amb.purchaseOrder?.state).toBe('received');
+    expect(amb.receiptInspections?.[0]?.status).toBe('unclassified');
 
     expect(h.intake.facts).toEqual([]); // 两路径均不投递
     expect(warnSpy.mock.calls.length).toBe(2); // 每跳过一行留痕一次
@@ -225,6 +233,7 @@ describe('收货→三类采购质检来源投递（RQ-019 域层端口）', () 
     );
     expect(received.purchaseOrder?.state).toBe('received'); // 收货落账不回滚
     expect(received.purchaseOrder?.lines[0]?.receivedQty).toBe(2);
+    expect(received.receiptInspections?.[0]).toMatchObject({ kind: 'equipment_purchase', status: 'failed', reason: 'inspection 服务暂不可用' });
     expect(h.intake.facts.length).toBe(1); // 已尝试投递（失败留痕）
     expect(warnSpy.mock.calls.some((call) => String(call[0]).includes(order.id))).toBe(true);
     warnSpy.mockRestore();

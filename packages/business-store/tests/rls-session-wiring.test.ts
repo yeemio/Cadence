@@ -93,21 +93,21 @@ describe('connect* 工厂 RLS session 门控（ESCALATION-2 收尾 18 家 + W4-2
     }
   });
 
-  it('缺省不包装：零行为变化（superuser / 既有测试与 e2e 形态）', () => {
+  it('缺省仍安装事务传播壳；无外层事务时保留Prisma原操作路径', () => {
     delete process.env[SMES_RLS_SESSION_ENV];
     for (const [name, connect] of factories) {
       mock.extendsNames.length = 0;
       expect(() => connect(), `${name} 工厂构造`).not.toThrow();
-      expect(mock.extendsNames, `${name} 工厂不应装扩展`).toEqual([]);
+      expect(mock.extendsNames, `${name} 工厂不应装扩展`).toEqual(['rlsTenantSession']);
     }
   });
 
-  it('SMES_RLS_SESSION=off（显式非 on 取值）：同缺省不包装（门控精确匹配 on）', () => {
+  it('SMES_RLS_SESSION=off：传播业务事务但不为独立模型操作增加SET', () => {
     process.env[SMES_RLS_SESSION_ENV] = 'off';
     for (const [name, connect] of factories) {
       mock.extendsNames.length = 0;
       connect();
-      expect(mock.extendsNames, `${name} 工厂 off 不装`).toEqual([]);
+      expect(mock.extendsNames, `${name} 工厂 off 不装`).toEqual(['rlsTenantSession']);
     }
   });
 });

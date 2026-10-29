@@ -672,7 +672,7 @@ export function connectIssueStore(options: IssueStoreOptions = {}): IssueStoreHa
     : new PrismaClient();
   // RLS session 接线（并入 lane/m4-final 时补齐，与 dispatch/listing 工厂同体例）：
   // 门控与机制/取舍见 ../rls-session.ts 文件头。
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     taskStore: new PgIssueTaskStore(client),
     taskLineStore: new PgIssueTaskLineStore(client),

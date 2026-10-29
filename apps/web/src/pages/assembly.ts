@@ -1,3 +1,4 @@
+import { ManufacturingPage } from './manufacturing/ManufacturingPage';
 /**
  * 页面装配注册表（S2 批次从 main.tsx 抽提）：模块代码 → 页面组件的映射在此
  * 单点维护，main.tsx 只消费；装配测试（tests/module-pages.test.ts）直接对
@@ -31,6 +32,7 @@ import { PartsRequestsPage } from './workorder/PartsRequestsPage';
 import { ListingSheetsPage } from './listing/ListingSheetsPage';
 import { GapChecksPage } from './listing/GapChecksPage';
 import { PurchaseRequestsPage } from './listing/PurchaseRequestsPage';
+import { PurchaseReceivingPage } from './listing/PurchaseReceivingPage';
 import { PurchaseOrdersPage } from './listing/PurchaseOrdersPage';
 import { PurchaseReturnsPage } from './listing/PurchaseReturnsPage';
 import { PurchaseDetailsPage } from './listing/PurchaseDetailsPage';
@@ -97,7 +99,7 @@ export const PAGE_BY_CODE: Record<string, ComponentType> = {
   'purchase-orders': PurchaseOrdersPage,
   // ---- UX-PUR-01/02（e1a8bd）：采购收货直达入口 = 订单页别名挂接（同组件，
   //      收货操作仍在订单详情内，页面内部零改动） ----
-  'purchase-receiving': PurchaseOrdersPage,
+  'purchase-receiving': PurchaseReceivingPage,
   'purchase-returns': PurchaseReturnsPage,
   'purchase-details': PurchaseDetailsPage,
   inspections: InspectionOrdersPage,
@@ -134,6 +136,7 @@ export const PAGE_BY_CODE: Record<string, ComponentType> = {
   notifications: NotificationsPage,
   // ---- AI 问数首版（菜单码 ai-query，权限码与 ai-query 控制器实态同码） ----
   'ai-query': AiQueryPage,
+  'manufacturing-control': ManufacturingPage,
 };
 
 /** 移动页面码 -> 页面装配（注册表见 mobile.ts；预研 scan-report 已升级为 m.report）。 */

@@ -374,7 +374,7 @@ export function connectProjectCostStore(options: { readonly datasourceUrl?: stri
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     projectEntryStore: new PgCostProjectEntryStore(client),
     projectSnapshotStore: new PgCostProjectSnapshotStore(client),

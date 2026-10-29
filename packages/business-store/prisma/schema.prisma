@@ -2745,3 +2745,183 @@ model WorkOrderEquipmentRecord {
   @@unique([tenantId, workOrderId, id])
   @@map("work_order_equipment")
 }
+
+model ManufacturingScheduleRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_schedules")
+}
+
+model ManufacturingCommitmentRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_commitments")
+}
+
+model ManufacturingProcurementRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_procurements")
+}
+
+model ManufacturingRestartRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_restarts")
+}
+
+model ManufacturingScrapRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_scraps")
+}
+
+model ManufacturingEngineeringRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_engineering_changes")
+}
+
+model ManufacturingDemandRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_demands")
+}
+
+model ManufacturingQualificationRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_qualifications")
+}
+
+model ManufacturingBindingRecord {
+  id String @id
+  tenantId String @map("tenant_id")
+  sourceId String @map("source_id")
+  state String
+  objectVersion Int @default(1) @map("object_version")
+  data Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  @@unique([tenantId, id])
+  @@index([tenantId, sourceId])
+  @@map("mfg_source_bindings")
+}
+
+model ManufacturingEventRecord {
+ id String @id
+ tenantId String @map("tenant_id")
+ operationId String @map("operation_id")
+ actor String
+ kind String
+ sourceId String @map("source_id")
+ payload Json
+ result Json?
+ createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+ @@unique([tenantId, operationId])
+ @@map("mfg_control_events")
+}
+model StockQualityLotRecord {
+ id String @id
+ tenantId String @map("tenant_id")
+ itemId String @map("item_id")
+ warehouseId String @map("warehouse_id")
+ locationId String? @map("location_id")
+ sourceKind String @map("source_kind")
+ sourceRefId String @map("source_ref_id")
+ qualityState String @map("quality_state")
+ quantity Float
+ objectVersion Int @default(1) @map("object_version")
+ receivedAt DateTime @db.Timestamptz(6) @map("received_at")
+ evidence Json
+ @@unique([tenantId, id])
+ @@index([tenantId, itemId, warehouseId])
+ @@index([tenantId, sourceRefId])
+ @@map("stock_quality_lots")
+}
+model StockQualityReservationRecord {
+ id String @id
+ tenantId String @map("tenant_id")
+ reservationKey String @map("reservation_key")
+ lotId String @map("lot_id")
+ quantity Float
+ remaining Float
+ objectVersion Int @default(1) @map("object_version")
+ @@unique([tenantId, id])
+ @@index([tenantId, reservationKey])
+ @@map("stock_quality_reservations")
+}
+model StockQualityEventRecord {
+ id String @id
+ tenantId String @map("tenant_id")
+ sourceKey String @map("source_key")
+ kind String
+ data Json
+ createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+ @@unique([tenantId, sourceKey])
+ @@map("stock_quality_events")
+}

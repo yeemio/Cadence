@@ -381,6 +381,12 @@ export class InventoryQueriesController {
     };
   }
 
+  @Get('stock/reservations')
+  @RequirePermission('stock:read')
+  async reservations(@Query('warehouseId') warehouseId?: string, @Query('itemId') itemId?: string) {
+    return { reservations: await this.inventory.stockReservations(this.tenantContext.current(), parseOptionalIdFilter(warehouseId, '仓库 id'), parseItemQuery(itemId)) };
+  }
+
   @Get('stock/locations')
   @RequirePermission('stock:read')
   async locationBalances(

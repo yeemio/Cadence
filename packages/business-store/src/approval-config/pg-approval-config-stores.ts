@@ -198,7 +198,7 @@ export function connectApprovalConfigStore(
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     flowConfigStore: new PgApprovalFlowConfigStore(client),
     async disconnect(): Promise<void> {

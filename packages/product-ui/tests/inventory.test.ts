@@ -33,6 +33,13 @@ describe('实时库存响应解析', () => {
     });
   });
 
+  it('保留真实质量分账和合法零值，不把物理未知余额当合格可用', () => {
+    const row = {...levelsBody[0], qtyOnHand: 5, qtyReserved: 0, availableQty: 0, pendingQty: 0, qualifiedQty: 0, quarantineQty: 0, unknownQty: 5, effectiveReservedQty: 0, unbackedReservedQty: 0};
+    expect(parseStockLevelsResponse({levels: [row]})).toEqual([row]);
+    expect(parseStockLevelsResponse({levels: levelsBody})[0]).not.toHaveProperty('qualifiedQty');
+    expect(() => parseStockLevelsResponse({levels: [{...row, qualifiedQty: '0'}]})).toThrow(InventoryViewError);
+  });
+
   it('空数组合法（无库存记录）', () => {
     expect(parseStockLevelsResponse({ levels: [] })).toEqual([]);
   });

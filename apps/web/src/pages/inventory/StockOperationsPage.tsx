@@ -38,6 +38,7 @@ import { Select } from '@/components/ui/select';
 function MovementOutcomeHint({ outcome }: { readonly outcome: CommandOutcomeView }) {
   const { t } = useTranslation('inventory');
   const ids = businessIdsOfOutcome(outcome);
+  if (outcome.committed && outcome.body?.['duplicate'] === true) return <p role="status" className="text-sm text-amber-700">已是同一来源的入库记录，本次为幂等重放，库存未重复增加。</p>;
   if (outcome.committed && ids.length > 0) {
     return (
       <p className="text-sm text-emerald-600 dark:text-emerald-400">
@@ -112,6 +113,8 @@ function ReceiveCard() {
       </CardHeader>
       <CardContent>
         {options.isError && <p role="alert">入库选项加载失败，请刷新后重试。</p>}
+        {kind === 'inspection' && <p role="note" className="mb-3 text-sm">此动作只将品质已经放行的数量登记入仓，不作质检判定，也不会把待检改为合格。</p>}
+        {kind === 'purchase' && <p role="note" className="mb-3 text-sm">此处登记库存凭证，不重新确认订单收货或补建来料检；同来源重放不增加库存。办理订单收货请进入“采购收货”。</p>}
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
             <Label htmlFor="recv-kind">{t('operations.receive.kind-label')}</Label>

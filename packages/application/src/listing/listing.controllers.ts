@@ -333,6 +333,10 @@ export class PurchaseQueriesController {
     );
   }
 
+  @Get('receiving-orders')
+  @RequirePermission('purchase:receive')
+  async receivingOrders() { return { orders: await this.listing.receivingOrders(this.tenantContext.current()) }; }
+
   @Get('receiving-warehouses')
   @RequirePermission('purchase:receive')
   async receivingWarehouses() { return { warehouses: await this.listing.receivingWarehouseOptions(this.tenantContext.current()) }; }

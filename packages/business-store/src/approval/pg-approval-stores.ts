@@ -316,7 +316,7 @@ export function connectApprovalStore(options: ApprovalStoreOptions = {}): Approv
   const prisma = options.datasourceUrl
     ? new PrismaClient({ datasources: { db: { url: options.datasourceUrl } } })
     : new PrismaClient();
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     caseStore: new PgApprovalCaseStore(client),
     recordStore: new PgApprovalRecordStore(client),

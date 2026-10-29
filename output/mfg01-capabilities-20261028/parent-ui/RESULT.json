@@ -1,0 +1,163 @@
+{
+  "status": "PASS_SCOPED_WITH_PDF_VIEWER_LIMITATION",
+  "candidate": "26c3e0c141aad45ac7b77352ff231def9614465eef35cffb0091a180851935e5",
+  "priorUiCandidate": "e2823a9924cdd98f47302b2ac76cc5199b27507e26b56c3d7d12ccdd48046f90",
+  "reuse": "仅MobileStockPage两处文字改变；其他角色UI源与API均未变，旧读回继续有效。",
+  "surface": "Codex visible IAB browser 2 tab 2 localhost:8181",
+  "operator": "/root only",
+  "checks": [
+    {
+      "id": "plan-draft-persistence",
+      "actor": "mfg-e07",
+      "files": [
+        "01-plan-controls.txt",
+        "02-plan-cannot-publish.txt",
+        "03-plan-draft-saved.txt",
+        "04-plan-draft-reloaded.txt"
+      ],
+      "result": "PASS",
+      "observation": "真实派工/机台/工装/人员选择；无发布承诺按钮；新草案保存并刷新保留，未批准/占资源。"
+    },
+    {
+      "id": "ops-schedule-commitment",
+      "actor": "mfg-e02",
+      "files": [
+        "05-e02-schedule-selected.txt",
+        "06-e02-commitment.txt"
+      ],
+      "result": "PASS",
+      "observation": "草案显示批准/取消按钮；原/当前承诺、分批交付2、曾迟交可读。"
+    },
+    {
+      "id": "finance-independent",
+      "actor": "mfg-e13",
+      "files": [
+        "08-e13-procurement-selected.txt"
+      ],
+      "result": "PASS",
+      "observation": "原含税单价未知保持未知；实际PO/行、独立复核、需求核定依据/人员、历史净额核定入口。"
+    },
+    {
+      "id": "buyer-no-self-review",
+      "actor": "mfg-e08",
+      "files": [
+        "09-e08-procurement.txt"
+      ],
+      "result": "PASS",
+      "observation": "仅提交本版净价，无独立复核/阈值批准。"
+    },
+    {
+      "id": "threshold-approval",
+      "actor": "mfg-e01",
+      "files": [
+        "10-e01-procurement.txt"
+      ],
+      "result": "PASS",
+      "observation": "当前累计阈值批准入口、财务与总经理分立；具体跨单累计由已验HTTP证明。"
+    },
+    {
+      "id": "restart-signatures",
+      "actor": "mfg-e02,mfg-e10",
+      "files": [
+        "07-e02-restart.txt",
+        "12-e10-restart.txt"
+      ],
+      "result": "PASS",
+      "observation": "本次故障版本3、控制版本4、两位签署人员/时间与各自按钮可读。"
+    },
+    {
+      "id": "scrap-signatures",
+      "actor": "mfg-e01,mfg-e10,mfg-e05",
+      "files": [
+        "11-e01-scrap.txt",
+        "13-e10-scrap.txt",
+        "15-e05-scrap.txt"
+      ],
+      "result": "PASS",
+      "observation": "5000000分两方与5000001分三方签署历史、版本和角色按钮可读。"
+    },
+    {
+      "id": "ec-applicability",
+      "actor": "mfg-e05",
+      "files": [
+        "16-e05-ec.txt"
+      ],
+      "result": "PASS",
+      "observation": "三工作令A/B/A及实际图纸/工艺/清单、变更版本可读。"
+    },
+    {
+      "id": "quality-ledger",
+      "actor": "mfg-e10",
+      "files": [
+        "14-e10-quality.txt"
+      ],
+      "result": "PASS",
+      "observation": "标准件8/6/未知2/占用6/可用0；跨仓EC零件合计4；EC来料4。"
+    },
+    {
+      "id": "desktop-quality-stock",
+      "actor": "wh01",
+      "files": [
+        "18-wh-desktop-stock.txt",
+        "18-wh-desktop-stock.png"
+      ],
+      "result": "PASS",
+      "observation": "1280x900桌面真实筛选，标准件总8、合格6、未知2、有效占用6、可用0。"
+    },
+    {
+      "id": "mobile-quality-stock",
+      "actor": "wh01",
+      "files": [
+        "19-mobile-stock-final.txt",
+        "19-mobile-stock-final.png"
+      ],
+      "result": "PASS",
+      "observation": "390x844移动查询同料；说明修正，质量字段和合法0读回。"
+    },
+    {
+      "id": "exhausted-release-options",
+      "actor": "wh01",
+      "files": [
+        "20-wh-release-options.txt"
+      ],
+      "result": "PASS",
+      "observation": "可入库放行单仅空占位，已耗尽物理/中性两单不再列出。"
+    }
+  ],
+  "businessMutation": "只保存一张自有合成派工的未批准草案；没有采购批准/签署/出入库写入。首次日期填写未进入React状态，提交校验拒绝零写；使用native日期控件后成功。",
+  "limitations": [
+    "IAB PDF预览两次为空白暗色；不宣称A/B PDF视觉验收，既有HTTP200及字节身份有效。",
+    "历史成本表无业务样本；不宣称历史成本快照业务复证。"
+  ],
+  "viewportReset": true,
+  "files": {
+    "01-plan-controls.txt": "3c833449237eae164e29c1cc8948e5e4288a3627cf4f0baec0ba4d5d19a45410",
+    "02-plan-cannot-publish.txt": "90878b54816a4ac9774486584d90ed1a4e8988c474c79d8cd7560fb6b147cc01",
+    "03-plan-draft-saved.png": "1d33f4eb7438d4c0e6820569902937e744a74dd3483ea38ed431b3819858ac91",
+    "03-plan-draft-saved.txt": "267c4bba6e6618ba21d2fa76e3a1377c1a964cc33f932d7885e8024c7a38168b",
+    "04-plan-draft-reloaded.txt": "f1200b52e2795b58a7d35b6fb3547aea14480e8b7c819f2cba131279a1a60636",
+    "05-e02-saved-draft.png": "be93a3c074969adc0e1053c563ee614f2e4f74ad7390c838e2f5e3a90c85fdb6",
+    "05-e02-schedule-selected.txt": "4795a9a8a34fd5a6cf9b08ba9f973266bfbf51b81732426149ae6e986d272688",
+    "05-e02-schedule.txt": "1fb85b9dcf6cfab3ec367ce608a564c7c2890c899fb30c34ba95bcb967c01419",
+    "06-e02-commitment.txt": "f256057dd18327edaa877a33d4a9dd561a457eb368bc3a311e342eb390e0db86",
+    "07-e02-restart.txt": "cec41330f1bd6dfa645995df4d96fa1fc1deefa95f268fa76c29aa51943ee3c9",
+    "08-e13-procurement-selected.txt": "304b40fc3aeb222c70d52da21b106feb427b5c69878e0d56fb3f70163d6e99fc",
+    "08-e13-procurement.txt": "6eb98edeea24903018588f10cae6826c1cd385a1b8d6cde35e06524bc1a5a692",
+    "09-e08-procurement.txt": "52ace24cf585663e8fc9aed7a5bf3048f3e80ceeb93b572aabf3921cd67d8685",
+    "10-e01-procurement.txt": "3030235c2212aeeceecc66e2e6edeeaec7f48b3d6e271a7adfbbefeca4495603",
+    "11-e01-scrap.txt": "a41f4bb28e27da1cc67eb0cb005a9ffd70c424489d7a963618dcf654d75ca04b",
+    "12-e10-restart.txt": "f8729e208e13947bce0e4fa6903d2026b33f6809b0db9e317e75fc7058a39a74",
+    "13-e10-scrap.txt": "8092962678d7664327dd1092491e2975cfd884c9225eba757cf7238af5857cb7",
+    "14-e10-quality.txt": "ade02b8ad3d671fdf25c1284afdc06ac0f4d8f95f9de6f21a45f8381972daa3a",
+    "15-e05-scrap.txt": "5526089da8a48e4ce9bc2e4ed73887d23b61a79dc95a8aefe16bd7aa65268c40",
+    "16-e05-ec.txt": "ae89dc2dbac44c2600b7c8de83cf43435842b4f60157562869036ed052099fda",
+    "17-pdf-iab-limitation.txt": "649e71b8aa3108a8f85746a38025894d6cbf815960ac962fe4620dcd940aa537",
+    "18-wh-desktop-stock.png": "3bdbdad2e95487e2bf88a4ab69aee1eef601245f129d095cab0c2b18453f4ca0",
+    "18-wh-desktop-stock.txt": "2949ca9ace1ef9f547a3e965aa83e88f09e92039c788f19f5efc28b186ead249",
+    "19-mobile-stock-before-copy-fix.txt": "a2838182d9b0e74522b6eb126d06d96976aaa687f42ca9e642a644da16f2bc43",
+    "19-mobile-stock-final.png": "43b5818f871d22a2f197f3638d6fdc16a1bf1caf15f5340c73f53040c8b49e34",
+    "19-mobile-stock-final.txt": "d2c8660496a9d33ef3dc5ad898063fb33e003fe7db727e6210ebe91bb42df0b9",
+    "20-wh-release-options.txt": "4044810acc5428f7e85369051ab9ca7f00408afaf542d9ed932dd78e091866d2"
+  },
+  "recordedAt": "2026-10-28T17:39:59.666382+00:00"
+}

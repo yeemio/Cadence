@@ -16,6 +16,7 @@ import type { AppModuleManifest, MenuNode } from '@smes/product-ui';
 const pc = permissionCode;
 
 export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
+  {code:'manufacturing-control',routePath:'/manufacturing',marketCategory:'base',entryPoint:'manufacturing/index.tsx',menuConfig:{title:'制造控制台',permission:pc('manufacturing:read')}},
   {
     // T1 能力子集 #1 运营总览：四源聚合页（工作台待办/交付态势/质检汇总/
     // 机加工时）。菜单可见性挂 workbench:read（工作台组入口码）；页面数据
@@ -203,7 +204,7 @@ export const DEMO_MANIFESTS: readonly AppModuleManifest[] = [
         routePath: '/purchase/receiving',
         marketCategory: 'process',
         entryPoint: 'listing/purchase-orders.tsx',
-        menuConfig: { title: '采购收货', permission: pc('purchase:read') },
+        menuConfig: { title: '采购收货', permission: pc('purchase:receive') },
       },
       {
         code: 'purchase-returns',

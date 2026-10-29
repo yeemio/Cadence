@@ -170,6 +170,15 @@ import {
 
 // ---- 结果形状 ----
 
+export interface ReceiptInspectionOutcome {
+  readonly lineNo: number;
+  readonly sourceRefId: string;
+  readonly kind: InspectionKind | null;
+  readonly inspectionId: string | null;
+  readonly status: 'created' | 'existing' | 'unclassified' | 'not-created' | 'failed';
+  readonly reason: string | null;
+}
+
 export interface ListingCommitted extends CommittedOutcome {
   readonly todosCreated: readonly TodoItem[];
   readonly todosCompleted: readonly TodoItem[];
@@ -182,6 +191,7 @@ export interface ListingCommitted extends CommittedOutcome {
   readonly reservations?: readonly InventoryUseReserveLineReceipt[];
   readonly purchaseRequest?: PurchaseRequest;
   readonly purchaseOrder?: PurchaseOrder;
+  readonly receiptInspections?: readonly ReceiptInspectionOutcome[];
   readonly purchaseReturn?: PurchaseReturn;
   /** 逾期扫描产出的逾期事实行。 */
   readonly overdue?: readonly PurchaseOverdueRow[];
@@ -1344,7 +1354,7 @@ export class ListingService {
       await this.domainEvents.append(event);
 
       // 收货→三类采购质检来源投递（RQ-019；通知式——失败不阻塞不回滚收货）。
-      await this.deliverReceiptInspection(tenant, order, receivedByLineNo, envelope.issuedBy);
+      const receiptInspections = await this.deliverReceiptInspection(tenant, order, receivedByLineNo, envelope.issuedBy);
 
       // 待办联动：收货消催货（buyer 名下该订单的逾期催货待办自动完成）。
       const todosCompleted =
@@ -1359,6 +1369,7 @@ export class ListingService {
         todosCreated: [],
         todosCompleted,
         purchaseOrder: advanced,
+        receiptInspections,
       };
     } finally {
       runtime.stop();
@@ -1377,7 +1388,8 @@ export class ListingService {
     order: PurchaseOrder,
     receivedByLineNo: ReadonlyMap<number, number>,
     triggeredBy: UserId,
-  ): Promise<void> {
+  ): Promise<readonly ReceiptInspectionOutcome[]> {
+    const results: ReceiptInspectionOutcome[] = [];
     for (const [lineNo, receivedQty] of receivedByLineNo) {
       if (receivedQty <= 0) continue; // 触发行：本次收货数量 > 0
       const line = order.lines.find((entry) => entry.lineNo === lineNo);
@@ -1387,10 +1399,11 @@ export class ListingService {
         console.warn(
           `[smes] 收货行质检投递跳过（订单 '${order.id}' 行 ${lineNo}：无申请承接/kind 歧义，无法推导采购质检类——RQ-019 只收显式三类采购事实）`,
         );
+        results.push({ lineNo, sourceRefId: `${order.id}#${lineNo}`, kind: null, inspectionId: null, status: 'unclassified', reason: '未关联唯一类别的采购申请，未自动创建来料检；请由采购核对申请来源，并由品质按实际类别建检。' });
         continue;
       }
       try {
-        await this.ports.inspectionIntake.receiveSourceFact(tenant, {
+        const receipt = await this.ports.inspectionIntake.receiveSourceFact(tenant, {
           sourceType: 'receipt',
           sourceRefId: `${order.id}#${lineNo}`, // 复用 receiptKey 幂等键约定
           kind,
@@ -1401,13 +1414,16 @@ export class ListingService {
           occurredAt: this.now(),
           triggeredBy,
         });
+        results.push({ lineNo, sourceRefId: `${order.id}#${lineNo}`, kind, inspectionId: receipt.inspectionId, status: receipt.created ? 'created' : receipt.inspectionId ? 'existing' : 'not-created', reason: receipt.reason ?? null });
       } catch (error) {
+        results.push({ lineNo, sourceRefId: `${order.id}#${lineNo}`, kind, inspectionId: null, status: 'failed', reason: error instanceof Error ? error.message : String(error) });
         console.warn(
           `[smes] 收货行质检投递失败（通知式合同，不回滚收货；订单 '${order.id}' 行 ${lineNo}）:`,
           error instanceof Error ? error.message : String(error),
         );
       }
     }
+    return results;
   }
 
   /**
@@ -1836,6 +1852,20 @@ export class ListingService {
 
   /** 采购明细行集 + 金额汇总（对账要点：Σ 已收数量 × 单价，未定价行计 0）。 */
   async receivingWarehouseOptions(tenant: TenantId) { return this.options.receivingWarehouses?.(tenant) ?? []; }
+
+  /** 收货动作投影：不暴露单价、金额、审批链或人员详情。 */
+  async receivingOrders(tenant: TenantId) {
+    const orders = await this.orders.list(tenant, { state: 'issued' });
+    return Promise.all(orders.map(async (order) => ({
+      id: order.id, workOrderId: order.workOrderId, supplierName: order.supplierName,
+      state: order.state, objectVersion: order.objectVersion,
+      lines: await Promise.all(order.lines.map(async (line) => ({
+        lineNo: line.lineNo, itemId: line.itemId, quantity: line.quantity, receivedQty: line.receivedQty,
+        inspectionKind: await this.resolvePurchaseInspectionKind(tenant, order.requestIds, line.itemId),
+      }))),
+    })));
+  }
+
 
   async purchaseDetails(tenant: TenantId, workOrderId?: string): Promise<PurchaseDetailRows> {
     const orders = await this.orders.list(

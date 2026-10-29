@@ -1,3 +1,6 @@
+import { PgManufacturingStore } from '@smes/business-store/manufacturing';
+import { ManufacturingService, ManufacturingQualityService, ManufacturingCommandGuard, InventoryService, DispatchService, ListingService, InspectionService } from '@smes/application';
+import { makeCommandEnvelope, OperationId, UserId } from '@smes/business-core';
 /**
  * NestJS 组合根入口（ADR-0001/0004/0008）。
  * reflect-metadata 全仓唯一 import 点，必须先于一切装饰器类执行。
@@ -376,8 +379,13 @@ async function bootstrap(): Promise<void> {
   // 无外部配置返回 undefined → wiring 回落结构化 console 日志（不炸 boot）。
   const edgeSinks = createIntegrationEdgeSinks(process.env);
 
+  const manufacturingStore = process.env['DATABASE_URL'] ? new PgManufacturingStore() : undefined;
+  const manufacturingControl = manufacturingStore ? new ManufacturingService(manufacturingStore) : undefined;
+  const manufacturingQuality = manufacturingStore && manufacturingControl ? new ManufacturingQualityService(manufacturingStore, manufacturingControl) : undefined;
+  const manufacturing = manufacturingControl && manufacturingQuality ? {control: manufacturingControl, quality: manufacturingQuality, guard: new ManufacturingCommandGuard(manufacturingControl, manufacturingQuality)} : undefined;
   const app = await NestFactory.create(
     buildAppModule(enabled, {
+      ...(manufacturing ? { manufacturing } : {}),
       devPolicyEndpoint,
       policyStore: businessStore?.policyStore,
       userStore: businessStore?.userStore,
@@ -564,6 +572,14 @@ async function bootstrap(): Promise<void> {
   // register 注入；此处完成 service 级端口的"构造后注入"（迟到绑定回填真实
   // service 实例，见 cross-module-wiring.ts 文件头）。
   bindCrossModuleWiring(app);
+  if (manufacturing) {
+    if (enabled.includes('inventory')) app.get(InventoryService).bindQualityControl(manufacturing.quality);
+    manufacturing.control.bindActions({execute: async (tenant, actor, module, kind, payload, id, revision) => {
+      const service = module === 'listing' ? app.get(ListingService) : module === 'dispatch' ? app.get(DispatchService) : app.get(InspectionService);
+      const envelope = makeCommandEnvelope({tenantId: tenant, issuedBy: UserId.create(actor),operationId: OperationId.create(`mfg-apply-${crypto.randomUUID()}`),expectedRevision: revision,issuedAt:new Date().toISOString(),command:{kind,payload}});
+      return await service.execute(envelope as never,id) as unknown as Record<string,unknown>;
+    }});
+  }
 
   // TenantContext 中间件（ADR-0005）：每请求解析租户，并在其上下文内执行下游处理链。
   // 单租户形态 resolve 恒返回 'default'，包装开销仅一次闭包调用。

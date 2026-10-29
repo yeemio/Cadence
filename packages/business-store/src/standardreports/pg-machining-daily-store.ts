@@ -109,7 +109,7 @@ export function connectMachiningDailyStore(options: MachiningDailyStoreOptions =
     : new PrismaClient();
   // RLS session 接线（同 connectReportingStore 体例）：saas 形态事务内
   // SET app.current_tenant；单机形态原客户端（回落 'default' 与请求租户同值）。
-  const client = rlsSessionEnabled() ? withRlsTenantSession(prisma) : prisma;
+  const client = withRlsTenantSession(prisma, { session: rlsSessionEnabled() });
   return {
     dailyStore: new PgMachiningDailyStatsStore(client),
     async disconnect(): Promise<void> {

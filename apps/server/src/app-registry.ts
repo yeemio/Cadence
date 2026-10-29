@@ -1,3 +1,4 @@
+import { ManufacturingController, StockQualityController, ManufacturingTransactionInterceptor, MANUFACTURING, type ManufacturingRuntime } from './manufacturing-http.js';
 import { InMemoryWorkOrderEquipmentStore, type WorkOrderEquipmentStore } from '@smes/application';
 /**
  * 应用注册表（ADR-0004 机器形态）：读 MODULES_ENABLED 决定装配哪些模块、以什么顺序。
@@ -218,6 +219,7 @@ export const DEFAULT_MODULES_ENABLED = 'core,org,masterdata,workbench,approval,d
 
 /** 组合根注入的持久化端口集合（缺省回落 application 内存实现——零 DB boot 语义完整）。 */
 export interface StorePorts {
+  readonly manufacturing?: ManufacturingRuntime | undefined;
   /** casbin 策略存储（CoreModule.policyStore 注入点）。 */
   readonly policyStore?: PolicyStore | undefined;
   /** 用户元数据存储（OrgModule 与 AuthModule 共享注入点——同一实例）。 */
@@ -795,7 +797,18 @@ export const MODULE_DEFINITIONS: Record<
         const orders = await stores.listingOrderStore?.list(tenant, { workOrderId }) ?? [];
         // PO无清单行锚：仅按同令物料共享实收，不伪造逐行采购关系。
         const received = new Map<string, number>();
-        for (const line of orders.flatMap((order) => order.lines)) received.set(line.itemId, (received.get(line.itemId) ?? 0) + line.receivedQty);
+        if (stores.manufacturing) {
+          const events = await stores.manufacturing.control.store.qualityEvents(tenant);
+          const poIds = new Set(orders.map(order => order.id));
+          const receipts = (await stores.manufacturing.control.store.sources(tenant, 'movement')).filter(m => m['kind'] === 'purchase-in' && poIds.has(String(m['sourceRefId'])));
+          for (const event of events) if(event['kind'] === 'release') {
+            const release = event['data'] as Record<string, unknown>;
+            if(receipts.some(m => m['sourceKey'] === release['receiptKey'])) received.set(String(release['itemId']), (received.get(String(release['itemId'])) ?? 0) + Number(release['quantity']));
+          }
+        } else for (const line of orders.flatMap((order) => order.lines)) received.set(line.itemId, (received.get(line.itemId) ?? 0) + line.receivedQty);
+        const receivedCeiling = new Map<string,number>();
+        for (const line of orders.flatMap(order => order.lines)) receivedCeiling.set(line.itemId,(receivedCeiling.get(line.itemId)??0)+line.receivedQty);
+        for (const [item,qty] of received) received.set(item, Math.min(qty,receivedCeiling.get(item)??0));
         const heldBySource = new Map<string, number>();
         const heldByItem = new Map<string, number>();
         for (const record of await stores.issueRecordStore?.list(tenant, { workOrderId, state: 'active' }) ?? []) {
@@ -926,6 +939,7 @@ export const MODULE_DEFINITIONS: Record<
 
 /** 组合根装配选项。 */
 export interface BuildAppModuleOptions {
+  readonly manufacturing?: ManufacturingRuntime;
   /**
    * 装配策略注入测试钩子（POST /dev/policies）。
    * 默认 false（生产形态不开）；main.ts 由 SMES_DEV_POLICY_ENDPOINT=on 开启。
@@ -1384,6 +1398,7 @@ export function buildAppModule(
         throw new ModuleRegistryError(`未注册的模块：${name}`);
       }
       return factory({
+        manufacturing: options.manufacturing,
         policyStore: sharedPolicyStore,
         userStore: sharedUserStore,
         roleStore: options.roleStore,
@@ -1519,12 +1534,13 @@ export function buildAppModule(
     }),
   ];
 
-  const controllers: Type<unknown>[] = [HealthController, ModulesController];
+  const controllers: Type<unknown>[] = [HealthController, ModulesController, ...(options.manufacturing ? [ManufacturingController, StockQualityController] : [])];
   if (options.devPolicyEndpoint) {
     controllers.push(DevPolicyController);
   }
 
   const providers: Provider[] = [
+    ...(options.manufacturing ? [{provide: MANUFACTURING,useValue: options.manufacturing},{provide: APP_INTERCEPTOR,useClass: ManufacturingTransactionInterceptor}] : []),
     { provide: ENABLED_MODULE_NAMES, useValue: [...enabled] },
     { provide: APP_GUARD, useClass: AuthGuard },
     // 跨模块接线句柄入容器：main/集成测试经 bindCrossModuleWiring(app) 完成

@@ -215,7 +215,7 @@ export function NonconformitiesPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
-                disabled={mutation.isPending || reason.trim().length === 0}
+                disabled={mutation.isPending || selectedRow['state'] !== 'open' || reason.trim().length === 0}
                 onClick={() =>
                   mutation.mutate(() =>
                     disposeNonconformity(String(selectedRow['id']), selectedRow, {
@@ -230,7 +230,8 @@ export function NonconformitiesPage() {
               </Button>
               <Button
                 variant="outline"
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || selectedRow['state'] !== 'disposed' || (selectedRow['disposal'] === 'rework' && detailQuery.data?.['inspectionState'] !== 'passed')}
+                title="须先完成处置；返工还须复检合格。闭环无需重新填写处置原因。"
                 onClick={() =>
                   mutation.mutate(() =>
                     closeNonconformity(

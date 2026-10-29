@@ -26,6 +26,7 @@ describe('演示注册表装配数据', () => {
   it('路由清单：全量、唯一、含 hideInMenu 项（会话审计/通知中心）与九循环模块页', () => {
     const paths = menuRoutes.map((route) => route.routePath);
     expect(paths).toEqual([
+      '/manufacturing',
       // T1 能力子集 #1：运营总览四源聚合页（菜单首项）
       '/overview',
       '/',
@@ -108,7 +109,7 @@ describe('演示注册表装配数据', () => {
       ['report-verification', 'report:read'],
       ['purchase-requests', 'purchase:read'],
       ['purchase-orders', 'purchase:read'],
-      ['purchase-receiving', 'purchase:read'],
+      ['purchase-receiving', 'purchase:receive'],
       ['purchase-returns', 'purchase:read'],
       ['purchase-details', 'purchase:read'],
       ['inspections', 'inspection:read'],
@@ -235,7 +236,10 @@ describe('演示注册表装配数据', () => {
 
   it('侧栏：admin 全量可见（九模块组全展开），但 hideInMenu 的会话审计不进侧栏', () => {
     const sidebar = toSidebarMenu(menuTree, [ADMIN_PERMISSION]);
+    expect(new Set(sidebar.map((node) => node.code)).size).toBe(sidebar.length);
+    expect(menuRoutes.find((route) => route.code === 'manufacturing-control')?.routePath).toBe('/manufacturing');
     expect(sidebar.map((node) => node.code)).toEqual([
+      'manufacturing-control',
       'overview',
       'workbench',
       'masterdata',
