@@ -1,0 +1,16 @@
+{
+  "startedAt": "2026-10-31T14:52:49.051680+08:00",
+  "controllerThreadId": "01a190b8-b764-7473-852d-cfe62d232c07",
+  "project": "cadence-m2-clean-20261031-2c07",
+  "sourcePath": "/var/folders/rf/5yxxrmg96g366djlhy23bh840000gn/T/cadence-m2-clean-20261031-vsuaofs1/source",
+  "commit": "346d46882afa908d70731a64c9ff0496950dd068",
+  "productCommit": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+  "cloneStatus": "",
+  "ports": {
+    "pg": 55441,
+    "server": 33081,
+    "web": 33080,
+    "proxy": 33082
+  },
+  "baseEnvExampleTracked": true
+}

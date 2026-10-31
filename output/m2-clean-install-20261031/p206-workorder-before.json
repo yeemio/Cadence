@@ -1,0 +1,21 @@
+{
+  "order": {
+    "id": "wo-seed-factory-01",
+    "tenant": "default",
+    "flowConfigId": "work-order",
+    "state": "not_started",
+    "objectVersion": 1,
+    "customerRef": "CUST-001",
+    "projectName": "工厂演示项目一（seed-factory）",
+    "salesRep": null,
+    "manager": "user-factory-plan",
+    "plannedDeliveryAt": "2026-12-15T00:00:00.000Z",
+    "packagingArrivalAt": "2026-11-20T00:00:00.000Z",
+    "createdAt": "2026-10-31T06:56:02.180Z",
+    "updatedAt": "2026-10-31T06:56:02.180Z"
+  },
+  "attachments": [],
+  "latestKitCheck": null,
+  "milestones": [],
+  "customerName": null
+}

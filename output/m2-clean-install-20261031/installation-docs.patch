@@ -1,0 +1,161 @@
+diff --git a/deploy/README.md b/deploy/README.md
+index 9bbf7ca..0b0ee1c 100644
+--- a/deploy/README.md
++++ b/deploy/README.md
+@@ -19,7 +19,7 @@ M4 正式线已接通：RLS session 变量接线（org / masterdata / workbench
+ 
+ # 部署操作手册（安装者视角）
+ 
+-本节面向未参与开发的安装/运维人员，事实快照日 **2026-10-27**，与下方历史实现注记独立维护；两者冲突时以 compose/代码实态为准。安装验收是独立环节，本节**如实给步骤与已知的坑**，不预称「一键安装成功」。配套材料：用户手册入口 `docs/user-manual/README.md`、演示交接 `docs/user-manual/demo-handover.md`。
++本节面向未参与开发的安装/运维人员，更新日 **2026-10-31**。安装输入须绑定交付记录中的准确 Git 提交；本轮核对的基线为 `346d46882afa908d70731a64c9ff0496950dd068`，其中产品源码版本为 `0425ded838a87b8aeab3cfc300097a985bde2bd2`。下方历史实现注记保留原时点，具体安装结果见对应交付记录。配套材料：用户手册入口 `docs/user-manual/README.md`、演示交接 `docs/user-manual/demo-handover.md`。
+ 
+ ## D1. 版本与依赖要求
+ 
+@@ -33,17 +33,24 @@ M4 正式线已接通：RLS session 变量接线（org / masterdata / workbench
+ 
+ ## D2. 标准安装步骤
+ 
+-**单机（买断/私有化）**：
++**单机（买断/私有化）首次安装**：在交付源码的新目录中准备持久化配置，再启动。`deploy/.env.example` 已随仓库分发。
+ 
+ ```bash
+ cd deploy
+-MODULES_ENABLED="core,org,masterdata,workbench,approval,baseline,workorder,listing,inspection,inventory,dispatch,reporting,hours,costing,payroll,maintenance,drawing,metric-pack,audit,standardreports,menu-config,approval-config,notifications,issue,attachment,aftercare-claim,ai-query,demo" \
+-  docker compose up -d --build
++cp .env.example .env
++chmod 600 .env
++cat >> .env <<'EOF'
++MODULES_ENABLED=core,org,masterdata,workbench,approval,baseline,workorder,listing,inspection,inventory,dispatch,reporting,hours,costing,payroll,maintenance,drawing,metric-pack,audit,standardreports,menu-config,approval-config,notifications,issue,attachment,aftercare-claim,demo,column-preferences,screen,ai-query
++EOF
++# 按 D3 编辑 .env：设置本环境口令、两域独立签名密钥及端口。
++docker compose --env-file .env up -d --build
+ ```
+ 
+-`MODULES_ENABLED` 缺省只起基础六模块（core,org,masterdata,workbench,approval,demo）——全功能部署须显式传全清单（键名见 `packages/application` 注册表 `MODULE_DEFINITIONS`，core 恒必装）。服务顺序 pg → migrate（迁移+种子）→ server → web，healthcheck 门控。
++该清单启用当前 30 个模块；缺省只起基础六模块（core,org,masterdata,workbench,approval,demo）。模块键取 `apps/server/src/app-registry.ts` 的 `MODULE_DEFINITIONS`，core 恒必装。将模块清单和端口保存在同一 `.env`，后续更新与造厂也读取它，避免一次性 shell 变量消失后退回缺省配置。服务顺序 pg → migrate（迁移+种子）→ server → web，healthcheck 门控。
+ 
+-**SaaS（订阅/托管）**：在单机基础上叠加租户解析 env 与 saas profile（`SMES_TENANT_MODE=saas SMES_DOMAIN=<基域> SMES_TENANTS=<逗号分隔租户清单> docker compose --profile saas up -d --build`）。机制、fail-closed 行为与验证口径见下方「SaaS profile 起栈」节。**注意：SaaS 目前只有 default 租户有种子数据；非默认租户的开通/种子流程未实现**（SMES_TENANTS 是静态清单，新租户内登录 401 属预期）——见本 README「未竟」段。
++已有安装继续使用原配置文件，不重新复制模板。同一主机另建演示/验收环境时，为 `.env` 设置独立 `COMPOSE_PROJECT_NAME` 和空闲端口；API/Web/代理仅供本机时可将端口值写为 `127.0.0.1:<端口>`，PG 已固定本机绑定。
++
++**SaaS（订阅/托管）**：在同一 `.env` 中设置 `SMES_TENANT_MODE=saas`、`SMES_DOMAIN=<基域>` 和 `SMES_TENANTS=<逗号分隔租户清单>`，再执行 `docker compose --env-file .env --profile saas up -d --build`。机制、fail-closed 行为与验证口径见下方「SaaS profile 起栈」节。**注意：SaaS 目前只有 default 租户有种子账号和业务数据；其他配置租户会初始化 MAIN 仓，但账号开通/业务种子流程未实现**（SMES_TENANTS 是静态清单，新租户内登录 401 属预期）——见本 README「未竟」段。
+ 
+ **公网部署前必改**：compose 缺省口令是开发值（`POSTGRES_PASSWORD` 缺省 `cadenceSingleNodeDev`、`POSTGRES_APP_PASSWORD` 缺省 `app_user_dev_change_me`），公网/客户环境必须显式覆盖——建议在 `deploy/.env` 文件中配置（compose 自动读取；`.env` 已被镜像构建裁剪，口令不进镜像）。
+ 
+@@ -51,6 +58,7 @@ MODULES_ENABLED="core,org,masterdata,workbench,approval,baseline,workorder,listi
+ 
+ | 变量 | 缺省 | 说明 |
+ | --- | --- | --- |
++| `COMPOSE_PROJECT_NAME` | `cadence` | Compose 项目名；另建隔离环境时设置不同名称，使容器、网络和数据卷独立 |
+ | `POSTGRES_PASSWORD` | `cadenceSingleNodeDev` | PG superuser 口令（开发缺省值，生产必改） |
+ | `POSTGRES_APP_PASSWORD` | `app_user_dev_change_me` | 受限 app_user 口令（生产必改） |
+ | `PG_PORT` | `55432` | 宿主侧 PG 端口（仅绑 127.0.0.1，迁移排障/psql 用） |
+@@ -67,7 +75,9 @@ MODULES_ENABLED="core,org,masterdata,workbench,approval,baseline,workorder,listi
+ | `SMES_PASSWORD_REQUIRE_CLASSES` | `off` | 口令字符类要求开关（`on`\|`off`，其他值拒启动） |
+ | `SMES_ATTACHMENT_REF_SECRET` / `SMES_DRAWING_REF_SECRET` | 空 | 附件/图纸两域签名密钥（base64/hex、解码恰 32 字节）。**多实例/跨重启部署必须设置**；未设 = 实例内随机 + 启动 warn（重启后旧引用失效属设计内）；格式非法拒启动。机制详见下方「两域签名密钥 env（M2 安全批 SP-3）」条目 |
+ 
+-**登记说明（2026-10-27）**：SP-3 两密钥与 CM-1 安全响应头均已随**本轮未提交增量**在工作区落盘并随当前交付候选分发——**仅 clone 旧 HEAD 不含这两项**，安装前确认取得含本轮增量的工作区/候选。CM-1 双拓扑已覆盖：web nginx 是静态/HTML 承载层的权威层（`apps/web/nginx.conf` CM-1 段），server 直连拓扑（SaaS 子域 / `IP:3000`）由 `apps/server/src/main.ts` 全局中间件同值补头。三条运维注意（来源：`apps/web/nginx.conf` CM-1 注释）：① API 改跨源（`VITE_API_BASE_URL` 指向他源）须同步扩 nginx CSP `connect-src`，否则浏览器拦截 API 请求；② 升级 vite-plugin-pwa 或改 SW 路径/scope 须重算 CSP 内联脚本哈希，失配症状 = SW 注册被拦截（控制台报错，应用功能不受影响）；③ `X-Frame-Options: DENY`——页面不能被 iframe 内嵌。另：`deploy/.env.example` 模板被仓内 `.gitignore`（`.env.*`）忽略、不随 clone 分发——安装者按本表自建 `deploy/.env` 即可（compose 自动读取同目录 `.env`）。
++SP-3 两密钥与 CM-1 安全响应头已包含在上述 Git 基线中。CM-1 双拓扑已覆盖：web nginx 是静态/HTML 承载层的权威层（`apps/web/nginx.conf` CM-1 段），server 直连拓扑（SaaS 子域 / `IP:3000`）由 `apps/server/src/main.ts` 全局中间件同值补头。三条运维注意（来源：`apps/web/nginx.conf` CM-1 注释）：① API 改跨源（`VITE_API_BASE_URL` 指向他源）须同步扩 nginx CSP `connect-src`，否则浏览器拦截 API 请求；② 升级 vite-plugin-pwa 或改 SW 路径/scope 须重算 CSP 内联脚本哈希，失配症状 = SW 注册被拦截（控制台报错，应用功能不受影响）；③ `X-Frame-Options: DENY`——页面不能被 iframe 内嵌。
++
++本表也列出服务端支持的登录限流和口令策略参数；当前 Compose 尚未透传 `SMES_LOGIN_*`、`SMES_PASSWORD_*`。若要调整它们，须在 `server.environment` 显式配置，仅写入 `.env` 不会改变运行值。其余按 Compose 已有映射读取；配置文件使用 `--env-file` 明确指定。
+ 
+ ## D4. 初始化与岗位开通
+ 
+@@ -78,12 +88,14 @@ MODULES_ENABLED="core,org,masterdata,workbench,approval,baseline,workorder,listi
+ 1. **页面开通（正式环境）**：以 admin 登录 →「系统管理 → 角色与授权」（`/system/roles`）按目标岗位权限码期望态一次建角色（服务端 diff 自动增授/回收）→「用户与角色」（`/system/users`）建用户并绑角色。七岗位标准码集见 `architecture/ROLE-PACKS.md` §1；操作说明见 `docs/user-manual/roles/admin.md`。
+ 2. **工厂种子（演示/测试环境）**：显式运行 `SMES_FACTORY_SEED=on` 的 `db:seed-factory`（compose migrate 服务**不会**自动跑它），一键得到六岗账号（plan01/purch01/prod01/qc01/wh01/appr01，口令统一 `demo-password`）+ 主数据 + 五张在制单。两条运行方式与造厂产物清单见 `docs/user-manual/demo-handover.md` §3。
+ 
++制造控制功能的七个演示职责另由 `seed-manufacturing.mjs` 初始化，操作与账号见[演示交接 §3](../docs/user-manual/demo-handover.md#3-造厂工厂种子六岗账号--主数据--五张在制单)。它们与原六岗独立，基础 `up` 不会自动创建这些演示身份。
++
+ ## D5. 健康检查
+ 
+ | 对象 | 方式 | 预期 |
+ | --- | --- | --- |
+ | server | `curl http://localhost:3000/health` | 200 `{"status":"ok","tenant":"default"}` |
+-| 模块面 | `curl http://localhost:3000/modules` | 已启用模块清单（全清单 28 个） |
++| 模块面 | `curl http://localhost:3000/modules` | 已启用模块清单（D2 全清单 30 个） |
+ | web | `curl http://localhost:8080/` | HTML 200（nginx 静态入口自证；compose 级 healthcheck 同此） |
+ | pg | compose healthcheck `pg_isready` | healthy |
+ | SaaS 探针 Host 取舍 | 镜像级 server healthcheck 在 saas 形态用「首个已知租户+SMES_DOMAIN」作 Host（租户解析 fail-closed 不参与 liveness）；单机回落 127.0.0.1 | 见下方「生产要素初版」段与 `apps/server/src/healthcheck-probe.ts` |
+@@ -108,7 +120,7 @@ docker compose logs pg web proxy     # 其余服务
+ ```bash
+ # 获取新版本源码后（工作区/仓库以交付基线为准）：
+ cd deploy
+-docker compose up -d --build     # 全量重建：server/web 镜像 + migrate 一次性镜像
++docker compose --env-file .env up -d --build     # 沿用安装配置，全量重建 server/web/migrate
+ ```
+ 
+ - 迁移自动推进：migrate 服务每次 up 重跑 `prisma migrate deploy`（幂等）；种子幂等重跑零新增。
+@@ -117,7 +129,7 @@ docker compose up -d --build     # 全量重建：server/web 镜像 + migrate 
+ 
+ ## D8. 数据保留与备份
+ 
+-- 全部业务数据在具名卷 `pg-data`（`deploy/compose.yaml` volumes 段）。`docker compose down` **保留**数据；`down -v` **删除**数据——演示环境可随意 `down -v` 重置，客户环境禁用。
++- 全部业务数据在具名卷 `pg-data`（`deploy/compose.yaml` volumes 段）。`docker compose down` **保留**数据；`down -v` **删除**数据，仅用于已明确确认可丢弃的独立演示数据，客户环境禁用。
+ - 备份建议：`pg_dump` 经宿主映射 `127.0.0.1:55432` 导出（更新前、定期）；恢复用对应 `pg_restore`/`psql` 导回同名库。
+ - 证据面说明：命令幂等账本、域事件与 outbox 双写落库（PG 适配同事务双写），是业务可追溯性的一部分——备份须整库一致时点快照，不要只挑表。
+ - 自动清理/归档策略当前未实现（以系统实态为准）；数据保留周期、完整备份恢复运营演练属 M3/M4 后续范围，本版本不含。
+diff --git a/docs/user-manual/demo-handover.md b/docs/user-manual/demo-handover.md
+index 19bd2a5..3d00ad8 100644
+--- a/docs/user-manual/demo-handover.md
++++ b/docs/user-manual/demo-handover.md
+@@ -3,24 +3,23 @@
+ 读者：接手演示环境的实施/交付人员。目标：按本页操作得到一个**可重放**的演示——起栈 → 造厂（账号+主数据+在制单）→ 登录 → 走一条核心业务链 → 核对结果。
+ 纪律：演示只用合成数据，**不使用真实客户数据**；不再开发第二套演示平台，本页只整理现有资产（角色包、造厂脚本、操作入口）。
+ 
+-事实快照日 2026-10-28（设备维链候选待主控接收）。资产来源：`architecture/ROLE-PACKS.md`（岗位与剧本）、`packages/business-store/prisma/seed-factory.mjs`（造厂脚本）、`TESTING-GUIDE.md` §3（起栈）、`noodle-test-output/ui-round2-20261027/BRIEF.md`（账号口令）。
++安装说明更新日 2026-10-31；产品源码基线为 `0425ded838a87b8aeab3cfc300097a985bde2bd2`。资产来源：`architecture/ROLE-PACKS.md`（岗位与剧本）、`packages/business-store/prisma/seed-factory.mjs`（造厂脚本）、[部署手册](../../deploy/README.md)（安装配置）。
+ 
+ ## 0. 前置
+ 
+-- 源码仓 Cadence（含本轮未提交增量时以工作区实态为准）；Docker（compose v2）。
++- 交付记录指定的 Cadence Git 提交；Docker（compose v2）。
+ - 宿主机跑造厂脚本需要 Node ≥ 22 + pnpm 11.x（见第 2 步「方式 B」）；只用「方式 A」则不需要。
+ - 端口 8080 / 3000 / 55432 未被占用。
+ 
+ ## 1. 起栈（单机形态，全模块清单）
+ 
++先按[部署手册 D2](../../deploy/README.md#d2-标准安装步骤)创建 `deploy/.env`，保存其中的 30 模块清单、独立项目名、端口和凭据；已配置的环境直接沿用该文件。
++
+ ```bash
+ cd <仓库根>/deploy
+-export MODULES_ENABLED="core,org,masterdata,workbench,approval,baseline,workorder,listing,inspection,inventory,dispatch,reporting,hours,costing,payroll,maintenance,drawing,metric-pack,audit,standardreports,menu-config,approval-config,notifications,issue,attachment,aftercare-claim,demo,column-preferences,screen,ai-query"
+-docker compose up -d --build
++docker compose --env-file .env up -d --build
+ ```
+ 
+-（来源：`TESTING-GUIDE.md` §3、`noodle-test-output/test-handoff-round2-20261027.md` §一。缺省 `MODULES_ENABLED` 只起基础六模块，演示须显式传全清单。）
+-
+ ## 2. 健康核对（栈起来后先核对再演示）
+ 
+ | 检查 | 命令/地址 | 预期 |
+@@ -38,11 +37,11 @@ docker compose up -d --build
+ 
+ ```bash
+ cd <仓库根>
+-docker compose -f deploy/compose.yaml run --rm -e SMES_FACTORY_SEED=on migrate \
++docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --no-deps -e SMES_FACTORY_SEED=on migrate \
+   sh -c 'pnpm --filter @smes/business-store run db:seed-factory'
+ ```
+ 
+-（脚本头注注明其设计运行方式为「superuser 经 migrate 服务跑」。**安装验收实测提示（2026-10-27）**：起栈时若用了自定义端口/env（如 `PG_PORT`），`compose run` 必须带**同款 env 且加 `-p <同一 project>`**，否则 compose 会按缺省配置 recreate pg 容器、可能撞端口或丢失自定义拓扑——实测缺 env 的 run 触发了 pg recreate 并因端口冲突失败。简便替代：直接用方式 B。）
++（以安装时同一 `.env` 读取项目名、端口和数据库口令；`--no-deps` 复用已经健康的 PG，不重建依赖服务。若安装时另用 `-p` 指定项目名，此处也须传同一值。历史验收曾因遗漏自定义 env 触发 PG 重建和端口冲突，因此本命令显式绑定配置。）
+ 
+ **方式 B：宿主机直跑（Node ≥22 + pnpm）**
+ 
+@@ -63,6 +62,16 @@ DATABASE_URL="postgresql://postgres:cadenceSingleNodeDev@127.0.0.1:55432/cadence
+ - 主数据：物品、供应商引用、工厂仓（含货架+库位层级）。
+ - 五张在制单（全部挂在同一个工作令 `wo-seed-factory-01` 下）：工作令（四类清单骨架齐，零件清单已导入 5 行）、采购订单（已下发、待收货）、派工单（执行中、待报工）、质检单（待判定）。
+ 
++**制造控制演示职责（可选，仅演示/测试环境）**：需要演示联合排程、独立交期承诺、净额采购、复机/报废会签或工程变更时，在基础初始化成功后执行：
++
++```bash
++cd <仓库根>
++docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --no-deps migrate \
++  sh -c 'pnpm --filter @smes/business-store exec node prisma/seed-manufacturing.mjs'
++```
++
++该脚本创建 `mfg-e01`（总经理）、`mfg-e02`（运营）、`mfg-e05`（工程）、`mfg-e07`（计划）、`mfg-e08`（采购）、`mfg-e10`（品质）、`mfg-e13`（财务）。新账号沿用本租户 `demo-admin` 的演示口令，不分配管理员角色；新建演示库中口令为 `demo-password`。现有同名身份的口令与原六岗权限不会由该脚本重写。登录后从制造控制入口访问；脚本只准备身份，不生成六项控制的业务单据，也不将历史记录补为已审批。
++
+ ## 4. 登录与演示账号
+ 
+ | 用途 | 账号 | 说明 |

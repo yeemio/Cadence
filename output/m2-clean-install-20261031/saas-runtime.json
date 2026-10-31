@@ -1,0 +1,42 @@
+[
+  {
+    "name": "/cadence-m2-clean-20261031-2c07-pg-1",
+    "id": "97848eeda373bb9783ca5937c0a541581d25e9e6249c09d32ec0b16d2e69d0ce",
+    "image": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+    "state": "running",
+    "health": "healthy",
+    "startedAt": "2026-10-31T06:55:05.358969833Z"
+  },
+  {
+    "name": "/cadence-m2-clean-20261031-2c07-migrate-1",
+    "id": "58a2bdbbee2c50f7b8ca7aa8952d97b2d4adb1ae6893972aab2c9c4f2302a26d",
+    "image": "sha256:1447b4269a602409a13f56b96f0f55b7ee7f4383962d424b3270d92a3f84bc29",
+    "state": "exited",
+    "health": null,
+    "startedAt": "2026-10-31T06:59:12.176907772Z"
+  },
+  {
+    "name": "/cadence-m2-clean-20261031-2c07-server-1",
+    "id": "c9c711917110b5b7598808a8fa4cc184edb1693fa9b4ba37bc1ff37c40021af8",
+    "image": "sha256:3ea254b16384117742c7cbb3acc26b60c60d13e653ffbd4e32056fbb4368eaf5",
+    "state": "running",
+    "health": "healthy",
+    "startedAt": "2026-10-31T06:59:14.757452853Z"
+  },
+  {
+    "name": "/cadence-m2-clean-20261031-2c07-web-1",
+    "id": "3f3cff40602e5ed2deb1691eb62a48076d25c4444b3b3e8f8d4dfc5d22d9f19c",
+    "image": "sha256:ee06b3078f46365952449b6a1417ef0945937eea3bbb961a402a33b545e5936a",
+    "state": "running",
+    "health": "healthy",
+    "startedAt": "2026-10-31T06:55:17.095404906Z"
+  },
+  {
+    "name": "/cadence-m2-clean-20261031-2c07-proxy-1",
+    "id": "7cfd6a24840129b2f68d570b28711aed12813117adfedbf045c4ed6774a731c3",
+    "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+    "state": "running",
+    "health": null,
+    "startedAt": "2026-10-31T06:59:14.834816371Z"
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "partsRequest": {
+    "id": "pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8",
+    "tenant": "default",
+    "workOrderId": "wo-seed-factory-01",
+    "flowConfigId": "parts-request",
+    "state": "approved",
+    "objectVersion": 3,
+    "itemId": "itm-seed-factory-004",
+    "quantity": 1,
+    "requester": "user-factory-plan",
+    "remark": "隔离安装验收：原项目经理配件审批链",
+    "shipmentRef": null,
+    "createdAt": "2026-10-31T07:02:22.099Z",
+    "updatedAt": "2026-10-31T07:02:22.208Z"
+  },
+  "milestones": [
+    {
+      "from": "draft",
+      "to": "submitted",
+      "event": "SUBMIT",
+      "at": "2026-10-31T07:02:22.101Z",
+      "actor": "user-factory-plan",
+      "objectVersion": 2
+    },
+    {
+      "from": "submitted",
+      "to": "approved",
+      "event": "APPROVE",
+      "at": "2026-10-31T07:02:22.202Z",
+      "actor": "user-factory-plan",
+      "objectVersion": 3
+    }
+  ],
+  "pendingApproval": null
+}

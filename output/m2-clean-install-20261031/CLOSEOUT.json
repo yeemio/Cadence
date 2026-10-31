@@ -1,0 +1,24 @@
+{
+  "closedAt": "2026-10-31T15:03:40.513061+08:00",
+  "baseCommit": "346d46882afa908d70731a64c9ff0496950dd068",
+  "productCommit": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+  "sourceCloneTrackedStatus": "",
+  "docPatchSha256": "aa868f96c2e77888801df3a0fd227bd52f06d0f9bf4e8f77809e1fed3f6f02e5",
+  "documents": {
+    "deploy/README.md": "646fa33a0d10c5c6999346a823c58c0e32f7d9d4b5106cb5dd6d90cc3632c7d5",
+    "docs/user-manual/demo-handover.md": "a40af86c8d28b48807b46f60bfcd354485a657082c5ac7099db7172e53e2d136"
+  },
+  "singleNode": "PASS",
+  "saasRouting": "PASS",
+  "legacyPartsApproval": "PASS_SCOPED_ISOLATED",
+  "docModuleListMatchesRuntime": true,
+  "diffCheck": "PASS",
+  "sharedContainersUnchanged": true,
+  "isolatedContainersRemoved": true,
+  "retainedVolumes": [
+    "cadence-m2-clean-20261031-2c07_pg-data"
+  ],
+  "retainedSourceAndPrivateConfig": "/var/folders/rf/5yxxrmg96g366djlhy23bh840000gn/T/cadence-m2-clean-20261031-vsuaofs1/source",
+  "gitCommitOrPushPerformed": false,
+  "productSourceChanged": false
+}

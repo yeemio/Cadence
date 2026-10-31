@@ -1,0 +1,607 @@
+[
+  {
+    "label": "api-health",
+    "path": "/health",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "web-health",
+    "path": "/health",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "modules",
+    "path": "/modules",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "desktop",
+    "path": "/",
+    "status": 200,
+    "expected": 200,
+    "passed": true,
+    "bytes": 928,
+    "sha256": "d523ca2a89b610a10a5b3febc6fe75777c6d943fe7bb32f9a1e5f1e634f3f50e"
+  },
+  {
+    "label": "login-page",
+    "path": "/login",
+    "status": 200,
+    "expected": 200,
+    "passed": true,
+    "bytes": 1052,
+    "sha256": "db4ec5a806dd74b9e9e6c739e89e7ffc39f26643b64bd8efd27d8f3c9c04e1f1"
+  },
+  {
+    "label": "mobile",
+    "path": "/m",
+    "status": 200,
+    "expected": 200,
+    "passed": true,
+    "bytes": 928,
+    "sha256": "d523ca2a89b610a10a5b3febc6fe75777c6d943fe7bb32f9a1e5f1e634f3f50e"
+  },
+  {
+    "label": "asset-0",
+    "path": "/assets/_commonjsHelpers-DsqdWQfm.js",
+    "status": 200,
+    "expected": 200,
+    "passed": true,
+    "bytes": 750,
+    "sha256": "eff0f1a7acbfe3308ef59f9169007de8f58c632d94969de31045490429d55be8"
+  },
+  {
+    "label": "asset-1",
+    "path": "/assets/index-DaMo2B_P.js",
+    "status": 200,
+    "expected": 200,
+    "passed": true,
+    "bytes": 266038,
+    "sha256": "83ba9b330b3c84c5c50cca5160b0e1cd49975ff3b070b88387736bac284500fe"
+  },
+  {
+    "label": "asset-2",
+    "path": "/assets/index-QSzyYsAW.css",
+    "status": 200,
+    "expected": 200,
+    "passed": true,
+    "bytes": 53374,
+    "sha256": "b0a76e3a9ffaa9aeb8f01f3f31d34ca87f622c4d59ec8b33ca18c5747caeae9d"
+  },
+  {
+    "label": "asset-3",
+    "path": "/assets/login-BoPVNHqt.js",
+    "status": 200,
+    "expected": 200,
+    "passed": true,
+    "bytes": 2527,
+    "sha256": "1f7fb18c5773a87df004b262407d67fd3329172fcf2097c00e3aa5adf3278753"
+  },
+  {
+    "label": "asset-4",
+    "path": "/assets/main-dHwiyXFq.js",
+    "status": 200,
+    "expected": 200,
+    "passed": true,
+    "bytes": 718994,
+    "sha256": "585195d816aa53d26e91ab6c202bcb3e7a0e04a49b578745bc8b472da1a3f5b6"
+  },
+  {
+    "label": "login-admin",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "logout-admin",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-plan01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "plan-seeded-workorder",
+    "path": "/workorder/work-orders/wo-seed-factory-01",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "login-plan01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "logout-plan01",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-purch01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "logout-purch01",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-prod01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "logout-prod01",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-qc01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "logout-qc01",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-wh01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "warehouse-receiving",
+    "path": "/purchase/receiving",
+    "status": 404,
+    "expected": 200,
+    "passed": false
+  },
+  {
+    "label": "login-wh01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "warehouse-receiving-orders",
+    "path": "/purchase/receiving-orders",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "warehouse-quality",
+    "path": "/stock/quality",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "logout-wh01",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-appr01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "logout-appr01",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-viewer",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "viewer-workorder-denied",
+    "path": "/workorder/work-orders",
+    "status": 403,
+    "expected": 403,
+    "passed": true
+  },
+  {
+    "label": "logout-viewer",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-mfg-e01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "board-mfg-e01",
+    "path": "/manufacturing/board",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "logout-mfg-e01",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-mfg-e02",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "board-mfg-e02",
+    "path": "/manufacturing/board",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "logout-mfg-e02",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-mfg-e05",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "board-mfg-e05",
+    "path": "/manufacturing/board",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "logout-mfg-e05",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-mfg-e07",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "board-mfg-e07",
+    "path": "/manufacturing/board",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "logout-mfg-e07",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-mfg-e08",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "board-mfg-e08",
+    "path": "/manufacturing/board",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "logout-mfg-e08",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-mfg-e10",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "board-mfg-e10",
+    "path": "/manufacturing/board",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "logout-mfg-e10",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "login-mfg-e13",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "board-mfg-e13",
+    "path": "/manufacturing/board",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "logout-mfg-e13",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "anonymous-workorder-denied",
+    "path": "/workorder/work-orders",
+    "status": 401,
+    "expected": 401,
+    "passed": true
+  },
+  {
+    "label": "saas-known",
+    "path": "/health",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "saas-other",
+    "path": "/health",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "saas-unknown",
+    "path": "/health",
+    "status": 404,
+    "expected": 404,
+    "passed": true
+  },
+  {
+    "label": "saas-outside",
+    "path": "/health",
+    "status": 421,
+    "expected": 421,
+    "passed": true
+  },
+  {
+    "label": "saas-nested",
+    "path": "/health",
+    "status": 421,
+    "expected": 421,
+    "passed": true
+  },
+  {
+    "label": "saas-modules",
+    "path": "/modules",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "saas-plan-login",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "saas-persisted-workorder",
+    "path": "/workorder/work-orders/wo-seed-factory-01",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "saas-cross-tenant-token",
+    "path": "/auth/me",
+    "status": 401,
+    "expected": 401,
+    "passed": true
+  },
+  {
+    "label": "saas-no-other-seed-account",
+    "path": "/auth/login",
+    "status": 401,
+    "expected": 401,
+    "passed": true
+  },
+  {
+    "label": "saas-logout",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "p206-login-plan01",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "p206-login-mfg-e02",
+    "path": "/auth/login",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "p206-workorder-before",
+    "path": "/workorder/work-orders/wo-seed-factory-01",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "p206-created",
+    "path": "/workorder/parts-requests",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "p206-before-approval",
+    "path": "/workorder/parts-requests/pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "p206-e02-denied",
+    "path": "/workorder/parts-requests/pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8/approval",
+    "status": 403,
+    "expected": 403,
+    "passed": true
+  },
+  {
+    "label": "p206-after-denied",
+    "path": "/workorder/parts-requests/pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "p206-approved",
+    "path": "/workorder/parts-requests/pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8/approval",
+    "status": 201,
+    "expected": 201,
+    "passed": true
+  },
+  {
+    "label": "p206-final",
+    "path": "/workorder/parts-requests/pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "p206-workorder-after",
+    "path": "/workorder/work-orders/wo-seed-factory-01",
+    "status": 200,
+    "expected": 200,
+    "passed": true
+  },
+  {
+    "label": "p206-logout-plan01",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "p206-logout-mfg-e02",
+    "path": "/auth/logout",
+    "status": 204,
+    "expected": 204,
+    "passed": true,
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "9a12643db8093ca943b6c33607a0140c599ab6cb8fd585051d4381244b1a4bd0",
+    "name": "/cadence-pg-1",
+    "image": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+    "startedAt": "2026-10-30T02:18:07.168740459Z",
+    "status": "running"
+  },
+  {
+    "id": "839ea0a1d4707ee1f2b633e0bd37457cbbd94621b72c5908c0c62d04b6036662",
+    "name": "/cadence-server-1",
+    "image": "sha256:d265803b4de25e5dd7586dfcfd85e72828fe64de7b515a316d0a62c90f48249c",
+    "startedAt": "2026-10-30T02:18:07.16646375Z",
+    "status": "running"
+  },
+  {
+    "id": "94e7a72069ecaf7d655ce8ad1260aaf7f6fcff472a85a9827aa648b327e4ab5d",
+    "name": "/cadence-web-1",
+    "image": "sha256:6e56314ca5b50816d6ed26380858a473fbb82c4ea7a0fc5c58a09673f539c394",
+    "startedAt": "2026-10-30T02:18:07.140702375Z",
+    "status": "running"
+  },
+  {
+    "id": "a8516b462ba319c3630068bc8c023021ef0979b28afc8b9bb13445cfddcd057b",
+    "name": "/cadence-proxy-1",
+    "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+    "startedAt": "2026-10-30T02:18:07.13494975Z",
+    "status": "running"
+  }
+]

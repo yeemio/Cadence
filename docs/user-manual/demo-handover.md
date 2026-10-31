@@ -3,23 +3,22 @@
 读者：接手演示环境的实施/交付人员。目标：按本页操作得到一个**可重放**的演示——起栈 → 造厂（账号+主数据+在制单）→ 登录 → 走一条核心业务链 → 核对结果。
 纪律：演示只用合成数据，**不使用真实客户数据**；不再开发第二套演示平台，本页只整理现有资产（角色包、造厂脚本、操作入口）。
 
-事实快照日 2026-10-28（设备维链候选待主控接收）。资产来源：`architecture/ROLE-PACKS.md`（岗位与剧本）、`packages/business-store/prisma/seed-factory.mjs`（造厂脚本）、`TESTING-GUIDE.md` §3（起栈）、`noodle-test-output/ui-round2-20261027/BRIEF.md`（账号口令）。
+安装说明更新日 2026-10-31；产品源码基线为 `0425ded838a87b8aeab3cfc300097a985bde2bd2`。资产来源：`architecture/ROLE-PACKS.md`（岗位与剧本）、`packages/business-store/prisma/seed-factory.mjs`（造厂脚本）、[部署手册](../../deploy/README.md)（安装配置）。
 
 ## 0. 前置
 
-- 源码仓 Cadence（含本轮未提交增量时以工作区实态为准）；Docker（compose v2）。
+- 交付记录指定的 Cadence Git 提交；Docker（compose v2）。
 - 宿主机跑造厂脚本需要 Node ≥ 22 + pnpm 11.x（见第 2 步「方式 B」）；只用「方式 A」则不需要。
 - 端口 8080 / 3000 / 55432 未被占用。
 
 ## 1. 起栈（单机形态，全模块清单）
 
+先按[部署手册 D2](../../deploy/README.md#d2-标准安装步骤)创建 `deploy/.env`，保存其中的 30 模块清单、独立项目名、端口和凭据；已配置的环境直接沿用该文件。
+
 ```bash
 cd <仓库根>/deploy
-export MODULES_ENABLED="core,org,masterdata,workbench,approval,baseline,workorder,listing,inspection,inventory,dispatch,reporting,hours,costing,payroll,maintenance,drawing,metric-pack,audit,standardreports,menu-config,approval-config,notifications,issue,attachment,aftercare-claim,demo,column-preferences,screen,ai-query"
-docker compose up -d --build
+docker compose --env-file .env up -d --build
 ```
-
-（来源：`TESTING-GUIDE.md` §3、`noodle-test-output/test-handoff-round2-20261027.md` §一。缺省 `MODULES_ENABLED` 只起基础六模块，演示须显式传全清单。）
 
 ## 2. 健康核对（栈起来后先核对再演示）
 
@@ -38,11 +37,11 @@ docker compose up -d --build
 
 ```bash
 cd <仓库根>
-docker compose -f deploy/compose.yaml run --rm -e SMES_FACTORY_SEED=on migrate \
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --no-deps -e SMES_FACTORY_SEED=on migrate \
   sh -c 'pnpm --filter @smes/business-store run db:seed-factory'
 ```
 
-（脚本头注注明其设计运行方式为「superuser 经 migrate 服务跑」。**安装验收实测提示（2026-10-27）**：起栈时若用了自定义端口/env（如 `PG_PORT`），`compose run` 必须带**同款 env 且加 `-p <同一 project>`**，否则 compose 会按缺省配置 recreate pg 容器、可能撞端口或丢失自定义拓扑——实测缺 env 的 run 触发了 pg recreate 并因端口冲突失败。简便替代：直接用方式 B。）
+（以安装时同一 `.env` 读取项目名、端口和数据库口令；`--no-deps` 复用已经健康的 PG，不重建依赖服务。若安装时另用 `-p` 指定项目名，此处也须传同一值。历史验收曾因遗漏自定义 env 触发 PG 重建和端口冲突，因此本命令显式绑定配置。）
 
 **方式 B：宿主机直跑（Node ≥22 + pnpm）**
 
@@ -62,6 +61,16 @@ DATABASE_URL="postgresql://postgres:cadenceSingleNodeDev@127.0.0.1:55432/cadence
 - 六个岗位账号：`plan01` / `purch01` / `prod01` / `qc01` / `wh01` / `appr01`，口令统一 `demo-password`；第七岗只读观察由既有 `viewer` 承担（零策略全拒形态）。
 - 主数据：物品、供应商引用、工厂仓（含货架+库位层级）。
 - 五张在制单（全部挂在同一个工作令 `wo-seed-factory-01` 下）：工作令（四类清单骨架齐，零件清单已导入 5 行）、采购订单（已下发、待收货）、派工单（执行中、待报工）、质检单（待判定）。
+
+**制造控制演示职责（可选，仅演示/测试环境）**：需要演示联合排程、独立交期承诺、净额采购、复机/报废会签或工程变更时，在基础初始化成功后执行：
+
+```bash
+cd <仓库根>
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --no-deps migrate \
+  sh -c 'pnpm --filter @smes/business-store exec node prisma/seed-manufacturing.mjs'
+```
+
+该脚本创建 `mfg-e01`（总经理）、`mfg-e02`（运营）、`mfg-e05`（工程）、`mfg-e07`（计划）、`mfg-e08`（采购）、`mfg-e10`（品质）、`mfg-e13`（财务）。新账号沿用本租户 `demo-admin` 的演示口令，不分配管理员角色；新建演示库中口令为 `demo-password`。现有同名身份的口令与原六岗权限不会由该脚本重写。登录后从制造控制入口访问；脚本只准备身份，不生成六项控制的业务单据，也不将历史记录补为已审批。
 
 ## 4. 登录与演示账号
 

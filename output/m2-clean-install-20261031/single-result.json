@@ -1,0 +1,126 @@
+{
+  "result": "PASS",
+  "commit": "346d46882afa908d70731a64c9ff0496950dd068",
+  "productCommit": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+  "modules": 30,
+  "accounts": [
+    {
+      "username": "admin",
+      "login": 201,
+      "admin": true,
+      "permissionCount": 0,
+      "logout": 204,
+      "evidence": "reused completed account"
+    },
+    {
+      "username": "plan01",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 14,
+      "logout": 204,
+      "evidence": "reused completed account"
+    },
+    {
+      "username": "purch01",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 9,
+      "logout": 204,
+      "evidence": "reused completed account"
+    },
+    {
+      "username": "prod01",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 11,
+      "logout": 204,
+      "evidence": "reused completed account"
+    },
+    {
+      "username": "qc01",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 7,
+      "logout": 204,
+      "evidence": "reused completed account"
+    },
+    {
+      "username": "wh01",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 17,
+      "logout": 204
+    },
+    {
+      "username": "appr01",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 8,
+      "logout": 204
+    },
+    {
+      "username": "viewer",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 0,
+      "logout": 204
+    },
+    {
+      "username": "mfg-e01",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 2,
+      "logout": 204
+    },
+    {
+      "username": "mfg-e02",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 4,
+      "logout": 204
+    },
+    {
+      "username": "mfg-e05",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 7,
+      "logout": 204
+    },
+    {
+      "username": "mfg-e07",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 5,
+      "logout": 204
+    },
+    {
+      "username": "mfg-e08",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 5,
+      "logout": 204
+    },
+    {
+      "username": "mfg-e10",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 5,
+      "logout": 204
+    },
+    {
+      "username": "mfg-e13",
+      "login": 201,
+      "admin": false,
+      "permissionCount": 3,
+      "logout": 204
+    }
+  ],
+  "migrationCount": 60,
+  "rlsTables": 121,
+  "passedHttpChecks": 55,
+  "scriptMistakesRetained": [
+    "top-level id corrected to order.id",
+    "UI route replaced by documented receiving-orders API"
+  ],
+  "visualBrowserCheck": "NOT_RUN"
+}

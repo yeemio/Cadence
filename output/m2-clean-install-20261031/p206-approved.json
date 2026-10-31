@@ -1,0 +1,58 @@
+{
+  "status": "committed",
+  "newRevision": 3,
+  "events": [
+    {
+      "eventId": "evt-01a190c4-3d02-7aa9-bf02-6a0519a3aec4",
+      "eventType": "smes.workorder.v1.parts-approved",
+      "tenantId": "default",
+      "aggregate": {
+        "id": "pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8",
+        "type": "parts-request",
+        "revision": 3
+      },
+      "occurredAt": "2026-10-31T07:02:22.210Z",
+      "provenance": {
+        "operationId": "m2-clean-20261031-p206-plan-approve",
+        "command": "workorder.parts.approve.v1",
+        "actor": "user-factory-plan"
+      },
+      "payload": {
+        "decision": "approve",
+        "remark": "原项目经理按既有 parts:approve 权限批准",
+        "objectVersion": 3,
+        "actor": "user-factory-plan"
+      }
+    }
+  ],
+  "todosCreated": [],
+  "todosCompleted": [
+    {
+      "id": "01a190c4-3c9e-7185-9585-9c416bb645d1",
+      "tenant": "default",
+      "assignee": "user-factory-plan",
+      "title": "配件申请待审批：itm-seed-factory-004 × 1（工厂演示项目一（seed-factory））",
+      "source": "workorder",
+      "refType": "parts-request",
+      "refId": "pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8",
+      "status": "done",
+      "createdAt": "2026-10-31T07:02:22.142Z",
+      "dueAt": null
+    }
+  ],
+  "partsRequest": {
+    "id": "pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8",
+    "tenant": "default",
+    "workOrderId": "wo-seed-factory-01",
+    "flowConfigId": "parts-request",
+    "state": "approved",
+    "objectVersion": 3,
+    "itemId": "itm-seed-factory-004",
+    "quantity": 1,
+    "requester": "user-factory-plan",
+    "remark": "隔离安装验收：原项目经理配件审批链",
+    "shipmentRef": null,
+    "createdAt": "2026-10-31T07:02:22.099Z",
+    "updatedAt": "2026-10-31T07:02:22.208Z"
+  }
+}

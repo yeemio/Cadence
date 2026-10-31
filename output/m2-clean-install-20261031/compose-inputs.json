@@ -1,0 +1,131 @@
+{
+  "project": "cadence-m2-clean-20261031-2c07",
+  "services": {
+    "migrate": {
+      "ports": [],
+      "environmentKeys": [
+        "DATABASE_URL",
+        "SMES_TENANTS"
+      ],
+      "build": {
+        "context": "/var/folders/rf/5yxxrmg96g366djlhy23bh840000gn/T/cadence-m2-clean-20261031-vsuaofs1/source",
+        "dockerfile": "apps/server/Dockerfile",
+        "target": "migrate"
+      },
+      "volumes": []
+    },
+    "pg": {
+      "ports": [
+        {
+          "mode": "ingress",
+          "host_ip": "127.0.0.1",
+          "target": 5432,
+          "published": "55441",
+          "protocol": "tcp"
+        }
+      ],
+      "environmentKeys": [
+        "POSTGRES_APP_PASSWORD",
+        "POSTGRES_DB",
+        "POSTGRES_PASSWORD"
+      ],
+      "build": null,
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "pg-data",
+          "target": "/var/lib/postgresql/data",
+          "volume": {}
+        },
+        {
+          "type": "bind",
+          "source": "/var/folders/rf/5yxxrmg96g366djlhy23bh840000gn/T/cadence-m2-clean-20261031-vsuaofs1/source/deploy/pg-init",
+          "target": "/docker-entrypoint-initdb.d",
+          "read_only": true,
+          "bind": {}
+        }
+      ]
+    },
+    "server": {
+      "ports": [
+        {
+          "mode": "ingress",
+          "host_ip": "127.0.0.1",
+          "target": 3000,
+          "published": "33081",
+          "protocol": "tcp"
+        }
+      ],
+      "environmentKeys": [
+        "DATABASE_URL",
+        "MODULES_ENABLED",
+        "SMES_ATTACHMENT_REF_SECRET",
+        "SMES_DEFAULT_WAREHOUSE_CODE",
+        "SMES_DOMAIN",
+        "SMES_DRAWING_REF_SECRET",
+        "SMES_PARTS_APPROVAL_LEVELS",
+        "SMES_PARTS_LEVEL2_ROLE",
+        "SMES_PARTS_LEVEL3_ROLE",
+        "SMES_RLS_SESSION",
+        "SMES_TENANTS",
+        "SMES_TENANT_MODE"
+      ],
+      "build": {
+        "context": "/var/folders/rf/5yxxrmg96g366djlhy23bh840000gn/T/cadence-m2-clean-20261031-vsuaofs1/source",
+        "dockerfile": "apps/server/Dockerfile"
+      },
+      "volumes": []
+    },
+    "web": {
+      "ports": [
+        {
+          "mode": "ingress",
+          "host_ip": "127.0.0.1",
+          "target": 80,
+          "published": "33080",
+          "protocol": "tcp"
+        }
+      ],
+      "environmentKeys": [],
+      "build": {
+        "context": "/var/folders/rf/5yxxrmg96g366djlhy23bh840000gn/T/cadence-m2-clean-20261031-vsuaofs1/source",
+        "dockerfile": "apps/web/Dockerfile"
+      },
+      "volumes": []
+    }
+  },
+  "modules": [
+    "core",
+    "org",
+    "masterdata",
+    "workbench",
+    "approval",
+    "baseline",
+    "workorder",
+    "listing",
+    "inspection",
+    "inventory",
+    "dispatch",
+    "reporting",
+    "hours",
+    "costing",
+    "payroll",
+    "maintenance",
+    "drawing",
+    "metric-pack",
+    "audit",
+    "standardreports",
+    "menu-config",
+    "approval-config",
+    "notifications",
+    "issue",
+    "attachment",
+    "aftercare-claim",
+    "demo",
+    "column-preferences",
+    "screen",
+    "ai-query"
+  ],
+  "envFileMode": "0o600",
+  "freshVolume": "cadence-m2-clean-20261031-2c07_pg-data"
+}

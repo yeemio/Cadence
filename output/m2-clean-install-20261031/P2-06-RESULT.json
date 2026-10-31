@@ -1,0 +1,13 @@
+{
+  "result": "PASS_SCOPED_ISOLATED",
+  "candidate": "0425ded838a87b8aeab3cfc300097a985bde2bd2",
+  "project": "cadence-m2-clean-20261031-2c07",
+  "partsRequestId": "pr-01a190c4-3c8e-7b16-aabd-5df22fa764f8",
+  "manager": "user-factory-plan",
+  "todoAssignee": "user-factory-plan",
+  "manufacturingE02Approval": 403,
+  "finalState": "approved",
+  "finalRevision": 3,
+  "sourceWorkorderUnchanged": true,
+  "boundary": "Default single-level flow remains parts:approve-gated, not exclusive manager authorization. No shared-environment replay, no E02 identity remap, no shipping."
+}

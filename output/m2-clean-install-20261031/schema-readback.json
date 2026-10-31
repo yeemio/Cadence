@@ -1,0 +1,367 @@
+{
+  "tables": 121,
+  "rls": 121,
+  "forceRls": 121,
+  "migrations": [
+    {
+      "name": "20261024135930_init",
+      "checksum": "19a17df3455f7f6203ea965c33ce31473f589f49b9f906230695d2cb148e09a7",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261024163136_org_users_roles_policies",
+      "checksum": "85634bb89d8978d6264e2ace800f8e862b8ebdc5df81e9d511dd52936e6fa0e8",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025120000_masterdata_items_resources_todos",
+      "checksum": "734601e998d86bb2d3d9396b7a0333a128932a250fa6cd5a3e3e23b854e9bfe9",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025140000_approval_cases_records_events",
+      "checksum": "f1a09e1cc0f7df488e799e9e2c386ebc79eed854cc4c2f2ce6de5a5aa70953a8",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025150000_auth_password_hash_sessions",
+      "checksum": "124d0d67ea2a0639eb97be84b0b9071ff24e6547c1d3d102275c265a3cd01519",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025160000_workorder_module",
+      "checksum": "55decbd810703eff81676e5b76eca6304b4f4ce681a4d459f9ef478c9048c034",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025180000_baseline_p1_masters_validation",
+      "checksum": "b4b56b5c48c9265e796bce14ed02334ce8f797572dfa320425bc24623926f043",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025190000_inspection_module",
+      "checksum": "4adde292f75b5535f46f2724a0e9d7112794bd0ced782b22edca069cfff6485f",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025193000_rls_tenant_isolation",
+      "checksum": "f703e55f912c4722c65003fca2a1774b6ae07d3432443c1b084d4f3d00b7c22b",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025200000_listing_module",
+      "checksum": "adf4c98a04c05821fa0b0a670b0da6edc26645ecd8b7cc4760d22df360892b89",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025210000_rls_tenant_isolation_replay",
+      "checksum": "1943f1ccad4c8649faa36ce99ecbf9a2a2e392225e774329064720b69ad2c82f",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025220000_dispatch_module",
+      "checksum": "33933e50686858fb0e6bf858e78ba3835767adca3d687d28cf1009533825a362",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025220000_inventory_module",
+      "checksum": "40fa95c03a18aa2f46dd511125370c100c530beb99b95eeeedfcdcb43f542349",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261025230000_rls_tenant_isolation_replay",
+      "checksum": "51865b0eac6f6d969b04cb0bd626d5adf4bba9a68f385246e9b6de9eafb2a856",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026010000_reporting_module",
+      "checksum": "1635d0dc4ef51476966ca80782bb7037df8054711ba42d13e2b8b24276d31ab7",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026010400_reporting_rls_replay",
+      "checksum": "d8d9872182e6046b814595abf46e8efd2f30cfa8b2dd94f0655cbd9591252505",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026020000_hours_module",
+      "checksum": "0a836abf3ed9f1d2420086b04f3d3c7b7b201462358de76b0cdbc2e7d15e46fa",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026030000_costing_module",
+      "checksum": "f488dcebb007f9a18765cad0fa12c6e49e862299996e85b1954e0c49c1deb769",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026040000_baseline_p2_p3",
+      "checksum": "883207cc78cd5888ae8aed39ebee9517500da613cea14274e3ad2c6f4af58f06",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026041000_rls_tenant_isolation_replay",
+      "checksum": "e75620013b694e9477a7da17e7d3e1ca8b24905a89c2450912a607f68834c053",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026050000_rls_tenant_isolation_replay",
+      "checksum": "588d8a8ba129c395d0222f115a0a0def10cf1496bfb8472a6ce7f9c5e7900412",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026060000_payroll_module",
+      "checksum": "f848f8593a364fe5bf8bc396713a66c0a790ecb166f2dfc084665b7d025cd184",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026061000_rls_tenant_isolation_replay",
+      "checksum": "ba237eb77e173feb2b40fee52793cc5c1a6c5f427ba49a428ff97354740bef46",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026070000_maintenance_module",
+      "checksum": "28062868c8c8343b60ae4dae7d2971557da83e7a7dc74aa43be79d32747d397b",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026080000_drawing_module",
+      "checksum": "fdcb7ebc5868b68ac8d851f8273f88fee97b9298f251661259a2c46836f09682",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026090000_metric_pack_module",
+      "checksum": "3aff048cc7dca4122dd89e49d643ef99a01679ead8873109d357065d57781039",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026091000_rls_tenant_isolation_replay",
+      "checksum": "05da4f7756d457fc79d02917fa48cc611ba2caed4e35f01c15a2fc2eef7ea7af",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026100000_rls_tenant_isolation_replay",
+      "checksum": "6235ee7f192ec7abb55ee056c17adb82306c2eb0690e9f339bd5e2b5d948ffa2",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026110000_rls_tenant_isolation_replay",
+      "checksum": "935a2d7fb3d4031d83af31834722b8515aefb2a9346cac03717f70b6f06e5fd4",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026120000_backfill_module",
+      "checksum": "d2995be8920acaf76fc0a1e8ef3f363026bb4ebbd9258d3f43c3ef2f30c51802",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026121000_rls_tenant_isolation_replay",
+      "checksum": "323f7d1fd1a62267022cb6c5857455879175b76856f340b80563aaab645795a3",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026130000_s5_capability_module",
+      "checksum": "f167b19cb0631e444375fdbd0e044ea9b035be9d3a343469e6d45dbd807990ae",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026131000_rls_tenant_isolation_replay",
+      "checksum": "29ea9780c083c78d927d9724729ccc69d1d9260ec335a8249fcc17d41526eceb",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026140000_issue_module",
+      "checksum": "1affcef9736fb89e033effb7bf31af6885593125f2a068987cfc00aa04da7cf2",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026140100_rls_tenant_isolation_replay",
+      "checksum": "a00bd8c2b9b3f5d8cba5d2fba853e7a8330e031c31b353e487d31ee97ba4f8dd",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026150000_attachment_module",
+      "checksum": "4f33f17d77c83e21ac37c48ff4f637187b3337132fa2dfb39684eeb6e120c5f5",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026150100_rls_tenant_isolation_replay",
+      "checksum": "d55cb2fc3c426ee4bc48194c2b818c8bc2d28c8b7165266602e3228da5d8a642",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026160000_process_material_module",
+      "checksum": "1f4f3a6e609c2c87d2cd261e1d4157378d1698b9b2505e71553ba757969ec142",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026160100_rls_tenant_isolation_replay",
+      "checksum": "d1726499b31cb4db30242f90d951f45e06971406f5976c7721c68f66d56c9662",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026160500_aftercare_claim_module",
+      "checksum": "35053e2ae9bfd46a1051077e019896c90fabe6c7f02ca19d2e3cde2e0efb697e",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026161000_rls_tenant_isolation_replay",
+      "checksum": "390fa1c9423e1a9bf7fb4b6dd1b0b595771d5c4dcd134bb79d20e9de692a12f3",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026170000_project_cost_module",
+      "checksum": "24e49eed835c6d190e026a9015e802866f3ddeab3034528088f4fdbe9f858375",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026170100_rls_tenant_isolation_replay",
+      "checksum": "9d137b29b2e1d86456d94e8d27fcb022c35331d348799b15861e304c09f0aaaf",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026180000_attachment_objects",
+      "checksum": "1b73f198d243640cc3a0fa8d76bb4d0eabb3090efc9fba0738beba05431316e9",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026180100_rls_tenant_isolation_replay",
+      "checksum": "b45a4cd964428c0fb111b1f0e758b8cb836481e5d0b6866b59e6bb3054a564df",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026190000_machining_daily_stats",
+      "checksum": "5af21fe36cd31482b00f854d60be8e51548dbff148322d9df313b0bb6093697b",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026190100_rls_tenant_isolation_replay",
+      "checksum": "83f08b34c3fcb74344e3b971d5529739809caab144cd8a1b6fb05f32c4d38684",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026200000_column_preferences_module",
+      "checksum": "6595d776d33ffa4b7cec4d86e8e9ffc9dc3b96e28c254892f6471a310c8b17d7",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026200100_rls_tenant_isolation_replay",
+      "checksum": "76b7f65644290ffe08aa0f9580b23212d883859bcdb7cdf3b4bcf31eb7876d67",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026210000_outsourcing_line_cancel_columns",
+      "checksum": "50fdd1171c3d68364d283d3ca56b99d5bbfc30e52bd43df8f7b1a558df2758f3",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026220000_masterdata_item_initial_price",
+      "checksum": "7eea0b4f82773fe98c1c99273d183b01e1e8d4cd45cfb001ad79ff23b74f29d0",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026220500_b3_goods_shelf_module",
+      "checksum": "e855aa3843a1a59cac495f27aa3b71b551c78d9c28c8e1a0ffde2571740c48ac",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261026220600_rls_tenant_isolation_replay",
+      "checksum": "188e48a33595403301cdc79abfbd4c0fa055f8103feccb64d0f5ae7f4e52ba3b",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261027090000_login_attempts",
+      "checksum": "62176f7d0bc6af0c77f94544bb9bbd7397ff6d5a29f1f7a9477fe592600ce20d",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261027090100_rls_tenant_isolation_replay",
+      "checksum": "e6564be182d4627a11e31b5c6905a09296412ffce6e8281128b70ae627393556",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261028093000_workorder_equipment_issue_chain",
+      "checksum": "2b807c9592c464f945f040865dcaa7c925a7ff0b82a3f7091868134a2e5a406a",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261028093100_rls_equipment_replay",
+      "checksum": "1f90673a2a331a7c9ea2466cde9e2d4aa75f6b93b86f09eb954dee8f1ff862e8",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261028180000_mfg_control_quality",
+      "checksum": "19a75dfc7cd858e709c1d001f84c3059ead06ec84052c9d249eaaec24f286885",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261028180100_rls_mfg_replay",
+      "checksum": "85dfe2b99585202b5b4136273ff9437909df3eb192a6305b4b98024f82f9c4f9",
+      "finished": true,
+      "rolledBack": false
+    },
+    {
+      "name": "20261028182000_mfg_event_immutability",
+      "checksum": "195bf2620f8cb27f23d102199f5ae6da94645ea38befd643ada99134f3254902",
+      "finished": true,
+      "rolledBack": false
+    }
+  ]
+}

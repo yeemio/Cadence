@@ -1,0 +1,86 @@
+{
+  "result": "PASS",
+  "commit": "346d46882afa908d70731a64c9ff0496950dd068",
+  "checks": [
+    {
+      "label": "saas-known",
+      "path": "/health",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "label": "saas-other",
+      "path": "/health",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "label": "saas-unknown",
+      "path": "/health",
+      "status": 404,
+      "expected": 404,
+      "passed": true
+    },
+    {
+      "label": "saas-outside",
+      "path": "/health",
+      "status": 421,
+      "expected": 421,
+      "passed": true
+    },
+    {
+      "label": "saas-nested",
+      "path": "/health",
+      "status": 421,
+      "expected": 421,
+      "passed": true
+    },
+    {
+      "label": "saas-modules",
+      "path": "/modules",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "label": "saas-plan-login",
+      "path": "/auth/login",
+      "status": 201,
+      "expected": 201,
+      "passed": true
+    },
+    {
+      "label": "saas-persisted-workorder",
+      "path": "/workorder/work-orders/wo-seed-factory-01",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "label": "saas-cross-tenant-token",
+      "path": "/auth/me",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "label": "saas-no-other-seed-account",
+      "path": "/auth/login",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "label": "saas-logout",
+      "path": "/auth/logout",
+      "status": 204,
+      "expected": 204,
+      "passed": true,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "boundary": "Host-header routing and account isolation; no real DNS, TLS, non-default onboarding or browser visual test"
+}

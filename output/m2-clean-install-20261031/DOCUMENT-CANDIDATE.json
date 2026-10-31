@@ -1,0 +1,189 @@
+{
+  "baseCommit": "346d46882afa908d70731a64c9ff0496950dd068",
+  "controllerThreadId": "01a190b8-b764-7473-852d-cfe62d232c07",
+  "status": "ready_pending_git_authorization",
+  "productSourceChanged": false,
+  "trackedDocumentCount": 6,
+  "fileCountExcludingThisManifest": 34,
+  "files": [
+    {
+      "path": "architecture/DECISIONS-QUEUE.md",
+      "sha256": "33448fc9d7539349981525e56d2829be53f08fe5eafa5643ba693ee332399b0a",
+      "bytes": 21687
+    },
+    {
+      "path": "architecture/contracts/m2-security/CONTRACT.md",
+      "sha256": "9d9e92bb71215d8d6d32e76bd1f0be3d5139518096ec4223a446cecfcbfbb531",
+      "bytes": 16047
+    },
+    {
+      "path": "architecture/decisions/ADR-0012-多语言i18n架构决定.md",
+      "sha256": "6f544e447fb5eca5b0e0163f1a7f4206b34c6ca1dbbdbff3403dc04ae6cae2b7",
+      "bytes": 2947
+    },
+    {
+      "path": "deploy/README.md",
+      "sha256": "646fa33a0d10c5c6999346a823c58c0e32f7d9d4b5106cb5dd6d90cc3632c7d5",
+      "bytes": 29680
+    },
+    {
+      "path": "docs/user-manual/KNOWN-BEHAVIORS.md",
+      "sha256": "de76881a35f27dd80368e4b8e7e669e61ae6c61b94d7298bdac74afceed8655b",
+      "bytes": 16808
+    },
+    {
+      "path": "docs/user-manual/demo-handover.md",
+      "sha256": "a40af86c8d28b48807b46f60bfcd354485a657082c5ac7099db7172e53e2d136",
+      "bytes": 12318
+    },
+    {
+      "path": "architecture/task-packages/controller-takeover-20261031/HANDOFF.md",
+      "sha256": "1c5d171de50a3b188125675de66d1ee964b10a7006e9c7bfc5a57c0a6b925d60",
+      "bytes": 7071
+    },
+    {
+      "path": "architecture/task-packages/controller-takeover-20261031/TAKEOVER.md",
+      "sha256": "fbe471128d5489564c7c97444a095211780c99026034f227b6b971848ee9a9d9",
+      "bytes": 5082
+    },
+    {
+      "path": "output/m2-clean-install-20261031/DELIVERY.md",
+      "sha256": "9cab0a60f331a8beb464bd9350666b6434e3e4f28b7001e5cb08eb178e11fb82",
+      "bytes": 7373
+    },
+    {
+      "path": "output/m2-clean-install-20261031/ENTRY.json",
+      "sha256": "733a63b6255e68d30eacf1151d182a8edf4756218d54f69606817efac0e04c05",
+      "bytes": 541
+    },
+    {
+      "path": "output/m2-clean-install-20261031/compose-inputs.json",
+      "sha256": "76a23425873eec27328559cccff3aa4947817acd092c222cb21d6151662d3b6f",
+      "bytes": 3127
+    },
+    {
+      "path": "output/m2-clean-install-20261031/build-result.json",
+      "sha256": "9c1c46baa72b09feea00685540f295b5b4373312e4b123bd6c228b24f9a66994",
+      "bytes": 76
+    },
+    {
+      "path": "output/m2-clean-install-20261031/startup-result.json",
+      "sha256": "c7d45eca242a707cc468e78efc8806e1410a152e402f60bdd6a2f0feb0568721",
+      "bytes": 67
+    },
+    {
+      "path": "output/m2-clean-install-20261031/saas-startup-result.json",
+      "sha256": "8124e7370700b0f86ec5135a8dd44fb260f3c5435ee20cf164288369badbccca",
+      "bytes": 157
+    },
+    {
+      "path": "output/m2-clean-install-20261031/schema-readback.json",
+      "sha256": "5f337ee6731530524fb8f4794b5c2264f07e7037482bffc2e8521fbe6fc1e7fc",
+      "bytes": 12312
+    },
+    {
+      "path": "output/m2-clean-install-20261031/single-result.json",
+      "sha256": "ba172d28ec5e9435d733440e7f8e80af150a0dfe87fdcf5973dc3c6dd3d2267d",
+      "bytes": 2620
+    },
+    {
+      "path": "output/m2-clean-install-20261031/http-results.json",
+      "sha256": "f8280391a1664be66180800368034c0f2a44d3c44f46855d67b3677d5533818d",
+      "bytes": 13074
+    },
+    {
+      "path": "output/m2-clean-install-20261031/single-runtime.json",
+      "sha256": "bc8fd23dbd2ed93636dd7eed837d2de35b568cc83e678c56d0e6e3d9d4e8eaa7",
+      "bytes": 1311
+    },
+    {
+      "path": "output/m2-clean-install-20261031/seed-results.json",
+      "sha256": "f7f981382b60cf9dce4579bacdb569335a6cfdea3aa2e1ed9828104a7ce0fda4",
+      "bytes": 109
+    },
+    {
+      "path": "output/m2-clean-install-20261031/saas-result.json",
+      "sha256": "54dc5bb80133a285620fb16a66a0f1df67f46b61338b112848ea47cc13cf9aa2",
+      "bytes": 1880
+    },
+    {
+      "path": "output/m2-clean-install-20261031/saas-runtime.json",
+      "sha256": "28ad716f1ddcbf469909db965d4cf889096bd72b6279cd44aed8ab39a8f39076",
+      "bytes": 1635
+    },
+    {
+      "path": "output/m2-clean-install-20261031/P2-06-RESULT.json",
+      "sha256": "c9f72635dcde957fe58dbeb55bdd24504a87c95b722e83ddcb2b6f6ec864c93b",
+      "bytes": 577
+    },
+    {
+      "path": "output/m2-clean-install-20261031/installation-docs.patch",
+      "sha256": "aa868f96c2e77888801df3a0fd227bd52f06d0f9bf4e8f77809e1fed3f6f02e5",
+      "bytes": 17069
+    },
+    {
+      "path": "output/m2-clean-install-20261031/CLOSEOUT.json",
+      "sha256": "eada723bc1df1b752ea6f325995268b91ac4fadf3ba91c9e2027f7f000f30e7f",
+      "bytes": 1027
+    },
+    {
+      "path": "output/m2-clean-install-20261031/shared-before.json",
+      "sha256": "44d78392a3289a3411eb9f6593ca2fcabc56cdf8c02046c486424f229a5c6cea",
+      "bytes": 1125
+    },
+    {
+      "path": "output/m2-clean-install-20261031/shared-after.json",
+      "sha256": "44d78392a3289a3411eb9f6593ca2fcabc56cdf8c02046c486424f229a5c6cea",
+      "bytes": 1125
+    },
+    {
+      "path": "output/m2-clean-install-20261031/p206-created.json",
+      "sha256": "6310596b9bb56bf24f55f571a0949d9fa9ae73f4c3ca129c27f6d1e57d953f06",
+      "bytes": 1877
+    },
+    {
+      "path": "output/m2-clean-install-20261031/p206-before-approval.json",
+      "sha256": "4eb9bd4852f38bd8579f75b7270a191155378867772a016238282f4da299bbc0",
+      "bytes": 860
+    },
+    {
+      "path": "output/m2-clean-install-20261031/p206-after-denied.json",
+      "sha256": "4eb9bd4852f38bd8579f75b7270a191155378867772a016238282f4da299bbc0",
+      "bytes": 860
+    },
+    {
+      "path": "output/m2-clean-install-20261031/p206-e02-denied.json",
+      "sha256": "fd865b5d3d3f9dd79f05ad1ac09a047b25848d445bb7215696a3b2f1d30d5702",
+      "bytes": 134
+    },
+    {
+      "path": "output/m2-clean-install-20261031/p206-approved.json",
+      "sha256": "ab76ed100f545ed616de5abc09f954324ea328ed8721849bc25df141e1fd87fb",
+      "bytes": 1801
+    },
+    {
+      "path": "output/m2-clean-install-20261031/p206-final.json",
+      "sha256": "a6930ea92e3f640002f0e4fac5b7235c43908e3024361a6967c431f776bffea6",
+      "bytes": 938
+    },
+    {
+      "path": "output/m2-clean-install-20261031/p206-workorder-before.json",
+      "sha256": "75c9cb8252aae8a05a7e2b4edd17d15560d20ae7979b22458b990814981e9c3e",
+      "bytes": 602
+    },
+    {
+      "path": "output/m2-clean-install-20261031/p206-workorder-after.json",
+      "sha256": "75c9cb8252aae8a05a7e2b4edd17d15560d20ae7979b22458b990814981e9c3e",
+      "bytes": 602
+    }
+  ],
+  "includeManifestItself": true,
+  "protectedExcluded": [
+    "architecture/PRODUCT_CONTRACT.md",
+    "architecture/PRODUCT_LIFECYCLE_MAP.md",
+    "architecture/ROADMAP.md",
+    "pre-existing output changes",
+    "raw build/failure logs and scripts",
+    "all database, private configuration and image recovery sources"
+  ]
+}

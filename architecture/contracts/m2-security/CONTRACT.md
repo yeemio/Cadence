@@ -13,9 +13,9 @@
 | a（首派） | A 密证策略线（单 writer） | SP-1 登录速率限制 + SP-2 scrypt 升档 + SP-4 口令强度 | application/src/auth/* + application/src/org/* + business-store/src/org/* + prisma migration + seed.mjs + app-registry/main.ts 的 auth/org 接线段 | 无 |
 | a | B 文档线 | SP-6 httpOnly cookie 评估 | 仅本目录新文档 | 无 |
 | b（a 落地后） | C 密钥固化线 | SP-3 签名密钥 env 固化 | main.ts + app-registry 的 attachment/drawing 段 + business-store/src/attachment + drawing-http.module 注入点 | 与线 A 组合根错峰（无语义依赖） |
-| c（滚动） | D 开门面线 | SP-5 图纸开门面加严 | drawing-http.module 开门面路由 + apps/web 兑现入口 | **Owner 裁定**（裁定问题随波 a 派发时一并提交 Owner） |
+| c（原条件项） | D 开门面线 | SP-5 图纸开门面加严 | 无新增源码写入 | **2026-10-31 Owner 选择维持现状，依原合同销项**；见下文 SP-5 |
 
-依赖关系：SP-1/SP-2 同改 auth.service.ts 登录路径 → 强制同线；SP-4 策略注入点在 app-registry OrgModule.register（L429）与线 A 接线段同文件 → 并入线 A；SP-3 与线 A 同碰 main.ts/app-registry → 波 b 错峰；SP-5 独立语义门，仅等裁定。SP-1/2/3/4 相互无行为依赖，任一失败不阻塞其余合流。
+依赖关系：SP-1/SP-2 同改 auth.service.ts 登录路径 → 强制同线；SP-4 策略注入点在 app-registry OrgModule.register（L429）与线 A 接线段同文件 → 并入线 A；SP-3 与线 A 同碰 main.ts/app-registry → 波 b 错峰；SP-5 原为独立裁定项，现已按维持现状销项。SP-1/2/3/4 相互无行为依赖，任一失败不阻塞其余合流。
 
 ## SP-1 登录速率限制（公网硬前置）
 
@@ -76,7 +76,9 @@
 
 **验证**：org 单测（弱口令两端点均 400/合规通过/长度边界/策略关闭时行为不变/文案不含多余信息）+ 容器建号冒烟不回归。
 
-## SP-5 图纸开门面加严（Owner 裁定后启动）
+## SP-5 图纸开门面加严（2026-10-31 已裁定维持现状，销项）
+
+**Owner 决定**：2026-10-31 在执行总控聊天 `01a190b8-b764-7473-852d-cfe62d232c07` 选择“维持现状：有效短时签名链接可直接打开”。按下述原合同“不加严则销项”执行：保留 token 即凭证、租户绑定和兑现留痕，不启动登录门或配套入口开发。已核对当前 `drawing-http.module.ts` 的兑现路由仍无登录装饰器；本次无产品源码改动。此决定不处理 P2-3/O5 的身份保密许可配置，也不构成 M2 整体接受。原条件方案保留如下供追溯。
 
 **依据**：status.md L8——R6 验收揪出开门面"登录门"假文案，已如实化（无登录门 token 即唯一凭证，与匿名兑现 200 实态一致）；**加严（@RequireLogin）登记 Owner 裁定**。实态：drawing-http.module.ts L186-199 `@Get('drawing/read-references/:token')` 无权限码无登录门。
 
