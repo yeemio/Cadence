@@ -95,11 +95,15 @@ export interface InventoryReceiptResult {
 
 /** inventory 端口：采购收货入库指令（收货确认后放行入库）。 */
 export interface InventoryReceiptPort {
+  /** Read-only validation of a receipt, including existing source payload. Run
+   * for the entire PO batch before any receivePurchase call; execution rechecks. */
+  preflightPurchase(tenant: TenantId, command: InventoryReceiptCommand): Promise<InventoryReceiptResult>;
   receivePurchase(tenant: TenantId, command: InventoryReceiptCommand): Promise<InventoryReceiptResult>;
 }
 
 /** 缺省入库端口：恒放行（无 inventory 接线时收货不阻塞；合流时替换）。 */
 export const LISTING_NOOP_RECEIPT_PORT: InventoryReceiptPort = {
+  preflightPurchase: async () => ({ received: true }),
   receivePurchase: async () => ({ received: true }),
 };
 

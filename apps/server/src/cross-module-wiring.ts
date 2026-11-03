@@ -2430,6 +2430,12 @@ export function createCrossModuleWiring(input: CrossModuleWiringInput): CrossMod
   const receiptPort =
     has('listing') && has('inventory')
       ? createInventoryReceiptAdapter({
+          validatePurchaseReceipt: (tenant, command) => {
+            const inventory = lateInventory.resolve();
+            return inventory === undefined
+              ? Promise.resolve({ received: false, refusedReason: '库存服务尚未接线，无法核对收货来源' })
+              : inventory.validatePurchaseReceipt(tenant, command);
+          },
           receivePurchaseStock: (tenant, command) => {
             const inventory = lateInventory.resolve();
             return inventory === undefined

@@ -1,3 +1,4 @@
+import type { InventoryReceiptCommand, InventoryReceiptResult } from '../listing/listing-ports.js';
 /**
  * InventoryService —— 库存环节用例编排（M2-W5，07-inventory.md v1.0）。
  *
@@ -847,10 +848,10 @@ export class InventoryService {
       remark: payload.remark,
     };
 
-    // sourceKey（receiptKey）幂等先于深校验与记账：命中即回首次结果——重发
+    // sourceKey（receiptKey）先核对原载荷再幂等返回；同请求命中回首次结果——重发
     // 指令不因库存已变被误拒（Wave-2 低危 #4 契约保持）；不落新账、不占用
     // 新 operationId。
-    const dedup = await this.duplicateOutcomeOf(tenant, input.receiptKey);
+    const dedup = await this.duplicateReceiptOutcomeOf(tenant, input);
     if (dedup !== null) return dedup;
 
     // 先解析校验后记账（口径统一，与 transfer/stocktake/approve 对齐）：深校验
@@ -872,6 +873,23 @@ export class InventoryService {
     }
 
     return this.receiveStock(envelope, input);
+  }
+
+  /** A source key identifies one immutable receipt effect, not just any prior movement. */
+  private async duplicateReceiptOutcomeOf(tenant: TenantId, input: ReceiveStockInput): Promise<InventoryCommandResult | null> {
+    if (input.receiptKey === null) return null;
+    const existing = await this.movements.findBySourceKey(tenant, input.receiptKey);
+    if (existing === null) return null;
+    const sourceType = input.kind === 'inspection' ? 'inspection' : input.kind === 'purchase' ? 'purchase-order' : 'work-order';
+    const sourceId = input.kind === 'inspection' ? input.inspectionId : input.kind === 'purchase' ? input.purchaseOrderId : input.workOrderId;
+    if (existing.kind !== `${input.kind}-in` || existing.itemId !== input.itemId ||
+        existing.warehouseId !== input.warehouseId || existing.quantity !== input.quantity ||
+        existing.sourceRefType !== sourceType || existing.sourceRefId !== sourceId ||
+        existing.workOrderId !== input.workOrderId ||
+        (input.locationId !== null && input.locationId !== existing.locationId)) {
+      return rejected(`收货来源 '${input.receiptKey}' 已落账，物料、数量、仓库/库位或来源与原请求不一致；不支持覆盖既有收货事实`);
+    }
+    return this.duplicateOutcomeOf(tenant, input.receiptKey);
   }
 
   /** sourceKey（receiptKey/issueKey）幂等命中 → 回首次结果的 committed 回执（duplicate=true，无新事件）。 */
@@ -956,8 +974,8 @@ export class InventoryService {
     const tenant = envelope.tenantId;
     const movementKind = `${input.kind}-in` as StockMovementKind;
 
-    // receiptKey 幂等去重：命中即回首次结果（不重复入账）。
-    const dedup = await this.duplicateOutcomeOf(tenant, input.receiptKey);
+    // receiptKey + 原载荷一致才幂等返回（不重复入账、不覆盖原事实）。
+    const dedup = await this.duplicateReceiptOutcomeOf(tenant, input);
     if (dedup !== null) return dedup;
 
     const checked = await this.validateReceiveStock(tenant, input);
@@ -2247,6 +2265,32 @@ export class InventoryService {
     return available;
   }
 
+  private async purchaseReceiptInput(tenant: TenantId, command: InventoryReceiptCommand): Promise<ReceiveStockInput | RejectedOutcome> {
+    // An omitted warehouse on a replay means the original destination, even if
+    // the deployment default has changed. Explicit different warehouses reject.
+    const existing = await this.movements.findBySourceKey(tenant, command.receiptKey);
+    let warehouseId = command.warehouseId ?? existing?.warehouseId;
+    if (warehouseId === undefined) {
+      const fallback = await this.fallbackWarehouse(tenant, '未指定收货仓且未配置默认仓（服务选项 defaultWarehouseCode）');
+      if (fallback.warehouseId === undefined) return rejected(fallback.reason);
+      warehouseId = fallback.warehouseId;
+    }
+    return { kind: 'purchase', itemId: command.itemId, warehouseId, locationId: null,
+      quantity: command.quantity, inspectionId: null, purchaseOrderId: command.purchaseOrderId,
+      workOrderId: null, receiptKey: command.receiptKey, remark: null };
+  }
+
+  /** Pure preflight for the whole PO batch. receiveStock repeats the identity check under the mutation guard. */
+  async validatePurchaseReceipt(tenant: TenantId, command: InventoryReceiptCommand): Promise<InventoryReceiptResult> {
+    const input = await this.purchaseReceiptInput(tenant, command);
+    if ('status' in input) return { received: false, refusedReason: input.reason };
+    const duplicate = await this.duplicateReceiptOutcomeOf(tenant, input);
+    if (duplicate !== null) return duplicate.status === 'committed'
+      ? { received: true } : { received: false, refusedReason: duplicate.reason };
+    const checked = await this.validateReceiveStock(tenant, input);
+    return 'status' in checked ? { received: false, refusedReason: checked.reason } : { received: true };
+  }
+
   /** listing InventoryReceiptPort 面收货入库（receiptKey 幂等；缺省仓落位）。 */
   async receivePurchaseStock(
     tenant: TenantId,
@@ -2259,41 +2303,10 @@ export class InventoryService {
     },
   ): Promise<{ readonly received: boolean; readonly refusedReason?: string; readonly duplicate?: boolean }> {
     return this.mutate(tenant, 'u-system-inventory', String(command.receiptKey), {commandKind: 'receivePurchaseStock'}, async () => {
-    let warehouseId = command.warehouseId;
-    if (warehouseId === null || warehouseId === undefined) {
-      const fallback = await this.fallbackWarehouse(
-        tenant,
-        '未指定收货仓且未配置默认仓（服务选项 defaultWarehouseCode）',
-      );
-      if (fallback.warehouseId === undefined) {
-        return { received: false, refusedReason: fallback.reason };
-      }
-      warehouseId = fallback.warehouseId;
-    }
-    const envelope = this.systemEnvelope(tenant, 'stock.receive.v1', {
-      kind: 'purchase',
-      itemId: command.itemId,
-      warehouseId,
-      locationId: null,
-      quantity: command.quantity,
-      inspectionId: null,
-      purchaseOrderId: command.purchaseOrderId,
-      workOrderId: null,
-      receiptKey: command.receiptKey,
-      remark: null,
-    });
-    const outcome = await this.receiveStock(envelope, {
-      kind: 'purchase',
-      itemId: command.itemId,
-      warehouseId,
-      locationId: null,
-      quantity: command.quantity,
-      inspectionId: null,
-      purchaseOrderId: command.purchaseOrderId,
-      workOrderId: null,
-      receiptKey: command.receiptKey,
-      remark: null,
-    });
+    const input = await this.purchaseReceiptInput(tenant, command);
+    if ('status' in input) return { received: false, refusedReason: input.reason };
+    const envelope = this.systemEnvelope(tenant, 'stock.receive.v1', input);
+    const outcome = await this.receiveStock(envelope, input);
     if (outcome.status === 'rejected') {
       return { received: false, refusedReason: outcome.reason };
     }
