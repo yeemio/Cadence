@@ -30,6 +30,7 @@ import type {
   TenantId,
 } from '@smes/business-core';
 import { CostingConflictError, CostingNotFoundError } from './costing-errors.js';
+import { atomicCostingOutcome, memoryCostingTransaction, type CostingTransaction } from './costing-transaction.js';
 import {
   COSTING_EVENT_TYPES,
   makeCostEntryCommittedEvent,
@@ -98,6 +99,7 @@ export interface CostingCommitted extends CommittedOutcome {
 export type CostingCommandResult = CostingCommitted | RejectedOutcome | IndeterminateOutcome;
 
 export interface CostingServiceOptions {
+  readonly transaction?: CostingTransaction | undefined;
   /** 时钟注入（事件 occurredAt / rebuiltAt 取时点；测试确定性）。 */
   readonly now?: () => string;
 }
@@ -205,6 +207,7 @@ interface SourceFactLine {
 
 export class CostingService {
   private readonly now: () => string;
+  private readonly transaction: CostingTransaction;
 
   constructor(
     private readonly stores: CostingStores,
@@ -213,6 +216,7 @@ export class CostingService {
     options: CostingServiceOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
+    this.transaction = options.transaction ?? memoryCostingTransaction(Object.values(stores), stores.operations);
   }
 
   // ---- 命令执行（写路径） ----
@@ -220,7 +224,7 @@ export class CostingService {
   async execute(tenant: TenantId, envelope: CostingCommandEnvelope): Promise<CostingCommandResult> {
     const kind = envelope.command.kind;
     try {
-      switch (kind) {
+      return await atomicCostingOutcome(this.transaction, tenant, async (): Promise<CostingCommandResult> => { switch (kind) {
         case 'costing.model.publish.v1':
           return await this.publishModel(tenant, envelope);
         case 'costing.rebuild.v1':
@@ -228,13 +232,14 @@ export class CostingService {
         case 'costing.export.v1':
           return await this.exportSnapshot(tenant, envelope);
       }
+      return { status: 'rejected', reason: `未知命令 kind '${kind}'` };
+      });
     } catch (error) {
       if (error instanceof CostingConflictError) {
         return { status: 'rejected', reason: error.message };
       }
       throw error;
     }
-    return { status: 'rejected', reason: `未知命令 kind '${kind}'` };
   }
 
   /**
@@ -275,7 +280,7 @@ export class CostingService {
     } catch (error) {
       return {
         status: 'indeterminate',
-        reason: `${failureContext}（${error instanceof Error ? error.message : String(error)}）：retrySafe=true——事实幂等键完整，可安全重发新 operationId 重放`,
+        reason: `${failureContext}（${error instanceof Error ? error.message : String(error)}）：本次事务回滚，可使用同一 operationId 重试`,
         retrySafe: true,
       };
     }
@@ -329,7 +334,7 @@ export class CostingService {
     });
     const event = makeCostingModelPublishedEvent(tenant, row, this.provenanceOf(envelope), this.now());
     const view = this.toModelView(row, versions.concat(row));
-    return this.commitOutcome([event], { model: view }, '口径版本行已落账但事件追加失败');
+    return this.commitOutcome([event], { model: view }, '口径版本事件追加失败');
   }
 
   // ---- 口径解析（rebuild/export/查询共用） ----
@@ -384,18 +389,14 @@ export class CostingService {
       }
       const isDelta = existing.length > 0;
       const sourceKey = isDelta ? `${fact.baseSourceKey}#d${existing.length}` : fact.baseSourceKey;
-      const claimed = await this.stores.operations.claim(tenant, `costing-ledger-${sourceKey}`, provenance.commandKind);
-      if (!claimed) {
-        skipped += 1;
-        continue; // 同 sourceKey 已联动（重放/并发竞态）
-      }
+      // The transaction serializes writers. A legacy orphan claim is not proof
+      // that its fact exists: an explicit rebuild repairs the missing entry.
+      await this.stores.operations.claim(tenant, `costing-ledger-${sourceKey}`, provenance.commandKind);
       if ((await this.stores.entries.findBySourceKey(tenant, sourceKey)) !== null) {
         skipped += 1;
         continue;
       }
-      let entry: CostEntryRow;
-      try {
-        entry = await this.stores.entries.insert({
+      const entry = await this.stores.entries.insert({
           tenant,
           workOrderId,
           category,
@@ -415,13 +416,6 @@ export class CostingService {
           provenance,
           ...(fact.workDate === null ? {} : { businessTime: fact.workDate }),
         });
-      } catch (error) {
-        if (error instanceof CostingConflictError) {
-          skipped += 1;
-          continue; // 并发竞态下已落账
-        }
-        throw error;
-      }
       appended.push({
         entry,
         event: makeCostEntryCommittedEvent(tenant, entry, provenance, this.now()),
@@ -568,7 +562,7 @@ export class CostingService {
         snapshotChanged,
         totals,
       },
-      '成本条目/快照行已落账但事件追加失败',
+      '成本条目/快照事件追加失败',
     );
   }
 

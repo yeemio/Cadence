@@ -71,6 +71,7 @@ import { CostingLedgerController, CostingModelsController } from './costing.cont
 import { ProjectCostController } from './project-cost.controllers.js';
 import { CostingService, type CostingServiceOptions } from './costing.service.js';
 import { ProjectCostService, type ProjectCostServiceOptions } from './project-cost.service.js';
+import type { CostingTransaction } from './costing-transaction.js';
 
 export const COSTING_ENTRY_STORE = Symbol('smes.costing.entryStore');
 export const COSTING_MODEL_STORE = Symbol('smes.costing.modelStore');
@@ -94,6 +95,8 @@ export const COSTING_PROJECT_PRICE_WRITEBACK = Symbol('smes.costing.projectPrice
 export const COSTING_PROJECT_SERVICE_OPTIONS = Symbol('smes.costing.projectServiceOptions');
 
 export interface CostingModuleOptions {
+  /** Required for external stores; both services join the same transaction. */
+  readonly transaction?: CostingTransaction | undefined;
   /** 成本条目存储；缺省 = 内存实现（重启即失）。显式 undefined 同缺省。 */
   readonly entryStore?: CostEntryStore | undefined;
   /** 口径版本存储；缺省 = 内存实现。 */
@@ -187,7 +190,7 @@ export class CostingModule {
             priceWriteback,
           };
           const stores: ProjectCostStores = { projectEntries, projectSnapshots, priceEntries };
-          return new ProjectCostService(stores, { models, events, operations }, sources, projectServiceOptions);
+          return new ProjectCostService(stores, { models, events, operations }, sources, { ...projectServiceOptions, transaction: options.transaction ?? projectServiceOptions.transaction });
         },
         inject: [
           COSTING_PROJECT_ENTRY_STORE,
@@ -226,7 +229,7 @@ export class CostingModule {
             { entries, models, snapshots, events, operations },
             { material, labor, outsourcing, workOrder },
             excel,
-            serviceOptions,
+            { ...serviceOptions, transaction: options.transaction ?? serviceOptions.transaction },
           ),
         inject: [
           COSTING_ENTRY_STORE,

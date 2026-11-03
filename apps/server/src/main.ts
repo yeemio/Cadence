@@ -504,6 +504,7 @@ async function bootstrap(): Promise<void> {
       hoursMonthStore: hoursStoreHandle?.monthStore,
       hoursEventStore: hoursStoreHandle?.eventStore,
       hoursOperationStore: hoursStoreHandle?.operationStore,
+      costingTransaction: costingStoreHandle?.transaction,
       costingEntryStore: costingStoreHandle?.entryStore,
       costingModelStore: costingStoreHandle?.modelStore,
       costingSnapshotStore: costingStoreHandle?.snapshotStore,

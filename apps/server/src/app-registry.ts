@@ -86,6 +86,7 @@ import {
   type BaselineEventStore,
   type BaselineOperationLedger,
   type CostEntryStore,
+  type CostingTransaction,
   type CostingDomainEventStore,
   type CostingModelStore,
   type CostingOperationStore,
@@ -375,6 +376,7 @@ export interface StorePorts {
   /** hours 命令幂等记账存储（HoursModule 注入点）。 */
   readonly hoursOperationStore?: HoursOperationStore | undefined;
   /** 成本条目存储（CostingModule 注入点）。 */
+  readonly costingTransaction?: CostingTransaction | undefined;
   readonly costingEntryStore?: CostEntryStore | undefined;
   /** 口径版本存储（CostingModule 注入点）。 */
   readonly costingModelStore?: CostingModelStore | undefined;
@@ -715,6 +717,7 @@ export const MODULE_DEFINITIONS: Record<
     }),
   costing: (stores, wiring) =>
     CostingModule.register({
+      transaction: stores.costingTransaction,
       entryStore: stores.costingEntryStore,
       modelStore: stores.costingModelStore,
       snapshotStore: stores.costingSnapshotStore,
@@ -1026,6 +1029,7 @@ export interface BuildAppModuleOptions {
   readonly hoursMonthStore?: LaborLedgerMonthStore | undefined;
   readonly hoursEventStore?: HoursDomainEventStore | undefined;
   readonly hoursOperationStore?: HoursOperationStore | undefined;
+  readonly costingTransaction?: CostingTransaction | undefined;
   readonly costingEntryStore?: CostEntryStore | undefined;
   readonly costingModelStore?: CostingModelStore | undefined;
   readonly costingSnapshotStore?: CostSnapshotStore | undefined;
@@ -1479,6 +1483,7 @@ export function buildAppModule(
         hoursMonthStore: options.hoursMonthStore,
         hoursEventStore: options.hoursEventStore,
         hoursOperationStore: options.hoursOperationStore,
+        costingTransaction: options.costingTransaction,
         costingEntryStore: options.costingEntryStore,
         costingModelStore: options.costingModelStore,
         costingSnapshotStore: options.costingSnapshotStore,

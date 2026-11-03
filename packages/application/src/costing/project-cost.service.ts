@@ -32,6 +32,7 @@ import type {
   TenantId,
 } from '@smes/business-core';
 import { CostingConflictError, CostingNotFoundError } from './costing-errors.js';
+import { atomicCostingOutcome, memoryCostingTransaction, type CostingTransaction } from './costing-transaction.js';
 import type { CostingEventProvenance } from './costing-events.js';
 import {
   currentVersion,
@@ -105,6 +106,7 @@ export interface ProjectCostCommitted extends CommittedOutcome {
 export type ProjectCostCommandResult = ProjectCostCommitted | RejectedOutcome | IndeterminateOutcome;
 
 export interface ProjectCostServiceOptions {
+  readonly transaction?: CostingTransaction | undefined;
   /** 时钟注入（事件 occurredAt / rebuiltAt 取时点；测试确定性）。 */
   readonly now?: () => string;
   /** 写回端口失败钩子（缺省 console.warn——通知式合同，不回滚）。 */
@@ -120,6 +122,9 @@ export interface ProjectKpiRow {
 
 /** 段事实统一同步形状（六源在服务内折到此形）。 */
 interface ProjectFactLine {
+  /** A classification exclusion can reverse old evidence, never create a new zero row. */
+  readonly correctionOnly?: boolean;
+  readonly classificationEvidence?: Readonly<Record<string, unknown>>;
   readonly block: ProjectCostBlock;
   readonly segment: ProjectCostSegment | null;
   readonly lineKind: 'part' | 'standard' | 'electrical' | 'equipment' | null;
@@ -140,6 +145,7 @@ interface ProjectFactLine {
 
 export class ProjectCostService {
   private readonly now: () => string;
+  private readonly transaction: CostingTransaction;
 
   constructor(
     private readonly stores: ProjectCostStores,
@@ -148,6 +154,7 @@ export class ProjectCostService {
     options: ProjectCostServiceOptions = {},
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
+    this.transaction = options.transaction ?? memoryCostingTransaction([...Object.values(stores), ...Object.values(shared)], shared.operations);
     this.onWritebackFailure = options.onWritebackFailure ?? ((error) => console.warn('[costing.price.writeback]', error));
   }
 
@@ -158,19 +165,20 @@ export class ProjectCostService {
   async execute(tenant: TenantId, envelope: ProjectCostCommandEnvelope): Promise<ProjectCostCommandResult> {
     const kind = envelope.command.kind;
     try {
-      switch (kind) {
+      return await atomicCostingOutcome(this.transaction, tenant, async (): Promise<ProjectCostCommandResult> => { switch (kind) {
         case 'costing.project.rebuild.v1':
           return await this.rebuild(tenant, envelope);
         case 'costing.price.entry.v1':
           return await this.recordPriceEntries(tenant, envelope);
       }
+      return { status: 'rejected', reason: `未知命令 kind '${kind}'` };
+      });
     } catch (error) {
       if (error instanceof CostingConflictError) {
         return { status: 'rejected', reason: error.message };
       }
       throw error;
     }
-    return { status: 'rejected', reason: `未知命令 kind '${kind}'` };
   }
 
   private async claimEnvelope(tenant: TenantId, envelope: ProjectCostCommandEnvelope): Promise<ProjectCostCommandResult | null> {
@@ -204,7 +212,7 @@ export class ProjectCostService {
     } catch (error) {
       return {
         status: 'indeterminate',
-        reason: `${failureContext}（${error instanceof Error ? error.message : String(error)}）：retrySafe=true——事实幂等键完整，可安全重发新 operationId 重放`,
+        reason: `${failureContext}（${error instanceof Error ? error.message : String(error)}）：本次事务回滚，可使用同一 operationId 重试`,
         retrySafe: true,
       };
     }
@@ -246,6 +254,7 @@ export class ProjectCostService {
     let skipped = 0;
     for (const fact of facts) {
       const existing = await this.stores.projectEntries.listByBaseSourceKey(tenant, fact.baseSourceKey);
+      if (fact.correctionOnly && existing.length === 0) { skipped += 1; continue; }
       const netAmount = existing.reduce((sum, row) => sum + (row.amountMinor ?? 0), 0);
       const netQty = existing.reduce((sum, row) => sum + (row.quantity ?? 0), 0);
       const desiredAmount = fact.amountMinor ?? 0;
@@ -256,18 +265,12 @@ export class ProjectCostService {
       }
       const isDelta = existing.length > 0;
       const sourceKey = isDelta ? `${fact.baseSourceKey}#d${existing.length}` : fact.baseSourceKey;
-      const claimed = await this.shared.operations.claim(tenant, `costing-project-${sourceKey}`, provenance.commandKind);
-      if (!claimed) {
-        skipped += 1;
-        continue; // 同 sourceKey 已联动（重放/并发竞态）
-      }
+      await this.shared.operations.claim(tenant, `costing-project-${sourceKey}`, provenance.commandKind);
       if ((await this.stores.projectEntries.findBySourceKey(tenant, sourceKey)) !== null) {
         skipped += 1;
         continue;
       }
-      let entry: CostProjectEntryRow;
-      try {
-        entry = await this.stores.projectEntries.insert({
+      const entry = await this.stores.projectEntries.insert({
           tenant,
           workOrderId,
           block: fact.block,
@@ -283,20 +286,13 @@ export class ProjectCostService {
           sourceKey,
           deltaOf: isDelta ? fact.baseSourceKey : null,
           workDate: fact.workDate,
-          remark: isDelta ? '来源事实变更，净额对齐 delta' : fact.remark,
+          remark: fact.correctionOnly ? fact.remark : isDelta ? '来源事实变更，净额对齐 delta' : fact.remark,
           occurredAt: this.now(),
           recordedBy: actor,
           auditStatus: 'committed',
-          provenance,
+          provenance: fact.classificationEvidence === undefined ? provenance : { ...provenance, equipmentClassification: fact.classificationEvidence },
           ...(fact.workDate === null ? {} : { businessTime: fact.workDate }),
         });
-      } catch (error) {
-        if (error instanceof CostingConflictError) {
-          skipped += 1;
-          continue; // 并发竞态下已落账
-        }
-        throw error;
-      }
       appended.push({ entry, event: makeCostProjectEntryCommittedEvent(tenant, entry, provenance, this.now()) });
     }
     return { appended, skipped };
@@ -357,14 +353,21 @@ export class ProjectCostService {
         baseSourceKey: `pc:eqp:${line.purchaseOrderId}:${line.lineNo}`,
         sourceRefId: `${line.purchaseOrderId}:${line.lineNo}`,
         sourceType: 'equipment-purchase' as const,
-        amountMinor: line.amountMinor,
-        quantity: line.receivedQty,
+        amountMinor: line.equipmentListingLineId === null ? 0 : line.amountMinor,
+        quantity: line.equipmentListingLineId === null ? 0 : line.receivedQty,
+        correctionOnly: line.equipmentListingLineId === null,
+        classificationEvidence: {
+          purchaseOrderId: line.purchaseOrderId, lineNo: line.lineNo, workOrderId: line.workOrderId,
+          equipmentListingLineId: line.equipmentListingLineId,
+          receivedQty: line.receivedQty, unitPriceMinor: line.unitPriceMinor,
+          observedAmountMinor: line.amountMinor,
+        },
         trade: null,
         supplierRef: null,
         equipmentRef: line.equipmentRef,
         workDate: null,
         occurredAt: this.now(),
-        remark: null,
+        remark: line.equipmentListingLineId === null ? '设备分类更正：当前采购行未匹配本令 equipment 清单，原设备贡献以追加 delta 归零' : null,
       })),
       actor,
       provenance,
@@ -495,7 +498,7 @@ export class ProjectCostService {
         snapshotChanged,
         totals,
       },
-      '段事实/六块快照行已落账但事件追加失败',
+      '段事实/六块快照事件追加失败',
     );
   }
 
@@ -745,7 +748,7 @@ export class ProjectCostService {
       provenance,
       this.now(),
     );
-    const outcome = await this.commitOutcome([event], { priceRows: rows, linkedSourceLineIds: [...linkedSourceLineIds] }, '录入价格行已落账但事件追加失败');
+    const outcome = await this.commitOutcome([event], { priceRows: rows, linkedSourceLineIds: [...linkedSourceLineIds] }, '录入价格事件追加失败');
 
     // 写回发料明细（单向通知式：失败不回滚、不翻结果——issue 侧接线归后续波）
     if (outcome.status === 'committed') {

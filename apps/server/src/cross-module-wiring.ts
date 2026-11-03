@@ -1083,10 +1083,11 @@ function createProjectEquipmentSource(stores: {
     equipmentPurchases: async (tenant, workOrderId): Promise<readonly ProjectEquipmentPurchaseLine[]> => {
       if (stores.purchaseOrders === undefined) return [];
       const orders = await stores.purchaseOrders.list(tenant, { workOrderId });
-      const equipmentLines =
-        stores.listingLines === undefined
-          ? []
-          : (await stores.listingLines.listByWorkOrder(tenant, workOrderId)).filter((line) => line.kind === 'equipment');
+      if (stores.listingLines === undefined) {
+        if (orders.some(order => order.lines.length > 0)) throw new Error('设备采购分类缺少本令清单来源，不能重建');
+        return [];
+      }
+      const equipmentLines = (await stores.listingLines.listByWorkOrder(tenant, workOrderId)).filter(line => line.kind === 'equipment');
       const byItemId = new Map(equipmentLines.filter((line) => line.itemId !== null).map((line) => [line.itemId!, line]));
       const byDrawingNo = new Map(equipmentLines.filter((line) => line.drawingNo !== null).map((line) => [line.drawingNo!, line]));
       const lines: ProjectEquipmentPurchaseLine[] = [];

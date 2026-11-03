@@ -85,13 +85,14 @@ export interface ProjectEquipmentPurchaseLine {
    * 差异登记）；未收货或未定价 = 0（未收不计成本）。
    */
   readonly amountMinor: number;
-  /** 匹配的设备清单行锚（equipment 清单行 id；未匹配 null）。 */
+  /** 匹配的 equipment 清单行锚；null 明确排除设备分类，仅可用于冲销旧误分类贡献。 */
   readonly equipmentListingLineId: string | null;
   readonly equipmentRef: string | null;
 }
 
 export interface ProjectEquipmentPurchaseSourcePort {
-  /** 该工作令外购设备采购行集（purchaseOrderId/lineNo 升序）。 */
+  /** 该工作令设备分类候选（purchaseOrderId/lineNo 升序）。未匹配行保留采购原量价，
+   * 服务不会新增设备事实；显式重建可据其分类结果追加旧误分类的归零 delta。 */
   equipmentPurchases(tenant: TenantId, workOrderId: string): Promise<readonly ProjectEquipmentPurchaseLine[]>;
 }
 
