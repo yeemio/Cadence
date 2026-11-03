@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Inject, Post, Req, Injectable, HttpException, type CallHandler, type ExecutionContext, type NestInterceptor } from '@nestjs/common';
 import { from, lastValueFrom, type Observable } from 'rxjs';
-import { ManufacturingService, ManufacturingQualityService, ManufacturingCommandGuard, ManufacturingRejected, ManufacturingAccessError, REQUEST_USER_KEY, RequirePermission, TenantContext, type AuthenticatedRequest, type Data } from '@smes/application';
+import { ManufacturingService, ManufacturingQualityService, ManufacturingCommandGuard, ManufacturingRejected, ManufacturingAccessError, projectManufacturingResponse, REQUEST_USER_KEY, RequirePermission, TenantContext, type AuthenticatedRequest, type Data } from '@smes/application';
 export const MANUFACTURING = Symbol('manufacturing.controls');
 export interface ManufacturingRuntime { control: ManufacturingService; quality: ManufacturingQualityService; guard: ManufacturingCommandGuard }
 function data(value: unknown): Data { if(!value||typeof value!=='object'||Array.isArray(value))throw new ManufacturingRejected('请求须为对象');return value as Data; }
@@ -9,17 +9,17 @@ function fail(error: unknown): never { if(error instanceof ManufacturingAccessEr
 export class ManufacturingController {
   constructor(private readonly tenant: TenantContext,@Inject(MANUFACTURING)private readonly runtime: ManufacturingRuntime) {}
   @Get('board') @RequirePermission('manufacturing:read')
-  async board(@Req() req: AuthenticatedRequest) { try{return await this.runtime.control.store.transaction(this.tenant.current(),()=>this.runtime.control.board(this.tenant.current(),String(req[REQUEST_USER_KEY])));}catch(error){fail(error);} }
+  async board(@Req() req: AuthenticatedRequest) { try{return projectManufacturingResponse(await this.runtime.control.store.transaction(this.tenant.current(),()=>this.runtime.control.board(this.tenant.current(),String(req[REQUEST_USER_KEY]))));}catch(error){fail(error);} }
   @Post('commands') @RequirePermission('manufacturing:read')
   async command(@Req() req: AuthenticatedRequest,@Body() body: unknown) {
-    try {const p=data(body),command=data(p['command']);const op=p['operationId'];if(typeof op!=='string'||!op.trim()||op.length>128)throw new ManufacturingRejected('操作标识无效');const payload=data(command['payload']);const kind=String(command['kind']);const t=this.tenant.current(),actor=String(req[REQUEST_USER_KEY]);return await this.runtime.control.store.transaction(t,()=>kind==='mfg.quality.reconcile.v1'?this.runtime.quality.reconcile(t,actor,op,payload):this.runtime.control.execute(t,actor,op,p['expectedRevision'],kind,payload));}catch(error){fail(error);}
+    try {const p=data(body),command=data(p['command']);const op=p['operationId'];if(typeof op!=='string'||!op.trim()||op.length>128)throw new ManufacturingRejected('操作标识无效');const payload=data(command['payload']);const kind=String(command['kind']);const t=this.tenant.current(),actor=String(req[REQUEST_USER_KEY]);return projectManufacturingResponse(await this.runtime.control.store.transaction(t,()=>kind==='mfg.quality.reconcile.v1'?this.runtime.quality.reconcile(t,actor,op,payload):this.runtime.control.execute(t,actor,op,p['expectedRevision'],kind,payload)));}catch(error){fail(error);}
   }
 }
 @Controller('stock/quality')
 export class StockQualityController {
   constructor(private readonly tenant: TenantContext,@Inject(MANUFACTURING)private readonly runtime: ManufacturingRuntime) {}
   @Get() @RequirePermission('stock:read')
-  async list(){try{return await this.runtime.control.store.transaction(this.tenant.current(),async()=>({levels:await this.runtime.quality.levels(this.tenant.current()),lots:await this.runtime.control.store.lots(this.tenant.current())}));}catch(error){fail(error);}}
+  async list(){try{return projectManufacturingResponse(await this.runtime.control.store.transaction(this.tenant.current(),async()=>({levels:await this.runtime.quality.levels(this.tenant.current()),lots:await this.runtime.control.store.lots(this.tenant.current())})));}catch(error){fail(error);}}
 }
 function rejected(value: unknown): string | null {
   if(!value||typeof value!=='object')return null;

@@ -18,6 +18,26 @@ export function decimalMinor(q:unknown,price:unknown):number {
 }
 export function poContent(po:Data) { return { id:po['id'],workOrderId:po['workOrderId'],supplierRef:po['supplierRef'],supplierName:po['supplierName'],requestIds:po['requestIds'],lines:rows(po['lines']).map(l=>({lineNo:l['lineNo'],itemId:l['itemId'],quantity:l['quantity'],unitPriceMinor:l['unitPriceMinor']})) }; }
 const ROLES=['mfg-e01','mfg-e02','mfg-e05','mfg-e07','mfg-e08','mfg-e10','mfg-e13'];
+
+/**
+ * Public manufacturing responses carry drawing metadata, never content references.
+ * Project at the transport boundary, including nested historical snapshots and
+ * replayed command results. Do not mutate stored records: their bytes and hashes
+ * remain the engineering evidence. Content access belongs to drawing.viewRevision.
+ */
+export function projectManufacturingResponse(value: Data): Data {
+  function project(entry: unknown): unknown {
+    if (Array.isArray(entry)) return entry.map(project);
+    if (entry === null || typeof entry !== 'object' || entry instanceof Date) return entry;
+    return Object.fromEntries(
+      Object.entries(entry)
+        .filter(([key]) => key !== 'fileRef' && key !== 'file_ref')
+        .map(([key, child]) => [key, project(child)]),
+    );
+  }
+  return project(value) as Data;
+}
+
 export class ManufacturingService {
   private actions: ManufacturingActions | null=null;
   constructor(readonly store:ManufacturingStore) {}
