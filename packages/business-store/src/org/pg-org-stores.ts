@@ -194,6 +194,37 @@ function toSessionRecord(row: SessionDbRow): SessionRecord {
 export class PgSessionStore implements SessionStore {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private withUserLock<T>(tenant: TenantId, userId: UserId, run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async tx => {
+      await setRlsTenantOn(tx);
+      // One lock protocol for refresh and whole-user revocation. An UPDATE of
+      // existing sessions alone can miss a replacement inserted concurrently.
+      const key = `auth-sessions:${JSON.stringify([tenant, userId])}`;
+      await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+      return run(tx);
+    });
+  }
+
+  async rotate(previousId: string, input: CreateSessionInput): Promise<boolean> {
+    return this.withUserLock(input.tenant, input.userId, async tx => {
+      const consumed = await tx.sessionRecord.updateMany({
+        where: {
+          id: previousId, tenantId: input.tenant, userId: input.userId,
+          revokedAt: null,
+          refreshExpiresAt: { gt: input.createdAt, gte: input.refreshExpiresAt },
+        },
+        data: { revokedAt: input.createdAt },
+      });
+      if (consumed.count !== 1) return false;
+      await tx.sessionRecord.create({ data: {
+        id: input.id, tenantId: input.tenant, userId: input.userId,
+        tokenDigest: input.tokenDigest, createdAt: input.createdAt,
+        expiresAt: input.expiresAt, refreshExpiresAt: input.refreshExpiresAt,
+      } });
+      return true;
+    });
+  }
+
   async create(input: CreateSessionInput): Promise<void> {
     await this.prisma.sessionRecord.create({
       data: {
@@ -223,9 +254,11 @@ export class PgSessionStore implements SessionStore {
   }
 
   async revokeAllForUser(tenant: TenantId, userId: UserId): Promise<void> {
-    await this.prisma.sessionRecord.updateMany({
-      where: { tenantId: tenant, userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+    await this.withUserLock(tenant, userId, async tx => {
+      await tx.sessionRecord.updateMany({
+        where: { tenantId: tenant, userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
     });
   }
 }

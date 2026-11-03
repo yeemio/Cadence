@@ -3,12 +3,16 @@
  * 声明供 tests/seed.test.ts 直引锚定；形状按 seedMain 实际消费的四个操作，
  * 与测试内存桩同构）。声明缺失曾报 TS7016（隐式 any）。
  */
-export declare function seedMain(prisma: {
+import type { PrismaClient } from '@prisma/client';
+
+interface SeedClient {
   readonly userRecord: {
     createMany(args: { data: Record<string, unknown>[]; skipDuplicates?: boolean }): Promise<{ count: number }>;
+    count(args: { where: { tenantId: string } }): Promise<number>;
   };
   readonly policyRecord: {
     createMany(args: { data: Record<string, unknown>[]; skipDuplicates?: boolean }): Promise<{ count: number }>;
+    count(args: { where: { tenantId: string } }): Promise<number>;
   };
   readonly warehouseRecord: {
     upsert(args: {
@@ -24,4 +28,9 @@ export declare function seedMain(prisma: {
       update: Record<string, unknown>;
     }): Promise<Record<string, unknown>>;
   };
-}): Promise<void>;
+  $queryRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
+}
+
+export declare function seedMain(prisma: PrismaClient | (SeedClient & {
+  $transaction<T>(run: (tx: SeedClient) => Promise<T>): Promise<T>;
+})): Promise<void>;

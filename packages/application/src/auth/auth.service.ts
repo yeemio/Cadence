@@ -140,8 +140,7 @@ export class AuthService {
       // 双保险：停用即全端撤销是主防线；此处拦下任何漏撤销的会话
       throw new AuthCredentialsError(SESSION_REJECTED_MESSAGE);
     }
-    await this.sessions.revoke(record.id);
-    return this.issue(tenant, account, record.refreshExpiresAt);
+    return this.issue(tenant, account, record.refreshExpiresAt, record.id);
   }
 
   /** 登出：撤销当前会话（幂等语义由调用方 401 保证——无效 token 先被拒）。 */
@@ -196,6 +195,7 @@ export class AuthService {
     tenant: TenantId,
     account: UserAccount,
     refreshCap?: Date,
+    previousId?: string,
   ): Promise<IssuedSession> {
     const now = this.now();
     const refreshExpiresAt =
@@ -205,7 +205,7 @@ export class AuthService {
             : new Date(now.getTime() + this.refreshWindowMs))
         : new Date(now.getTime() + this.refreshWindowMs);
     const token = generateSessionToken();
-    await this.sessions.create({
+    const input = {
       id: randomUUID(),
       tenant,
       userId: account.id,
@@ -213,7 +213,14 @@ export class AuthService {
       createdAt: now,
       expiresAt: new Date(now.getTime() + this.tokenTtlMs),
       refreshExpiresAt,
-    });
+    };
+    if (previousId === undefined) {
+      await this.sessions.create(input);
+    } else if (!await this.sessions.rotate(previousId, input)) {
+      // The earlier read is advisory only. Reset/logout/another refresh may
+      // have consumed the session while account validation was in progress.
+      throw new AuthCredentialsError(SESSION_REJECTED_MESSAGE);
+    }
     return { token, expiresAt: new Date(now.getTime() + this.tokenTtlMs), user: account };
   }
 }
