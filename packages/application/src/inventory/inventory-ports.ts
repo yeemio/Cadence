@@ -17,7 +17,7 @@
  */
 import type { TenantId } from '@smes/business-core';
 import type { PartsIssuePort } from '../workorder/workorder-ports.js';
-import type { InventoryReceiptPort } from '../listing/listing-ports.js';
+import type { InventoryReceiptCommand, InventoryReceiptPort, InventoryReceiptResult } from '../listing/listing-ports.js';
 import type { StockReleasePort } from '../inspection/inspection-ports.js';
 
 // ---- 可用量供给面（workorder 齐套 / listing 缺口核查共用） ----
@@ -43,6 +43,7 @@ export function createInventoryAvailabilityAdapter(
 
 /** 收货入库指令的服务面（receiptKey 幂等去重——Wave-2 验收低危 #4 兑现点）。 */
 export interface InventoryPurchaseReceiptSurface {
+  validatePurchaseReceipt(tenant: TenantId, command: InventoryReceiptCommand): Promise<InventoryReceiptResult>;
   receivePurchaseStock(
     tenant: TenantId,
     command: {
@@ -61,6 +62,7 @@ export function createInventoryReceiptAdapter(
   surface: InventoryPurchaseReceiptSurface,
 ): InventoryReceiptPort {
   return {
+    preflightPurchase: (tenant, command) => surface.validatePurchaseReceipt(tenant, command),
     receivePurchase: (tenant, command) => surface.receivePurchaseStock(tenant, command),
   };
 }
