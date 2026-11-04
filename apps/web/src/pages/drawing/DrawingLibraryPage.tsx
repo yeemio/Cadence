@@ -664,7 +664,11 @@ function PublishCard({
               id="publish-drawing-id"
               disabled={uploadMutation.isPending || publishMutation.isPending}
               value={drawingId}
-              onChange={(event) => setDrawingId(event.target.value)}
+              onChange={(event) => {
+                setDrawingId(event.target.value);
+                setFileRef('');
+                uploadMutation.reset();
+              }}
               placeholder="DWG-A01"
               required
             />
