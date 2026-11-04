@@ -22,14 +22,41 @@
  *    未知词后端 fail-fast 400；
  *  - 查看是"读路径动作"但必落留痕（合同两不变量），前端按 mutation 呈现
  *    （不用 useQuery——避免缓存/refetch 产生幻影留痕行）；
- *  - fileRef 为字符串载荷（存储键/URL），无文件二进制上传端点——发布表单
- *    收文本（上传通道=登记不做，见回传）；
+ *  - PDF 上传复用 /attachment/upload，fileRef=attachment:<id>；原外部引用仍保留；
+ *    字节读取走 /drawing/revisions/:drawingId/content（需登录、drawing:read、保密许可与留痕）；
  *  - 只读引用 TTL 前端取 300 秒（后端上界 600）——复制-粘贴转递可用窗口；
  *    引用 URL 为相对路径（同源开门面），复制时前端补全 origin。
  */
 import { fetchRawObject, postCommand, queryString } from '../../data/commandClient';
 import type { CommandOutcomeView } from '../../data/commandClient';
-import { request } from '../../data/apiClient';
+import { request, requestBytes } from '../../data/apiClient';
+
+export function loadDrawingPdf(drawingId: string, version: number, clearance: ClearanceLevel, signal: AbortSignal) {
+  return requestBytes(`/drawing/revisions/${encodeURIComponent(drawingId)}/content${queryString([
+    ['version', String(version)], ['clearance', clearance],
+  ])}`, { signal, cache: 'no-store' });
+}
+
+/** Upload through the existing attachment:write endpoint; publishing remains a separate command. */
+export async function uploadDrawingPdf(drawingId: string, file: File): Promise<string> {
+  if (file.size > 32 * 1024 * 1024) throw new Error('PDF 不能超过 32 MiB');
+  const header = new TextDecoder().decode(await file.slice(0, 5).arrayBuffer());
+  if (header !== '%PDF-') throw new Error('请选择有效的 PDF 文件');
+  const contentBase64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('读取 PDF 文件失败'));
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return reject(new Error('读取 PDF 文件失败'));
+      resolve(reader.result.slice(reader.result.indexOf(',') + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+  const result = await request('/attachment/upload', {
+    method: 'POST',
+    body: JSON.stringify({ fileName: file.name, contentType: 'application/pdf', contentBase64, bizType: 'drawing-pdf', bizId: drawingId }),
+  }) as { id: string };
+  return `attachment:${result.id}`;
+}
 
 /** 保密等级/许可值集（镜像 drawing-config.ts CLASSIFICATION_LEVELS；后位=更受限）。 */
 export const CLEARANCE_LEVELS = ['public', 'restricted'] as const;

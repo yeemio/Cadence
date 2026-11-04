@@ -47,6 +47,9 @@ function makeCreateManyTable(uniqueKey: (row: Record<string, unknown>) => string
   return {
     rows,
     counts: [] as number[],
+    async count({ where }: { where: { tenantId: string } }) {
+      return rows.filter(row => row['tenantId'] === where.tenantId).length;
+    },
     async createMany({ data, skipDuplicates }: { data: Record<string, unknown>[]; skipDuplicates?: boolean }) {
       let count = 0;
       for (const row of data) {
@@ -96,15 +99,26 @@ function makePrismaStub() {
     },
     (row) => `${row['tenantId']}|${row['warehouseId']}|${row['code']}`,
   );
-  return {
-    prisma: {
-      userRecord: { createMany: users.createMany.bind(users) },
-      policyRecord: { createMany: policies.createMany.bind(policies) },
+  const tables = { users, policies, warehouses, warehouseLocations };
+  const delegates = {
+      userRecord: { createMany: users.createMany.bind(users), count: users.count.bind(users) },
+      policyRecord: { createMany: policies.createMany.bind(policies), count: policies.count.bind(policies) },
       warehouseRecord: { upsert: warehouses.upsert.bind(warehouses) },
       warehouseLocationRecord: { upsert: warehouseLocations.upsert.bind(warehouseLocations) },
-    },
-    tables: { users, policies, warehouses, warehouseLocations },
+      $queryRaw: vi.fn(async () => [{ '?column?': 1 }]),
   };
+  const prisma = {
+      ...delegates,
+      async $transaction<T>(run: (tx: typeof delegates) => Promise<T>): Promise<T> {
+        const before = Object.values(tables).map(table => structuredClone(table.rows));
+        try { return await run(prisma); }
+        catch (error) {
+          Object.values(tables).forEach((table, index) => table.rows.splice(0, table.rows.length, ...before[index]!));
+          throw error;
+        }
+      },
+  };
+  return { prisma, tables };
 }
 
 describe('seed.mjs 幂等（D-15/D-16 默认收货仓）', () => {
@@ -124,9 +138,9 @@ describe('seed.mjs 幂等（D-15/D-16 默认收货仓）', () => {
       void originalLog;
     }
 
-    // 幂等：第二次 createMany 全跳过（两次计数 [4, 0] / [6, 0]），upsert 命中走空 update。
-    expect(tables.users.counts).toEqual([4, 0]);
-    expect(tables.policies.counts).toEqual([6, 0]);
+    // Upgrade does not attempt any identity/policy insert; warehouse upserts continue.
+    expect(tables.users.counts).toEqual([4]);
+    expect(tables.policies.counts).toEqual([6]);
     expect(tables.users.rows).toHaveLength(4);
     expect(tables.policies.rows).toHaveLength(6);
     expect(tables.warehouses.rows).toHaveLength(1);
@@ -151,6 +165,48 @@ describe('seed.mjs 幂等（D-15/D-16 默认收货仓）', () => {
     // upsert 幂等键锚定：复合唯一键（(tenant, code) / (tenant, warehouse, code)）。
     expect(tables.warehouses.calls.every((call) => 'tenantId_code' in call.where)).toBe(true);
     expect(tables.warehouseLocations.calls.every((call) => 'tenantId_warehouseId_code' in call.where)).toBe(true);
+  });
+
+  it('升级保留撤权、改密、停用和删除的演示账号，不恢复任何默认授权', async () => {
+    const { prisma, tables } = makePrismaStub();
+    await seedMain(prisma);
+    tables.policies.rows.splice(0, tables.policies.rows.length); // all default grants revoked
+    const admin = tables.users.rows.find(row => row['id'] === 'user-seed-admin')!;
+    admin['passwordHash'] = 'customer-password-hash';
+    admin['active'] = false;
+    tables.users.rows.splice(tables.users.rows.findIndex(row => row['id'] === 'user-demo-admin'), 1);
+    const before = structuredClone({ users: tables.users.rows, policies: tables.policies.rows });
+    await seedMain(prisma);
+    expect({ users: tables.users.rows, policies: tables.policies.rows }).toEqual(before);
+    expect(tables.warehouses.rows).toHaveLength(1);
+  });
+
+  it('已有客户身份或仅有授权记录时不注入演示权限；其它租户不阻止空 default 首装', async () => {
+    for (const table of ['users', 'policies'] as const) {
+      const { prisma, tables } = makePrismaStub();
+      tables[table].rows.push({ id: 'customer', ruleKey: 'customer-rule', tenantId: 'default' });
+      await seedMain(prisma);
+      expect(tables.users.rows).toHaveLength(table === 'users' ? 1 : 0);
+      expect(tables.policies.rows).toHaveLength(table === 'policies' ? 1 : 0);
+    }
+    const { prisma, tables } = makePrismaStub();
+    tables.users.rows.push({ id: 'other-tenant-user', tenantId: 'other' });
+    await seedMain(prisma);
+    expect(tables.users.rows).toHaveLength(5);
+    expect(tables.policies.rows).toHaveLength(6);
+  });
+
+  it('首次引导授权写入失败时账号同事务回滚，可安全重试完整引导', async () => {
+    const { prisma, tables } = makePrismaStub();
+    const write = prisma.policyRecord.createMany;
+    prisma.policyRecord.createMany = async () => { throw new Error('synthetic policy failure'); };
+    await expect(seedMain(prisma)).rejects.toThrow('synthetic policy failure');
+    expect(tables.users.rows).toEqual([]);
+    expect(tables.policies.rows).toEqual([]);
+    prisma.policyRecord.createMany = write;
+    await seedMain(prisma);
+    expect(tables.users.rows).toHaveLength(4);
+    expect(tables.policies.rows).toHaveLength(6);
   });
 
   it('D-16 每租户 MAIN：SMES_TENANTS=tenant-a,tenant-b → default/两租户各一条 MAIN（id 互不相同），幂等重跑不重复', async () => {

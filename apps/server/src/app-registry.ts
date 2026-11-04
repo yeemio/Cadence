@@ -22,6 +22,8 @@ import {
   DispatchModule,
   AftercareClaimModule,
   AttachmentModule,
+  InMemoryAttachmentStore,
+  InMemoryObjectStorage,
   ColumnPreferencesModule,
   createOrgPartsApproverDirectory,
   definePartsApprovalChain,
@@ -86,6 +88,7 @@ import {
   type BaselineEventStore,
   type BaselineOperationLedger,
   type CostEntryStore,
+  type CostingTransaction,
   type CostingDomainEventStore,
   type CostingModelStore,
   type CostingOperationStore,
@@ -183,6 +186,7 @@ import { inMemoryMaintenanceStores, type MaintenanceStores } from '@smes/mainten
 import { MaintenanceHttpModule } from './maintenance-http.module.js';
 import { inMemoryDrawingStores, type DrawingReadReferenceSigner, type DrawingStores } from '@smes/drawing';
 import { DrawingHttpModule } from './drawing-http.module.js';
+import { drawingPdfContentReader } from './drawing-pdf-content.js';
 import { inMemoryMetricPackStores, type MetricPackStores, type MetricSourceSet } from '@smes/metric-pack';
 import { MetricPackHttpModule } from './metric-pack-http.module.js';
 import type {
@@ -375,6 +379,7 @@ export interface StorePorts {
   /** hours 命令幂等记账存储（HoursModule 注入点）。 */
   readonly hoursOperationStore?: HoursOperationStore | undefined;
   /** 成本条目存储（CostingModule 注入点）。 */
+  readonly costingTransaction?: CostingTransaction | undefined;
   readonly costingEntryStore?: CostEntryStore | undefined;
   /** 口径版本存储（CostingModule 注入点）。 */
   readonly costingModelStore?: CostingModelStore | undefined;
@@ -715,6 +720,7 @@ export const MODULE_DEFINITIONS: Record<
     }),
   costing: (stores, wiring) =>
     CostingModule.register({
+      transaction: stores.costingTransaction,
       entryStore: stores.costingEntryStore,
       modelStore: stores.costingModelStore,
       snapshotStore: stores.costingSnapshotStore,
@@ -753,6 +759,9 @@ export const MODULE_DEFINITIONS: Record<
     DrawingHttpModule.register({
       stores: stores.drawingStores ?? inMemoryDrawingStores(),
       workOrderDrawingRefs: wiring.drawing?.workOrderDrawingRefs,
+      pdfContent: stores.attachmentStore !== undefined && stores.objectStorage !== undefined
+        ? drawingPdfContentReader(stores.attachmentStore, stores.objectStorage)
+        : undefined,
       // SP-3（M2 安全前置批波 b）：main.ts 读 SMES_DRAWING_REF_SECRET 构造的
       // 签发器透传（此前恒缺省随机实例）；未设 env 不注入 = 行为不变。
       ...(stores.drawingReadReferenceSigner === undefined
@@ -1026,6 +1035,7 @@ export interface BuildAppModuleOptions {
   readonly hoursMonthStore?: LaborLedgerMonthStore | undefined;
   readonly hoursEventStore?: HoursDomainEventStore | undefined;
   readonly hoursOperationStore?: HoursOperationStore | undefined;
+  readonly costingTransaction?: CostingTransaction | undefined;
   readonly costingEntryStore?: CostEntryStore | undefined;
   readonly costingModelStore?: CostingModelStore | undefined;
   readonly costingSnapshotStore?: CostSnapshotStore | undefined;
@@ -1269,6 +1279,11 @@ export function buildAppModule(
   // 用户存储共享（M1 收尾波-③）：auth 恒装配且 org 依赖同一 UserStore——组合根
   // 未注入 PG 实现时统一构造一个内存实例分给两模块（登录与组织管理同源）。
   const sharedUserStore = options.userStore ?? new InMemoryUserStore();
+  // Drawing content and attachment upload must share the same backing stores, including memory mode.
+  const sharedAttachmentStore = options.attachmentStore ??
+    (enabled.includes('attachment') ? new InMemoryAttachmentStore() : undefined);
+  const sharedObjectStorage = options.objectStorage ??
+    (enabled.includes('attachment') ? new InMemoryObjectStorage() : undefined);
   // 会话撤销同源：org 的 users.active 停用撤销与 auth 的会话判定必须同一存储
   // （零 DB 形态同样成立——内存实例只此一个）。
   const sharedSessionStore = options.sessionStore ?? new InMemorySessionStore();
@@ -1479,6 +1494,7 @@ export function buildAppModule(
         hoursMonthStore: options.hoursMonthStore,
         hoursEventStore: options.hoursEventStore,
         hoursOperationStore: options.hoursOperationStore,
+        costingTransaction: options.costingTransaction,
         costingEntryStore: options.costingEntryStore,
         costingModelStore: options.costingModelStore,
         costingSnapshotStore: options.costingSnapshotStore,
@@ -1519,11 +1535,11 @@ export function buildAppModule(
         issueOperationStore: options.issueOperationStore,
         issueDomainEventStore: options.issueDomainEventStore,
         aftercareClaimStore: options.aftercareClaimStore,
-        attachmentStore: options.attachmentStore,
+        attachmentStore: sharedAttachmentStore,
       // A14 验收阻塞项修复：PG 句柄此前在此字面量被静默丢弃（同型事故见上方 screen 注释）——
       // 缺失时 column-preferences 工厂恒回落内存实现，偏好不落库跨设备失效。
       columnPreferenceStore: options.columnPreferenceStore,
-        objectStorage: options.objectStorage,
+        objectStorage: sharedObjectStorage,
         // A10 存储装配链（6a-3 裁决 1 修复项）：screen 启用而组合根未注入 PG
         // 句柄时在此裁决内存缺省（此前工厂调用漏传本键 → screen 工厂内恒
         // undefined，`!` 断言掩盖 → GET /screen/machining-daily-stats 500）。

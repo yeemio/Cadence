@@ -53,7 +53,11 @@ pnpm verify          # typecheck + 边界铁律 + 铁律自检 + build + test
 
 ## 当前阶段
 
-2026-10-27：**M1 已收版（`v1.0.0`），M2 售卖就绪进行中**。安全波 a 与多角色测试资产已有 ACCEPT，多语言改造在途；D-18 日统计数值仍待核对，真实客户试点未触发。进度与证据见[生命周期地图](architecture/PRODUCT_LIFECYCLE_MAP.md)和[执行状态](architecture/status.md)。
+截至 2026-11-03：**M1 已收版（`v1.0.0`）；M2 可交付候选已于 2026-10-31 按约定范围整体 ACCEPT；真实客户试点/M3 尚未启动。** 接受对象的 13 份手册、3 份 PM 事实源和 2 份技术接收/范围说明已在 `5425feb93856772c728ffb482b18bced5eb88558` 正式封存，共 18 文件；该提交没有改变产品、Compose 或依赖字节，产品源码沿用 `0425ded838a87b8aeab3cfc300097a985bde2bd2`。PM 文档内“手册尚未提交”是原裁决时点，不能据此认定封存后仍未合入。
+
+M2 接受不等于真实客户部署或业务接受。IAB PDF 实际显示仍为 NOT_ACCEPTED、根因 UNKNOWN；真实历史客户/共享成本数据和生产图纸质量仍 UNVERIFIED。D-18、P2-3/O5 等保留项按[生命周期地图](architecture/PRODUCT_LIFECYCLE_MAP.md)和[决策队列](architecture/DECISIONS-QUEUE.md)追溯；原共享 19 项的历史分布不倒写。有效短签名直接打开、中文完整/英文骨架的既有裁定保持。
+
+当前工程工作是 Owner 已授权的六个分类 PR 修复，不因此重开全部 M2 验收或自动进入 M3。请从 [START-HERE](START-HERE.md) 的当前入口进入；各 PR 的候选、验证和接收分别成立，未合入主线的修复不能称为 main 已完成。具名客户、岗位、数据授权与商业范围仍由 Owner/PM 按职责决定。
 
 以下 S3 记录保留为历史工程进展，不作为当前产品阶段或完成比例。
 

@@ -52,10 +52,16 @@ export async function request(path: string, init?: RequestInit): Promise<unknown
   return requestOnce(path, init, 0);
 }
 
+/** Binary delivery uses the same bearer, refresh race and error handling as JSON requests. */
+export async function requestBytes(path: string, init?: RequestInit): Promise<Uint8Array> {
+  return await requestOnce(path, init, 0, true) as Uint8Array;
+}
+
 async function requestOnce(
   path: string,
   init: RequestInit | undefined,
   retry: number,
+  binary = false,
 ): Promise<unknown> {
   const usedToken = sessionStore.read()?.token;
   const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -78,11 +84,12 @@ async function requestOnce(
     const currentToken = sessionStore.read()?.token;
     if (retry === 0 && currentToken !== undefined && currentToken !== usedToken) {
       // 保活换新竞态：本请求带的是旧 token，存储里已有新 token——重试一次
-      return requestOnce(path, init, retry + 1);
+      return requestOnce(path, init, retry + 1, binary);
     }
     clearSessionAndRedirect(); // 401 才清会话（继续抛 ApiError 给调用方）
   }
 
+  if (response.ok && binary) return new Uint8Array(await response.arrayBuffer());
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const record =

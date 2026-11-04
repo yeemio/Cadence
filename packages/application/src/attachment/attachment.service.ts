@@ -167,6 +167,10 @@ export class AttachmentService {
         `附件 '${query.id}' 的业务主键与请求不一致（防误用其他业务的附件）`,
       );
     }
+    // Controlled drawing PDFs can only leave storage after the drawing clearance gate and audit.
+    if (record.bizType === 'drawing-pdf') {
+      throw new AttachmentConflictError('图纸 PDF 请通过图纸查看入口读取');
+    }
     const downloadName = query.downloadName ?? record.fileName; // 文档：不传则用 file_name
     const reference = await this.objectStorage.issueReadReference(
       tenant,

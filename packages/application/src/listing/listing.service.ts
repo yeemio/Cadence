@@ -1273,6 +1273,9 @@ export class ListingService {
       if (receivedQty > orderLine.quantity) {
         return rejected(`收货数量超订：行 ${lineNo} 收 ${receivedQty} > 订 ${orderLine.quantity}`);
       }
+      if (orderLine.receivedQty > 0 && receivedQty !== orderLine.receivedQty) {
+        return rejected(`行 ${lineNo} 已按来源 ${orderId}#${lineNo} 收 ${orderLine.receivedQty}；轻量退货不冲销库存或检验，不支持用同一来源改量重收`);
+      }
     }
 
     const runtime = await this.replayOrder(order);
@@ -1287,6 +1290,18 @@ export class ListingService {
 
       // 入库指令端口先行：拒绝则命令整体 rejected，不落任何账。端口按 receiptKey
       // 幂等（重试不重复入库）——合同见 listing-ports.ts。
+      // Validate every effective receipt first, including warehouse/source
+      // identity, so a later conflicting line cannot leave earlier side effects.
+      for (const [lineNo, receivedQty] of receivedByLineNo) {
+        if (receivedQty <= 0) continue;
+        const line = order.lines.find(candidate => candidate.lineNo === lineNo)!;
+        const check = await this.ports.receipt.preflightPurchase(tenant, {
+          receiptKey: `${orderId}#${lineNo}`, purchaseOrderId: orderId,
+          itemId: line.itemId, quantity: receivedQty,
+          ...(payload.warehouseId !== null ? { warehouseId: payload.warehouseId } : {}),
+        });
+        if (!check.received) return rejected(`入库指令被拒绝（行 ${lineNo}）：${check.refusedReason ?? 'inventory 端口未说明原因'}`);
+      }
       const receipts: { readonly receiptKey: string; readonly received: boolean }[] = [];
       for (const [lineNo, receivedQty] of receivedByLineNo) {
         if (receivedQty <= 0) continue; // 0 数量行不下入库指令

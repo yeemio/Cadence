@@ -25,6 +25,15 @@ export class InMemoryCostProjectEntryStore implements CostProjectEntryStore {
   private readonly rows: CostProjectEntryRow[] = [];
   private readonly bySourceKey = new Map<string, CostProjectEntryRow>(); // key: `${tenant}|${sourceKey}`
 
+  checkpoint(): () => void {
+    const rows = this.rows.slice(), keys = new Map(this.bySourceKey);
+    return () => {
+      this.rows.splice(0, this.rows.length, ...rows);
+      this.bySourceKey.clear();
+      for (const [key, value] of keys) this.bySourceKey.set(key, value);
+    };
+  }
+
   async insert(input: AppendCostProjectEntryInput): Promise<CostProjectEntryRow> {
     const key = `${input.tenant}|${input.sourceKey}`;
     if (this.bySourceKey.has(key)) {
@@ -67,6 +76,11 @@ export class InMemoryCostProjectEntryStore implements CostProjectEntryStore {
 /** 六块快照内存实现（supersedes 链不变量）。 */
 export class InMemoryCostProjectSnapshotStore implements CostProjectSnapshotStore {
   private readonly rows: CostProjectSnapshotRow[] = [];
+
+  checkpoint(): () => void {
+    const before = this.rows.slice();
+    return () => { this.rows.splice(0, this.rows.length, ...before); };
+  }
 
   async insert(input: AppendCostProjectSnapshotInput): Promise<CostProjectSnapshotRow> {
     const chain = this.rows.filter(
@@ -123,6 +137,11 @@ export class InMemoryCostProjectSnapshotStore implements CostProjectSnapshotStor
 /** 录入价格内存实现（运营投影 upsert）。 */
 export class InMemoryCostPriceEntryStore implements CostPriceEntryStore {
   private readonly rows: CostPriceEntryRow[] = [];
+
+  checkpoint(): () => void {
+    const before = this.rows.slice();
+    return () => { this.rows.splice(0, this.rows.length, ...before); };
+  }
 
   async upsert(input: UpsertCostPriceEntryInput): Promise<CostPriceEntryRow> {
     const existing = await this.find(input.tenant, input.workOrderId, input.recordId, input.taskLineId);
