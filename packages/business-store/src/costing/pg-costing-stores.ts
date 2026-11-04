@@ -13,7 +13,7 @@
  *  - PgCostingOperationLedger → 命令幂等账本（costing_operations）
  */
 import { Prisma, PrismaClient } from '@prisma/client';
-import { rlsSessionEnabled, withRlsTenantSession } from '../rls-session.js';
+import { rlsSessionEnabled, runWithRlsTenant, setRlsTenantOn, withRlsTenantSession } from '../rls-session.js';
 import { TenantId, type BusinessEvent } from '@smes/business-core';
 import {
   CostingConflictError,
@@ -26,6 +26,7 @@ import {
   type CostingModelStore,
   type CostingOperationStore,
   type CostingStores,
+  type CostingTransaction,
   type AppendCostEntryInput,
   type AppendCostSnapshotInput,
   type CreateCostingModelInput,
@@ -423,15 +424,13 @@ export class PgCostingOperationLedger implements CostingOperationStore {
   constructor(private readonly prisma: PrismaClient) {}
 
   async claim(tenant: TenantId, operationId: string, commandKind: string): Promise<boolean> {
-    try {
-      await this.prisma.costingOperationRecord.create({
-        data: { id: uuidv7(), tenantId: tenant, operationId, commandKind },
-      });
-      return true;
-    } catch (error) {
-      if (isUniqueViolation(error)) return false;
-      throw error;
-    }
+    // ON CONFLICT DO NOTHING keeps the enclosing transaction usable. Catching
+    // P2002 after INSERT would leave PostgreSQL's transaction aborted.
+    const result = await this.prisma.costingOperationRecord.createMany({
+      data: [{ id: uuidv7(), tenantId: tenant, operationId, commandKind }],
+      skipDuplicates: true,
+    });
+    return result.count === 1;
   }
 }
 
@@ -444,6 +443,7 @@ export interface CostingStoreOptions {
 
 /** 组合根装配句柄：五端口实现（可直接喂 CostingModule.register）+ 优雅断连。 */
 export interface CostingStoreHandle {
+  readonly transaction: CostingTransaction;
   readonly entryStore: CostEntryStore;
   readonly modelStore: CostingModelStore;
   readonly snapshotStore: CostSnapshotStore;
@@ -468,6 +468,14 @@ export function connectCostingStore(options: CostingStoreOptions = {}): CostingS
     operations: new PgCostingOperationLedger(client),
   };
   return {
+    transaction: (tenant, run) => runWithRlsTenant(tenant, () => client.$transaction(async tx => {
+      await setRlsTenantOn(tx);
+      const key = `costing:${tenant}`;
+      await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+      // Existing ALS propagation joins every wrapped adapter, including the
+      // project-cost client's entries and the shared event/outbox stores.
+      return run();
+    }, { timeout: 30_000 })),
     entryStore: stores.entries,
     modelStore: stores.models,
     snapshotStore: stores.snapshots,

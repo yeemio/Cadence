@@ -81,7 +81,7 @@ SP-3 两密钥与 CM-1 安全响应头已包含在上述 Git 基线中。CM-1 �
 
 ## D4. 初始化与岗位开通
 
-初始化随 `up` 自动完成：migrate 一次性服务以 superuser 跑 `prisma migrate deploy` + 基础种子（`db:seed`）+ 迁移台账对 app_user 只读收口。基础种子提供账号 `admin`（种子管理员）/ `demo-admin` / `approver` / `viewer`，并按 `SMES_TENANTS` 每租户幂等建 code=`MAIN` 默认仓（来源：`deploy/compose.yaml` migrate 服务段；`packages/business-store/prisma/seed.mjs`）。
+初始化随 `up` 自动完成：migrate 一次性服务以 superuser 跑 `prisma migrate deploy` + 基础种子（`db:seed`）+ 迁移台账对 app_user 只读收口。仅在 default 租户的用户与授权表都为空时，基础种子在一个事务内提供账号 `admin`（种子管理员）/ `demo-admin` / `approver` / `viewer` 及首次授权。已有任一身份或授权记录即跳过身份初始化：升级不恢复撤销的角色/权限或删除的演示账号，不修改口令或启停状态；部分初始化的旧库由管理员显式处理，不能靠升级自动补权。默认仓仍按 `SMES_TENANTS` 每租户幂等建 code=`MAIN`（来源：`deploy/compose.yaml` migrate 服务段；`packages/business-store/prisma/seed.mjs`）。
 
 岗位开通两条路径：
 
@@ -123,7 +123,7 @@ cd deploy
 docker compose --env-file .env up -d --build     # 沿用安装配置，全量重建 server/web/migrate
 ```
 
-- 迁移自动推进：migrate 服务每次 up 重跑 `prisma migrate deploy`（幂等）；种子幂等重跑零新增。
+- 迁移自动推进：migrate 服务每次 up 重跑 `prisma migrate deploy`（幂等）；基础种子对已有身份状态跳过账号与授权初始化，默认仓独立幂等。不要清空身份/授权表来重跑引导；这属于数据重置，不是升级步骤。
 - **已知的坑**：不要只重建 server 镜像而跳过 migrate 服务镜像——迁移/种子会跑旧版代码（历史收口坑登记，见 `architecture/status.md` D-20 段）。用 `docker compose up -d --build` 全量重建即可同时覆盖。
 - **无自动降级路径**：`prisma migrate deploy` 只进不退；回滚 = 恢复更新前的数据备份 + 回退到旧版本源码（见 D8）。更新前先备份。
 

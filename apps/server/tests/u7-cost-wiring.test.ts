@@ -30,6 +30,8 @@ import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
 import {
   LISTING_PROCESS_MATERIAL_STORE,
+  ProjectCostService, createInMemoryCostingStores, createInMemoryProjectCostStores,
+  emptyProjectCostSourcePorts, DEFAULT_COSTING_MODEL_DEFINITION, aggregateProjectCost,
   ListingService,
   InMemoryAftercareClaimStore,
   InMemoryDispatchOrderStore,
@@ -44,7 +46,7 @@ import {
   type ProcessMaterialRowInput,
   type PurchaseOrderLine,
 } from '@smes/application';
-import { TenantId, UserId } from '@smes/business-core';
+import { OperationId, TenantId, UserId, makeCommandEnvelope } from '@smes/business-core';
 import { buildAppModule } from '../src/app-registry.js';
 import {
   CROSS_MODULE_WIRING,
@@ -282,6 +284,59 @@ async function seedDispatchOrder(store: InMemoryDispatchOrderStore, input: {
 // ---- 场景①+⑤：PO 加权价 + 设备采购（#32） ----
 
 describe('U7 #32：设备采购行（PO 行 × equipment 清单行匹配）', () => {
+  it.each([false, true])('F6 mixed ordinary/equipment purchase with immutable old misclassification=%s', async legacy => {
+    const h = makeHarness();
+    await seedEquipmentListingLine(h.listingLines, { id: 'equipment-line', itemId: 'equipment', drawingNo: 'EQ-1' });
+    await h.purchaseOrders.create(po('po-mixed', [
+      poLine(1, 'equipment', 'EQ-1', 2, 2500, 2),
+      poLine(2, 'standard', 'STD-1', 5, 100, 5),
+    ]));
+    await seedIssueRecord(h.issueRecords, { id: 'standard-issue', issuedAt: '2026-11-03T00:00:00.000Z', lineKind: 'standard', equipmentRef: null,
+      lines: [standardLine({ taskLineId: 'standard-task', sourceLineId: 'standard-line', itemId: 'standard', drawingNo: 'STD-1',
+        allocations: [{ locationId: 'main-1', quantity: 5, reservedConsumedQty: 0, availableConsumedQty: 5 }] })] });
+    const shared = createInMemoryCostingStores(), stores = createInMemoryProjectCostStores();
+    await shared.models.insert({ tenant, code: 'standard', name: null, definition: DEFAULT_COSTING_MODEL_DEFINITION,
+      status: 'active', objectVersion: 1, supersedes: null, auditStatus: 'published' });
+    if (legacy) {
+      await stores.projectEntries.insert({ tenant, workOrderId: WO, block: 'equipment', segment: 'purchase-order', lineKind: 'equipment',
+        amountMinor: 500, quantity: 5, trade: null, supplierRef: null, equipmentRef: null,
+        sourceType: 'equipment-purchase', sourceRefId: 'po-mixed:2', sourceKey: 'pc:eqp:po-mixed:2', deltaOf: null,
+        workDate: null, remark: 'synthetic pre-fix misclassification', occurredAt: '2026-10-31T00:00:00.000Z', recordedBy: String(operator), auditStatus: 'committed' });
+      await stores.projectSnapshots.insert({ tenant, workOrderId: WO, modelCode: 'standard', modelVersion: 1,
+        totals: aggregateProjectCost(await stores.projectEntries.list(tenant), DEFAULT_COSTING_MODEL_DEFINITION),
+        rebuiltBy: String(operator), rebuiltAt: '2026-10-31T00:00:00.000Z', objectVersion: 1, supersedes: null, auditStatus: 'rebuilt' });
+    }
+    const oldEntries = JSON.stringify(await stores.projectEntries.list(tenant));
+    const oldSnapshots = JSON.stringify(await stores.projectSnapshots.listByWorkOrder(tenant, WO));
+    const service = new ProjectCostService(stores, shared, { ...emptyProjectCostSourcePorts(),
+      issueSegments: h.issueSource!, equipmentPurchases: h.equipmentSource! });
+    const run = (id: string) => service.execute(tenant, makeCommandEnvelope({ tenantId: tenant, issuedBy: operator,
+      operationId: OperationId.create(id), expectedRevision: 'initial', issuedAt: '2026-11-03T00:00:00.000Z',
+      command: { kind: 'costing.project.rebuild.v1', payload: { workOrderId: WO } } }));
+    expect(await run('classify')).toMatchObject({ status: 'committed', totals: {
+      materialStandard: { purchaseMinor: 500, totalMinor: 500 }, equipment: { purchaseMinor: 5000, totalMinor: 5000 }, grandMinor: 5500,
+    } });
+    const entries = await stores.projectEntries.list(tenant);
+    const ordinaryEquipment = entries.filter(row => row.sourceRefId === 'po-mixed:2');
+    if (legacy) {
+      expect(ordinaryEquipment).toHaveLength(2);
+      expect(ordinaryEquipment[1]).toMatchObject({ amountMinor: -500, quantity: -5, deltaOf: 'pc:eqp:po-mixed:2',
+        provenance: { equipmentClassification: { equipmentListingLineId: null, receivedQty: 5, observedAmountMinor: 500 } } });
+      expect(JSON.stringify(entries.slice(0, 1))).toBe(oldEntries);
+      expect(JSON.stringify((await stores.projectSnapshots.listByWorkOrder(tenant, WO)).slice(0, 1))).toBe(oldSnapshots);
+    } else expect(ordinaryEquipment).toEqual([]);
+    const after = JSON.stringify(entries);
+    expect(await run('classify-again')).toMatchObject({ status: 'committed', entriesCommitted: 0, snapshotChanged: false });
+    expect(JSON.stringify(await stores.projectEntries.list(tenant))).toBe(after);
+  });
+
+  it('F6 missing listing classification source fails visibly without declaring every PO an equipment purchase', async () => {
+    const purchaseOrders = new InMemoryPurchaseOrderStore();
+    await purchaseOrders.create(po('po-unclassified', [poLine(1, 'ordinary', null, 1, 300, 1)]));
+    const wiring = createCrossModuleWiring({ enabled: ['costing', 'listing'], stores: { purchaseOrders } });
+    await expect(wiring.register.costing!.projectEquipmentSource!.equipmentPurchases(tenant, WO)).rejects.toThrow('分类缺少');
+  });
+
   it('金额=receivedQty×单价、未收货/未价=0、itemId/drawingNo 匹配回链清单行', async () => {
     const harness = makeHarness();
     await seedEquipmentListingLine(harness.listingLines, { id: 'll-eq-1', itemId: 'itm-eq', drawingNo: 'DW-EQ' });

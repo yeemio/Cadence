@@ -119,7 +119,7 @@ export function CostingPage() {
             <ModuleTable
               columns={[
                 { key: 'code', label: '口径码', mono: true },
-                { key: 'version', label: '版本' },
+                { key: 'objectVersion', label: '版本' },
                 { key: 'name', label: '名称' },
                 { key: 'status', label: '状态', mono: true },
                 { key: 'createdAt', label: '发布时刻' },
@@ -226,13 +226,16 @@ export function CostingPage() {
                   <ModuleTable
                     columns={[
                       { key: 'category', label: '分类', mono: true },
-                      { key: 'source', label: '来源', mono: true },
+                      { key: 'sourceRefId', label: '来源', mono: true },
                       { key: 'amountMinor', label: '金额（分）' },
-                      { key: 'qty', label: '数量' },
+                      { key: 'quantity', label: '数量 / 小时' },
                     ]}
                     rows={detailsQuery.data ?? []}
                   />
                 </QueryState>
+                <p className="text-xs text-muted-foreground">
+                  工时明细保留小时量，金额按口径计入汇总与快照。
+                </p>
               </div>
               <div className="flex flex-col gap-2">
                 <p className="text-sm font-medium">快照版本回看</p>
@@ -249,7 +252,10 @@ export function CostingPage() {
                       { key: 'totalMinor', label: '总额（分）' },
                       { key: 'createdAt', label: '生成时刻' },
                     ]}
-                    rows={formatStampColumn(snapshotsQuery.data)}
+                    rows={formatStampColumn(snapshotsQuery.data?.map((snapshot) => ({
+                      ...snapshot,
+                      totalMinor: (snapshot.totals as Record<string, unknown>).grandMinor,
+                    })))}
                   />
                 </QueryState>
               </div>

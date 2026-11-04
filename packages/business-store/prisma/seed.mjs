@@ -117,23 +117,31 @@ function policyToRow(rule) {
 }
 
 /**
- * 种子主逻辑（幂等）：users/policies 走 createMany skipDuplicates；每租户
+ * 身份只在 default 的 users/policies 都为空时引导，和授权同一事务提交。
+ * 升级时不补齐被删除的默认角色/权限/账号，不修改口令或 active。
+ * 默认仓独立幂等：每租户
  * 默认仓走 upsert（(tenant, code) / (tenant, warehouse, code) 复合唯一键，
  * update 空对象——重跑不重复、不动既有 MAIN 仓的任何字段）。
  */
 export async function seedMain(prisma) {
-  const users = await prisma.userRecord.createMany({
-    data: seedUsers.map((user) => ({
-      ...user,
-      tenantId: TENANT,
-      active: true,
-      passwordHash: hashPassword(DEFAULT_SEED_PASSWORD),
-    })),
-    skipDuplicates: true,
-  });
-  const policies = await prisma.policyRecord.createMany({
-    data: seedPolicies.map(policyToRow),
-    skipDuplicates: true,
+  const { users, policies } = await prisma.$transaction(async tx => {
+    // Serialize concurrent bootstrap attempts; a retry must inspect committed
+    // identity state, not recreate grants removed by an administrator.
+    await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended('cadence:identity-bootstrap:default', 0))`;
+    const userCount = await tx.userRecord.count({ where: { tenantId: TENANT } });
+    const policyCount = await tx.policyRecord.count({ where: { tenantId: TENANT } });
+    if (userCount > 0 || policyCount > 0) return { users: { count: 0 }, policies: { count: 0 } };
+    const users = await tx.userRecord.createMany({
+      data: seedUsers.map(user => ({
+        ...user, tenantId: TENANT, active: true,
+        passwordHash: hashPassword(DEFAULT_SEED_PASSWORD),
+      })),
+      skipDuplicates: true,
+    });
+    const policies = await tx.policyRecord.createMany({
+      data: seedPolicies.map(policyToRow), skipDuplicates: true,
+    });
+    return { users, policies };
   });
   const warehouses = [];
   for (const tenant of seedTenants()) {

@@ -23,7 +23,7 @@
  *    storage/:token 先例：短时签名 token 即能力凭证，无权限码；兑现仍走
  *    viewRevision 全路径——门禁+每次必落查看留痕，不新增 fileRef 旁路）。
  */
-import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Header, Inject, Optional, Param, Post, Query, Req, StreamableFile } from '@nestjs/common';
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import {
   REQUEST_USER_KEY,
@@ -52,6 +52,9 @@ import {
   type DrawingStores,
 } from '@smes/drawing';
 import type { WorkOrderDrawingRefsPort } from './cross-module-wiring.js';
+import type { DrawingPdfContentReader } from './drawing-pdf-content.js';
+
+export const DRAWING_PDF_CONTENT = Symbol('smes.server.drawingPdfContent');
 
 /** workorder 附件钉版引用装配端口的 DI token（接口无运行时形状——Symbol token）。 */
 export const WORKORDER_DRAWING_REFS = Symbol('smes.server.workOrderDrawingRefs');
@@ -107,6 +110,8 @@ export class DrawingQueriesController {
     private readonly workOrderRefs: WorkOrderDrawingRefsPort | undefined,
     @Inject(DRAWING_READ_REFERENCES)
     private readonly readReferences: DrawingReadReferenceSigner,
+    @Optional() @Inject(DRAWING_PDF_CONTENT)
+    private readonly pdfContent?: DrawingPdfContentReader,
   ) {}
 
   /**
@@ -198,6 +203,31 @@ export class DrawingQueriesController {
     );
   }
 
+  /** File access repeats the existing clearance gate and audit before resolving any bytes. */
+  @Get('revisions/:drawingId/content')
+  @RequirePermission('drawing:read')
+  @Header('Cache-Control', 'no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async content(
+    @Req() request: AuthenticatedRequest,
+    @Param('drawingId') drawingId: string,
+    @Query('version') version?: string,
+    @Query('clearance') clearance?: string,
+  ): Promise<StreamableFile> {
+    const id = parseDrawingIdParam(drawingId, 'drawingId');
+    const target = version === undefined || version === '' || version === 'latest'
+      ? 'latest' as const : parseVersionParam(version, 'version');
+    const tenant = this.tenantContext.current();
+    const view = await this.drawing.viewRevision(tenant, this.viewerOf(request, clearance), id, target);
+    if (this.pdfContent === undefined) throw new DrawingNotFoundError('PDF 文件存储未装配');
+    const bytes = await this.pdfContent.read(tenant, String(id), view.fileRef);
+    return new StreamableFile(Buffer.from(bytes), {
+      type: 'application/pdf',
+      disposition: `inline; filename*=UTF-8''${encodeURIComponent(`${id}-v${view.version}.pdf`)}`,
+      length: bytes.byteLength,
+    });
+  }
+
   /** 变更通知读取（sinceVersion 游标；clearance 过滤：通知指向的修订超许可即不可见）。 */
   @Get('notices/:drawingId')
   @RequirePermission('drawing:read')
@@ -275,6 +305,7 @@ export interface DrawingHttpModuleOptions {
    * 同附件基座取舍；TTL 逐请求声明，无模块级缺省签发）。
    */
   readonly readReferenceSigner?: DrawingReadReferenceSigner | undefined;
+  readonly pdfContent?: DrawingPdfContentReader | undefined;
 }
 
 @Module({})
@@ -293,6 +324,10 @@ export class DrawingHttpModule {
       {
         provide: DRAWING_READ_REFERENCES,
         useValue: readReferenceSigner,
+      },
+      {
+        provide: DRAWING_PDF_CONTENT,
+        useValue: options.pdfContent,
       },
     ];
     return {

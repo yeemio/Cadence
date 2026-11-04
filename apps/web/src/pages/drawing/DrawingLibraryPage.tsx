@@ -17,9 +17,9 @@
  *  - 超保密等级不可见与图纸不存在同形 404——页面如实呈现服务端消息，
  *    不猜测区分"不存在/不可见"；
  *  - 每次查看（含公开级）都产生查看留痕——查看按钮文案明示。
- *  - 文件上传通道不存在——fileRef 按字符串载荷（存储键/URL）收文本。
+ *  - PDF 上传复用附件写入权限；在线阅读另经图纸权限、保密门禁和查看留痕。
  */
-import { useState, type FormEvent } from 'react';
+import { lazy, Suspense, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
 import { getRouting } from '../../data/baselineApi';
@@ -33,6 +33,7 @@ import {
   listRevisionChain,
   publishDrawingRevision,
   viewDrawingRevision,
+  uploadDrawingPdf,
   type ClearanceLevel,
   type DrawingIndexEntry,
   type DrawingIndexPageView,
@@ -45,6 +46,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+
+const DrawingPdfReader = lazy(() => import('./DrawingPdfReader'));
 
 /** 保密等级人读标签（未知码原样呈现——值集扩级不改本页）。 */
 function classificationLabel(value: string): string {
@@ -105,6 +108,7 @@ export function DrawingLibraryPage() {
       {activeDrawingId !== null && (
         <>
           <ChainCard
+            key={`${activeDrawingId}:${clearance}`}
             drawingId={activeDrawingId}
             clearance={clearance}
             chain={chain ?? []}
@@ -115,6 +119,7 @@ export function DrawingLibraryPage() {
           />
           <NoticesCard drawingId={activeDrawingId} clearance={clearance} />
           <PublishCard
+            key={activeDrawingId}
             defaultDrawingId={activeDrawingId}
             currentVersion={currentVersion}
             onPublished={() => queryClient.invalidateQueries({ queryKey: ['drawing'] })}
@@ -433,15 +438,16 @@ function ChainCard({
             查看失败：{viewMutation.error instanceof Error ? viewMutation.error.message : String(viewMutation.error)}
           </p>
         )}
-        {viewMutation.data !== undefined && <RevisionViewPanel view={viewMutation.data} />}
+        {viewMutation.data !== undefined && <RevisionViewPanel key={viewMutation.data.id} view={viewMutation.data} clearance={clearance} />}
       </CardContent>
     </Card>
   );
 }
 
 /** 查看回执面板（唯一携 fileRef 的视图；查看已留痕）。 */
-function RevisionViewPanel({ view }: { readonly view: DrawingRevisionView }) {
+function RevisionViewPanel({ view, clearance }: { readonly view: DrawingRevisionView; readonly clearance: ClearanceLevel }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [readerOpen, setReaderOpen] = useState(false);
 
   /** 相对引用 URL 补全为同源绝对链接（复制转递用；兑现在登录态下）。 */
   function absoluteReferenceUrl(url: string): string {
@@ -494,8 +500,20 @@ function RevisionViewPanel({ view }: { readonly view: DrawingRevisionView }) {
         <dt className="font-mono text-xs text-muted-foreground">changeNote</dt>
         <dd className="font-mono text-xs">{view.changeNote}</dd>
       </dl>
+      {view.fileRef.startsWith('attachment:') ? (
+        <div className="mt-3">
+          <Button variant="outline" onClick={() => setReaderOpen(!readerOpen)}>
+            {readerOpen ? '关闭 PDF' : '打开 PDF（本次打开将留痕）'}
+          </Button>
+          {readerOpen && (
+            <Suspense fallback={<p role="status">正在加载 PDF 阅读器…</p>}>
+              <DrawingPdfReader drawingId={view.drawingId} version={view.version} clearance={clearance} />
+            </Suspense>
+          )}
+        </div>
+      ) : <p className="mt-3 text-sm text-muted-foreground">此修订保留外部内容引用。发布关联已上传 PDF 的新修订后，可在本页在线阅读。</p>}
       <p className="mt-2 text-xs text-muted-foreground">
-        短时效只读引用=本次查看的回执能力（过期失效、兑现仍必落查看留痕；无登录门，token 即唯一凭证——链接勿转交无关人员）；内容指针按后端回显原样呈现；水印/下载控制属实施层后续（22 册）。
+        短时效只读引用=本次查看的回执能力（过期失效、兑现仍必落查看留痕；无登录门，token 即唯一凭证——链接勿转交无关人员）。PDF 在线阅读需登录且重新校验本版保密许可；水印与下载控制未实施。
       </p>
     </div>
   );
@@ -586,8 +604,13 @@ function PublishCard({
   const [mode, setMode] = useState<'initial' | 'append'>('initial');
   const [expectedInput, setExpectedInput] = useState('');
   const [fileRef, setFileRef] = useState('');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [changeNote, setChangeNote] = useState('');
   const [classification, setClassification] = useState<ClearanceLevel>('public');
+  const uploadMutation = useMutation({
+    mutationFn: () => uploadDrawingPdf(drawingId.trim(), pdfFile!),
+    onSuccess: setFileRef,
+  });
 
   const publishMutation = useMutation({
     mutationFn: publishDrawingRevision,
@@ -629,8 +652,8 @@ function PublishCard({
         <CardTitle>发布新修订</CardTitle>
         <CardDescription>
           drawing.publish.v1：版本号由链尾+1（不传客户端值）；发布即联动落变更通知。
-          需 drawing:publish 权限。文件上传通道后端暂无——fileRef 按存储键/URL 文本载荷
-          （登记不做上传，见任务回传）。
+          需图纸发布权限。选择 PDF 并上传后，文件引用会自动填入；确认变更说明后发布修订。
+          上传使用现有附件写入权限，文件最大 32 MiB。
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -639,8 +662,13 @@ function PublishCard({
             <Label htmlFor="publish-drawing-id">图号（drawingId）</Label>
             <Input
               id="publish-drawing-id"
+              disabled={uploadMutation.isPending || publishMutation.isPending}
               value={drawingId}
-              onChange={(event) => setDrawingId(event.target.value)}
+              onChange={(event) => {
+                setDrawingId(event.target.value);
+                setFileRef('');
+                uploadMutation.reset();
+              }}
               placeholder="DWG-A01"
               required
             />
@@ -688,13 +716,23 @@ function PublishCard({
               ))}
             </Select>
           </div>
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="publish-pdf">PDF 文件（可选）</Label>
+            <Input id="publish-pdf" type="file" accept="application/pdf,.pdf" onChange={(event) => setPdfFile(event.target.files?.[0] ?? null)} />
+            <div>
+              <Button type="button" variant="outline" disabled={pdfFile === null || drawingId.trim().length === 0 || uploadMutation.isPending || publishMutation.isPending}
+                onClick={() => uploadMutation.mutate()}>{uploadMutation.isPending ? '正在上传…' : '上传 PDF'}</Button>
+            </div>
+            {uploadMutation.isError && <p role="alert" className="text-sm text-destructive">上传失败：{uploadMutation.error instanceof Error ? uploadMutation.error.message : String(uploadMutation.error)}</p>}
+            {uploadMutation.isSuccess && <p role="status" className="text-xs text-muted-foreground">PDF 已上传，文件引用已填入。发布修订后即可在线阅读。</p>}
+          </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="publish-fileref">fileRef（存储键/URL）</Label>
             <Input
               id="publish-fileref"
               value={fileRef}
               onChange={(event) => setFileRef(event.target.value)}
-              placeholder="s3://drawings/DWG-A01/v4.pdf"
+              placeholder="上传 PDF 自动填入，或保留既有外部引用"
               required
             />
           </div>

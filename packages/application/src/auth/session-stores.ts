@@ -38,8 +38,15 @@ export interface CreateSessionInput {
 /** 会话存储端口。实现方保证：revoke / revokeAllForUser 幂等（不存在或已撤销 = 零行）。 */
 export interface SessionStore {
   create(input: CreateSessionInput): Promise<void>;
+  /**
+   * Atomically consume a live refresh session and insert its replacement.
+   * False means no writes. Must serialize with revokeAllForUser for the same
+   * tenant/user, so a completed password reset cannot be followed by issuance
+   * from a previously read session. The absolute refresh window cannot grow.
+   */
+  rotate(previousId: string, input: CreateSessionInput): Promise<boolean>;
   findByTokenDigest(tokenDigest: string): Promise<SessionRecord | null>;
-  /** 按会话 id 撤销（logout / refresh 换新）。 */
+  /** 按会话 id 撤销（logout）。 */
   revoke(id: string): Promise<void>;
   /** 撤销某用户在租户内的全部会话（users.active 停用时的"写时全端下线"）。 */
   revokeAllForUser(tenant: TenantId, userId: UserId): Promise<void>;
@@ -53,6 +60,19 @@ export class InMemorySessionStore implements SessionStore {
 
   async create(input: CreateSessionInput): Promise<void> {
     this.sessions.set(input.id, { ...input, revokedAt: null });
+  }
+
+  async rotate(previousId: string, input: CreateSessionInput): Promise<boolean> {
+    // No await between checking the live row, consuming it and inserting the
+    // replacement: revokeAllForUser uses the same synchronous critical section.
+    const previous = this.sessions.get(previousId);
+    if (previous === undefined || previous.revokedAt !== null ||
+        previous.tenant !== input.tenant || previous.userId !== input.userId ||
+        previous.refreshExpiresAt.getTime() <= input.createdAt.getTime() ||
+        input.refreshExpiresAt.getTime() > previous.refreshExpiresAt.getTime()) return false;
+    this.sessions.set(previousId, { ...previous, revokedAt: input.createdAt });
+    this.sessions.set(input.id, { ...input, revokedAt: null });
+    return true;
   }
 
   async findByTokenDigest(tokenDigest: string): Promise<SessionRecord | null> {

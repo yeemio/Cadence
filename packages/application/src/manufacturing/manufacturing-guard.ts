@@ -7,19 +7,21 @@ export interface ControlledCheckpoint { quality?: QualityCheckpoint; faults?: Da
 export class ManufacturingCommandGuard {
   constructor(readonly control: ManufacturingService, readonly quality: ManufacturingQualityService) {}
   applies(kind: string): boolean { return /^(dispatch\.|report\.|inspection\.|nonconform\.|purchase\.|gap\.|issue\.|stock\.|stocktake\.approve|shipping\.|workorder\.parts\.ship|baseline\.fault\.)/.test(kind); }
-  async production(t: TenantId, dispatchId: string, assignee?: unknown): Promise<void> {
+  async production(t: TenantId, dispatchId: string, assignee?: unknown, operationCode?: unknown): Promise<void> {
     const d = await this.control.source(t, 'dispatch', dispatchId);
     if(d['kind']==='outsourcing') { await this.control.assertUnfrozen(t,d['workOrderId']); return; }
     const s=(await this.control.store.list(t,'schedule')).find(r=>r.sourceId===dispatchId&&r.state==='approved');
     if(!s)throw new ManufacturingRejected('须先由计划提交联合排程并经运营批准生产放行；原派工/开工/报工入口不能绕过');
     if(assignee && assignee!==s.data['operatorId'])throw new ManufacturingRejected('派工人员与批准联合排程不一致');
+    const targetOperation=typeof operationCode==='string'?operationCode.trim():operationCode;
+    if(targetOperation!==undefined&&targetOperation!==null&&targetOperation!==s.data['processCode'])throw new ManufacturingRejected('转单目标工序与批准联合排程不一致；当前不支持借转单变更已批准工序');
     await this.control.scheduleChecks(t,s.data,s.id);
   }
   async before(t: TenantId, kind: string, p: Data, id: string): Promise<ControlledCheckpoint> {
     if(kind==='purchase.order.approve.v1')throw new ManufacturingRejected('请在制造控制台完成净额报价、独立财务复核及分流批准；原批准入口不再直接放行');
     if(kind==='purchase.order.issue.v1'){const po=await this.control.source(t,'po',id);await this.control.assertUnfrozen(t,po['workOrderId']);await this.control.assertPurchaseIssue(t,po);}
     if(kind==='dispatch.create.v1')await this.control.assertUnfrozen(t,p['workOrderId']);
-    if(['dispatch.assign.v1','dispatch.start.v1','dispatch.transfer.v1'].includes(kind))await this.production(t,id,p['assignee']);
+    if(['dispatch.assign.v1','dispatch.start.v1','dispatch.transfer.v1'].includes(kind))await this.production(t,id,p['assignee'],kind==='dispatch.transfer.v1'?p['operationCode']:undefined);
     if(kind==='dispatch.batch-assign.v1')for(const item of rows(p['items']))await this.production(t,String(item['id']),p['assignee']);
     if(kind==='report.submit.v1')await this.production(t,String(p['dispatchId']));
     if(kind==='report.submit-batch.v1')for(const line of rows(p['lines']))await this.production(t,String(line['dispatchId']));

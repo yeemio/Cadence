@@ -29,6 +29,15 @@ export class InMemoryCostEntryStore implements CostEntryStore {
   private readonly rows: CostEntryRow[] = [];
   private readonly bySourceKey = new Map<string, CostEntryRow>(); // key: `${tenant}|${sourceKey}`
 
+  checkpoint(): () => void {
+    const rows = this.rows.slice(), keys = new Map(this.bySourceKey);
+    return () => {
+      this.rows.splice(0, this.rows.length, ...rows);
+      this.bySourceKey.clear();
+      for (const [key, value] of keys) this.bySourceKey.set(key, value);
+    };
+  }
+
   async insert(input: AppendCostEntryInput): Promise<CostEntryRow> {
     const key = `${input.tenant}|${input.sourceKey}`;
     if (this.bySourceKey.has(key)) {
@@ -72,6 +81,11 @@ export class InMemoryCostEntryStore implements CostEntryStore {
 export class InMemoryCostingModelStore implements CostingModelStore {
   private readonly rows: CostingModelRow[] = [];
 
+  checkpoint(): () => void {
+    const before = this.rows.slice();
+    return () => { this.rows.splice(0, this.rows.length, ...before); };
+  }
+
   async insert(input: CreateCostingModelInput): Promise<CostingModelRow> {
     const chain = this.rows.filter((row) => row.tenant === input.tenant && row.code === input.code);
     if (chain.some((row) => row.objectVersion === input.objectVersion)) {
@@ -103,6 +117,11 @@ export class InMemoryCostingModelStore implements CostingModelStore {
 /** 成本快照内存实现（supersedes 链不变量）。 */
 export class InMemoryCostSnapshotStore implements CostSnapshotStore {
   private readonly rows: CostSnapshotRow[] = [];
+
+  checkpoint(): () => void {
+    const before = this.rows.slice();
+    return () => { this.rows.splice(0, this.rows.length, ...before); };
+  }
 
   async insert(input: AppendCostSnapshotInput): Promise<CostSnapshotRow> {
     const chain = this.rows.filter(
@@ -160,6 +179,11 @@ export class InMemoryCostSnapshotStore implements CostSnapshotStore {
 export class InMemoryCostingDomainEventStore implements CostingDomainEventStore {
   private readonly events: BusinessEvent[] = [];
 
+  checkpoint(): () => void {
+    const before = this.events.slice();
+    return () => { this.events.splice(0, this.events.length, ...before); };
+  }
+
   async append(event: BusinessEvent): Promise<void> {
     if (this.events.some((existing) => existing.eventId === event.eventId)) {
       throw new CostingConflictError(`事件 '${String(event.eventId)}' 已落账（eventId 幂等锚点）`);
@@ -177,6 +201,11 @@ export class InMemoryCostingDomainEventStore implements CostingDomainEventStore 
 /** 幂等账本内存实现。 */
 export class InMemoryCostingOperationStore implements CostingOperationStore {
   private readonly claimed = new Set<string>(); // key: `${tenant}|${operationId}`
+
+  checkpoint(): () => void {
+    const before = new Set(this.claimed);
+    return () => { this.claimed.clear(); for (const key of before) this.claimed.add(key); };
+  }
 
   async claim(tenant: TenantId, operationId: string, _commandKind: string): Promise<boolean> {
     const key = `${tenant}|${operationId}`;

@@ -147,6 +147,9 @@ class FakeInventory implements InventoryAvailabilityPort {
 class FakeReceipt implements InventoryReceiptPort {
   readonly calls: InventoryReceiptCommand[] = [];
   refuseReason: string | null = null;
+  async preflightPurchase() {
+    return this.refuseReason === null ? { received: true } : { received: false, refusedReason: this.refuseReason };
+  }
   async receivePurchase(_tenant: unknown, command: InventoryReceiptCommand) {
     this.calls.push(command);
     return this.refuseReason === null
@@ -962,7 +965,7 @@ describe('采购订单五态全链（提交-审核-下发-收货）', () => {
     expect(refused.status).toBe('rejected');
     if (refused.status === 'rejected') expect(refused.reason).toContain('库位已满');
     expect((await h.orders.find(t1, order.id))?.state).toBe('issued'); // 未落账
-    expect(h.receipt.calls.length).toBe(1);
+    expect(h.receipt.calls.length).toBe(0); // 整单预检先拒绝，尚未调用任何入库写端口
 
     h.receipt.refuseReason = null;
     const over = await h.service.execute(
@@ -1130,7 +1133,7 @@ describe('purchase.return（退货单 + 订单退货回退）', () => {
     return order;
   }
 
-  it('建退货单：open@v1 + 订单回退 received→issued@v6 + PurchaseReturned；可重收', async () => {
+  it('轻量退货保留原实收量；同来源改量重收拒绝，原数量可重放', async () => {
     const h = newHarness();
     const order = await receivedOrder(h);
     const result = mustCommit(
@@ -1151,14 +1154,19 @@ describe('purchase.return（退货单 + 订单退货回退）', () => {
     const events = await h.domainEvents.byAggregate({ id: purchaseReturn.id, type: 'purchase-return' });
     expect(events.map((event) => event.eventType)).toEqual([LISTING_EVENT_TYPES.purchaseReturned]);
 
-    // 重收（修正后 10 全收）
+    const changed = await h.service.execute(
+      envelope('purchase.order.receive.v1', { lines: [{ lineNo: 1, receivedQty: 10 }] }, { expectedRevision: 6 }), order.id,
+    );
+    expect(changed).toMatchObject({ status: 'rejected' });
+    expect((await h.orders.find(t1, order.id))?.lines[0]?.receivedQty).toBe(8);
+    // Reconfirm the original quantity; physical return/re-receipt is not implied.
     const reReceived = mustCommit(
       await h.service.execute(
-        envelope('purchase.order.receive.v1', { lines: [{ lineNo: 1, receivedQty: 10 }] }, { expectedRevision: 6 }),
+        envelope('purchase.order.receive.v1', { lines: [{ lineNo: 1, receivedQty: 8 }] }, { expectedRevision: 6 }),
         order.id,
       ),
     );
-    expect(reReceived.purchaseOrder?.lines[0]?.receivedQty).toBe(10);
+    expect(reReceived.purchaseOrder?.lines[0]?.receivedQty).toBe(8);
   });
 
   it('守门：非 received 态退货 rejected；超收货数量 rejected；撤销 → revoked@v2', async () => {

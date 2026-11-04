@@ -2240,6 +2240,7 @@ export {
 } from './costing/costing.controllers.js';
 export { CostingModule } from './costing/costing.module.js';
 export type { CostingModuleOptions } from './costing/costing.module.js';
+export type { CostingTransaction } from './costing/costing-transaction.js';
 
 // ---- costing U7：项目成本六块（A5 项目成本报表；六块聚合 + 快照 + 命令化跑批 +
 // 录入价格 + 详情 KPI 查询面） ----
